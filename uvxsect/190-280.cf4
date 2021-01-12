@@ -1,6 +1,6 @@
-	6
-	wavenum,	a0,	a1,	a2,	maxerr,	temp(maxerr)
-	fit	to	xsec	vs	((T-100)/10)^2
+#	6
+#	wavenum,	a0,	a1,	a2,	maxerr,	temp(maxerr)
+#	fit	to	xsec	vs	((T-100)/10)^2
 49000.5	3.317E-11	-6.194E-09	3.146E-07	0.46	200.
 49001.0	2.821E-11	-5.045E-09	2.531E-07	0.36	200.
 49001.5	2.484E-11	-4.256E-09	2.108E-07	0.29	200.

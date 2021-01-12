@@ -1,7 +1,7 @@
-H2 photodissociation cross-sections, 
-total into all electronic states
-Resampled from H2.txt, originally from http://phidrates.space.swri.edu/
-lambda [nm], cross-section [cm2]
+#H2 photodissociation cross-sections, 
+#total into all electronic states
+#Resampled from H2.txt, originally from http://phidrates.space.swri.edu/
+#lambda [nm], cross-section [cm2]
 0.5,9.999999999999944e-36
 1.5,9.999999999999944e-36
 2.5,9.999999999999944e-36

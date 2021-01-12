@@ -1,7 +1,7 @@
-CO2 photoIONIZATION cross-sections, 
-total across all ion-producing channels
-Resampled from CO2_swri.txt, originally from http://phidrates.space.swri.edu/
-lambda [nm], cross-section [cm2]
+# CO2 photoIONIZATION cross-sections, 
+# total across all ion-producing channels
+# Resampled from CO2_swri.txt, originally from http://phidrates.space.swri.edu/
+# lambda [nm], cross-section [cm2]
 0.5,3.96990912846416e-20
 1.5,4.0456001910069086e-19
 2.5,2.0519921407928722e-19

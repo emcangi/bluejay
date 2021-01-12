@@ -1,7 +1,7 @@
-OH photodissociation cross-sections, 
-total into O1D
-Resampled from OH.txt, originally from http://phidrates.space.swri.edu/
-lambda [nm], cross-section [cm2]
+#OH photodissociation cross-sections, 
+#total into O1D
+#Resampled from OH.txt, originally from http://phidrates.space.swri.edu/
+#lambda [nm], cross-section [cm2]
 0.5,1.5263313695958652e-20
 1.5,8.877349511474833e-20
 2.5,4.362870716458579e-20
