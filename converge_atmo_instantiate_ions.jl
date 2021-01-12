@@ -343,6 +343,10 @@ end
 
 # chemistry functions ==========================================================
 
+# TODO: This function isn't currently used. It was used with get_rates_and_fluxes in 
+# mike's original code, which was responsible for printing reaction rates into the h5 file.
+# It might be a good idea to write some new code to store this information in the converged
+# atmosphere files just to have it.
 function reactionrates(n_current)
     #=
     Creates an array of size length(intaltgrid) x (number of reactions).
@@ -352,14 +356,12 @@ function reactionrates(n_current)
     
     theserates = fill(convert(Float64, NaN), (length(intaltgrid), length(reactionnet)))
     for ialt in 1:length(intaltgrid)
-        theserates[ialt,:] = reactionrates_local([n_current[sp][ialt] for sp in specieslist], 
-                                                 [n_current[J][ialt] for J in Jratelist], 
-                                                 Temp_n(alt[ialt+1]), Temp_i(alt[ialt+1]), Temp_e(alt[ialt+1]))  # check that this works
+        theserates[ialt,:] = reactionrates_local([[n_current[sp][ialt] for sp in specieslist];  # non-vectorized function call
+                                                [n_current[J][ialt] for J in Jratelist];
+                                                Temp_n(alt[ialt+1]); Temp_i(alt[ialt+1]); Temp_e(alt[ialt+1])]...)
+                                                # n_tot(n_current, alt[ialt+1])]...)   # M is no longer pssed in.
 
-                                                #([[n_current[sp][ialt] for sp in specieslist];
-                                                #[n_current[J][ialt] for J in Jratelist];
-                                                #Temp_n(alt[ialt+1]); Temp_i(alt[ialt+1]); Temp_e(alt[ialt+1])]...)
-                                                #n_tot(n_current, alt[ialt+1])]...)   # this is the old argument to reactionrates_local 
+                                                
     end
     return theserates
 end
@@ -374,19 +376,12 @@ function ratefn(nthis, inactive, inactivespecies, activespecies, Jrates, Tn, Ti,
     inactivemat = reshape(inactive,(length(inactivespecies),length(intaltgrid)))
     returnrates = zero(nthismat)
 
-    println("The argument to ratefn_local:")
-    thing1 = [nthismat[:,1]; nthismat[:,2]; fill(1.0, length(activespecies)); inactivemat[:,1]; Jrates[:,1]; Tn[1]; Ti[1]; Te[1]; # M[1]; E[1]; # DEBUG: replace if needed
-              tup[:,1]; tlower[:,1]; tdown[:,2]; tlower[:,2]]
-
-    println(thing1)
-    println("Length of argument to ratefn_local: $(length(thing1))")
-    println()
     # fill the first altitude entry with information for all species
     returnrates[:,1] = ratefn_local([nthismat[:,1]; nthismat[:,2];
                                     fill(1.0, length(activespecies));
                                     inactivemat[:,1]; Jrates[:,1]; Tn[1]; Ti[1]; Te[1]; # M[1]; E[1]; # DEBUG: replace if needed
                                     tup[:,1]; tlower[:,1]; tdown[:,2];
-                                    tlower[:,2]])#...) # DEBUG: replace splat after last ] if need be.
+                                    tlower[:,2]]...)
 
 
     # iterate through other altitudes except the last level, filling the info in
@@ -398,10 +393,10 @@ function ratefn(nthis, inactive, inactivespecies, activespecies, Jrates, Tn, Ti,
                                           Jrates[:,ialt];
                                           Tn[ialt]; Ti[ialt]; Te[ialt]; # M[ialt]; E[ialt];# DEBUG: replace if needed
                                           tup[:,ialt]; tdown[:,ialt];
-                                          tdown[:,ialt+1]; tup[:,ialt-1]])#...)# DEBUG: replace splat after last ] if need be.
+                                          tdown[:,ialt+1]; tup[:,ialt-1]]...)
     end
 
-    # fill in the last level of altitude (200 km)
+    # fill in the last level of altitude
     returnrates[:,end] = ratefn_local([nthismat[:,end];
                                        fill(1.0, length(activespecies));
                                        nthismat[:,end-1];
@@ -409,7 +404,7 @@ function ratefn(nthis, inactive, inactivespecies, activespecies, Jrates, Tn, Ti,
                                        Jrates[:,end];
                                        Tn[end]; Ti[end]; Te[end]; #M[end]; E[end]; # DEBUG: replace if needed
                                        tupper[:,1]; tdown[:,end];
-                                       tupper[:,2]; tup[:,end-1]])#...) # DEBUG: replace splat if problem
+                                       tupper[:,2]; tup[:,end-1]]...)
     return [returnrates...;]
 end
 
@@ -424,69 +419,78 @@ function chemJmat(nthis, inactive, activespecies, inactivespecies, Jrates, Tn, T
     chemJj = Int64[]
     chemJval = Float64[]
 
-    (tclocal, tcupper, tclower) = chemJmat_local([nthismat[:,1]; nthismat[:,2];
-                                                  fill(1.0, length(activespecies));
+    (tclocal, tcupper, tclower) = chemJmat_local([nthismat[:,1]; nthismat[:,2]; fill(1.0, length(activespecies));
                                                   inactivemat[:,1]; Jrates[:,1];
-                                                  Tn[1]; Ti[1]; Te[1]; #M[1]; E[1]; 
+                                                  Tn[1]; Ti[1]; Te[1]; #M[1]; E[1];  # temps are at indices 254, 255, 256. 
                                                   tup[:,1]; tlower[:,1];
-                                                  tdown[:,2]; tlower[:,2];dt])#...) # DEBUG: splat
-    #add the influence of the local densities
-    append!(chemJi, tclocal[1])
-    append!(chemJj, tclocal[2])
-    append!(chemJval, tclocal[3])
-    #and the upper densities
-    append!(chemJi, tcupper[1])
-    append!(chemJj, tcupper[2] .+ length(activespecies))
-    append!(chemJval, tcupper[3])
+                                                  tdown[:,2]; tlower[:,2]; dt]...) # DEBUG: splat
 
-    for ialt in 2:(length(intaltgrid)-1)
-        (tclocal, tcupper, tclower) = chemJmat_local([nthismat[:,ialt];
-                                                      nthismat[:,ialt+1];
-                                                      nthismat[:,ialt-1];
-                                                      inactivemat[:,ialt];
-                                                      Jrates[:,ialt]; Tn[ialt]; Ti[ialt]; Te[ialt];
-                                                      #M[ialt]; E[ialt]; 
-                                                      tup[:,ialt];
-                                                      tdown[:,ialt];
-                                                      tdown[:,ialt+1];
-                                                      tup[:,ialt-1]; dt])#...) # DEBUG: splat
-        # add the influence of the local densities
-        append!(chemJi, tclocal[1].+(ialt-1)*length(activespecies))
-        append!(chemJj, tclocal[2].+(ialt-1)*length(activespecies))
-        append!(chemJval, tclocal[3])
-        # and the upper densities
-        append!(chemJi, tcupper[1].+(ialt-1)*length(activespecies))
-        append!(chemJj, tcupper[2].+(ialt  )*length(activespecies))
-        append!(chemJval, tcupper[3])
-        # and the lower densities
-        append!(chemJi, tclower[1].+(ialt-1)*length(activespecies))
-        append!(chemJj, tclower[2].+(ialt-2)*length(activespecies))
-        append!(chemJval, tclower[3])
-    end
+    println("Back in chemJmat after first call to chemJmat_local")
 
-    (tclocal, tcupper, tclower) = chemJmat_local([nthismat[:,end];
-                                              fill(1.0, length(activespecies));
-                                              nthismat[:,end-1];
-                                              inactivemat[:,end];
-                                              Jrates[:,end];
-                                              Tn[end]; Ti[end]; Te[end]; #M[end]; E[end];
-                                              tupper[:,1]; tdown[:,end];
-                                              tupper[:,2]; tup[:,end-1]; dt])#...) # DEBUG: splat
+    # NOTE: There may be more things that crash the code past here, other than evaluations of chemJ_local[3]
+    # encapsulated in the future chemJmat_local calls! But probably not, since it's mostly just appending
+    # to lists. 
+
     # add the influence of the local densities
-    append!(chemJi, tclocal[1].+(length(intaltgrid)-1)*length(activespecies))
-    append!(chemJj, tclocal[2].+(length(intaltgrid)-1)*length(activespecies))
-    append!(chemJval, tclocal[3])
+    # append!(chemJi, tclocal[1])
+    # append!(chemJj, tclocal[2])
+    # append!(chemJval, tclocal[3])
+
+    # and the upper densities
+    # append!(chemJi, tcupper[1])
+    # append!(chemJj, tcupper[2] .+ length(activespecies))
+    # append!(chemJval, tcupper[3])
+
+    # for ialt in 2:(length(intaltgrid)-1)
+    #     (tclocal, tcupper, tclower) = chemJmat_local([nthismat[:,ialt];
+    #                                                   nthismat[:,ialt+1];
+    #                                                   nthismat[:,ialt-1];
+    #                                                   inactivemat[:,ialt];
+    #                                                   Jrates[:,ialt]; Tn[ialt]; Ti[ialt]; Te[ialt];
+    #                                                   #M[ialt]; E[ialt]; 
+    #                                                   tup[:,ialt];
+    #                                                   tdown[:,ialt];
+    #                                                   tdown[:,ialt+1];
+    #                                                   tup[:,ialt-1]; dt]...) # DEBUG: splat
+    #     # add the influence of the local densities
+    #     append!(chemJi, tclocal[1].+(ialt-1)*length(activespecies))
+    #     append!(chemJj, tclocal[2].+(ialt-1)*length(activespecies))
+    #     append!(chemJval, tclocal[3])
+    #     # and the upper densities
+    #     append!(chemJi, tcupper[1].+(ialt-1)*length(activespecies))
+    #     append!(chemJj, tcupper[2].+(ialt  )*length(activespecies))
+    #     append!(chemJval, tcupper[3])
+    #     # and the lower densities
+    #     append!(chemJi, tclower[1].+(ialt-1)*length(activespecies))
+    #     append!(chemJj, tclower[2].+(ialt-2)*length(activespecies))
+    #     append!(chemJval, tclower[3])
+    # end
+
+    # (tclocal, tcupper, tclower) = chemJmat_local([nthismat[:,end];
+    #                                           fill(1.0, length(activespecies));
+    #                                           nthismat[:,end-1];
+    #                                           inactivemat[:,end];
+    #                                           Jrates[:,end];
+    #                                           Tn[end]; Ti[end]; Te[end]; #M[end]; E[end];
+    #                                           tupper[:,1]; tdown[:,end];
+    #                                           tupper[:,2]; tup[:,end-1]; dt]...) # DEBUG: splat
+
+    # add the influence of the local densities
+    # append!(chemJi, tclocal[1].+(length(intaltgrid)-1)*length(activespecies))
+    # append!(chemJj, tclocal[2].+(length(intaltgrid)-1)*length(activespecies))
+    # append!(chemJval, tclocal[3])
+
     # and the lower densities
-    append!(chemJi, tclower[1].+(length(intaltgrid)-1)*length(activespecies))
-    append!(chemJj, tclower[2].+(length(intaltgrid)-2)*length(activespecies))
-    append!(chemJval, tclower[3])
+    # append!(chemJi, tclower[1].+(length(intaltgrid)-1)*length(activespecies))
+    # append!(chemJj, tclower[2].+(length(intaltgrid)-2)*length(activespecies))
+    # append!(chemJval, tclower[3])
 
     # make sure to add 1's along the diagonal
-    append!(chemJi,[1:length(nthis);])
-    append!(chemJj,[1:length(nthis);])
-    append!(chemJval, fill(1.0, length(nthis)))
+    # append!(chemJi,[1:length(nthis);])
+    # append!(chemJj,[1:length(nthis);])
+    # append!(chemJval, fill(1.0, length(nthis)))
 
-    sparse(chemJi, chemJj, chemJval, length(nthis), length(nthis), +);
+    # sparse(chemJi, chemJj, chemJval, length(nthis), length(nthis), +);
 end
 
 # main routine functions =======================================================
@@ -570,15 +574,17 @@ function timeupdate(mytime, imgpath)
         numiters = 15
     end
 
-    printE = Dict(15=>true, 25=>true)
+    plotJrates = Dict(15=>true, 25=>true)
 
-    for i = 1:numiters
-        plotatm(n_current, [neutrallist, ionlist], imgpath, t=mytime, iter=i)
-        # write_ncurrent(n_current, results_dir*"ncurrent_$(mytime)_$(i).h5") #debug
-        # println("dt: $(mytime)")
+    @time begin 
+        for i = 1:numiters
+            plotatm(n_current, [neutrallist, ionlist], imgpath, t=mytime, iter=i)
+            # write_ncurrent(n_current, results_dir*"ncurrent_$(mytime)_$(i).h5") #debug
+            # println("dt: $(mytime)")
 
-        printEflag = get(printE, i, false)
-        update!(n_current, mytime, printEflag) # TODO: remove this weird flag when done checking electrons
+            plotJratesflag = get(plotJrates, i, false)
+            update!(n_current, mytime, plotJratesflag) # TODO: remove this weird flag when done checking electrons
+        end
     end
     # show()
     # yield() # this is to make the plot appear in the window and refresh
@@ -607,11 +613,12 @@ function next_timestep(nstart::Array{Float64, 1}, nthis::Array{Float64, 1},
         fval = nthis - nstart - dt*ratefn(nthis, inactive, inactivespecies, activespecies, Jrates, Tn, Ti, Te, #M, E, 
                                           tup, tdown, tlower, tupper)
         
-        println("Now we will break because updatemat isn't defined")
-        error("Updatemat currently commented out to test code")
-        # updatemat = chemJmat(nthis, inactive, activespecies, inactivespecies, Jrates, Tn, Ti, Te, #M, E, 
-        #                      tup, tdown, tlower, tupper, dt)
+        println("Now call chemJmat")
+        updatemat = chemJmat(nthis, inactive, activespecies, inactivespecies, Jrates, Tn, Ti, Te, #M, E, 
+                             tup, tdown, tlower, tupper, dt)
 
+        println("chemJmat has been successfully called, now calculating new nthis")
+        error("Breakpoint reached")
         # update
         nthis = nthis - (updatemat \ fval) # backslash - matrix solution operator
         # check relative size of update
@@ -625,7 +632,7 @@ function next_timestep(nstart::Array{Float64, 1}, nthis::Array{Float64, 1},
     return nthis
 end
 
-function update!(n_current::Dict{Symbol, Array{Float64, 1}}, dt, printEflag)
+function update!(n_current::Dict{Symbol, Array{Float64, 1}}, dt, plotJratesflag)
     #=
     update n_current using the coupled reaction network, moving to
     the next timestep
@@ -640,8 +647,7 @@ function update!(n_current::Dict{Symbol, Array{Float64, 1}}, dt, printEflag)
     nstart = deepcopy([[n_current[sp][ialt] for sp in activespecies, ialt in 1:length(intaltgrid)]...])
     # M = sum([n_current[sp] for sp in fullspecieslist])
     # E = sum([n_current[sp] for sp in ionlist])  # Electron density calculated as the density of total ions to simplify things.
-    if printEflag
-        # write(Edensityfile, "electron density at time $(dt) on last iter: $(E)\n")
+    if plotJratesflag
         plot_Jrates(n_current, 216.0, "surf", "time=$(dt)")
     end
 
@@ -702,7 +708,8 @@ end
 # Oflux <cm^-2s^-1> mean
 # examples: temp 190 110 200 mean; water 1e-3 mean; dh 8 mean; Oflux 1.2e8 mean.
 # last argument is solar cycle: min, mean, or max.
-args = Any[ARGS[i] for i in 1:1:length(ARGS)]
+args = Any["temp", "216", "130", "205", "mean"]
+# args = Any[ARGS[i] for i in 1:1:length(ARGS)]  #TODO: revert
 
 # Establish a pattern for filenames. FNext = filename extension
 # TODO: We probably won't be running all these experiments this time, so this section can probably go away.
@@ -747,8 +754,8 @@ if make_new_alt_grid=="y"
     end
 elseif make_new_alt_grid=="n"
     # Set up the converged file to read from and load the simulation state at init.
-    file_to_use = input("Enter the name of a file containing a converged, 250 km atmosphere to use (press enter to use default): ")
-    readfile = file_to_use == "" ? "converged_250km_atmosphere.h5" : file_to_use
+    # file_to_use = input("Enter the name of a file containing a converged, 250 km atmosphere to use (press enter to use default): ")   # TODO: revert
+    readfile = "converged_neutrals_only.h5"#file_to_use == "" ? "converged_250km_atmosphere.h5" : file_to_use
     n_current = get_ncurrent(readfile)
 else
     error("Didn't understand response")
@@ -768,7 +775,7 @@ end
 
 # Let the user know what is being done
 println("ALERT: running sim for $(FNext)")
-println("ALERT: Using file: ", readfile)
+println("ALERT: Using converged atmosphere file: ", readfile)
 if cycle != "mean"
     println("ALERT: Solar $(cycle) data being used")
 end
@@ -883,6 +890,7 @@ n_current[:OHpl] = reshape(readdlm("../Resources/initial_profiles/OHpl_initial_p
 
 
 # add the new Jrates --the values will get calculated ================================
+# NEW: neutral photodissociation reactions from Roger
 # INITIAL CONVERGENCE ONLY: remove after converging the first equilibrated atmosphere.
 # Commented out 22 December 2020 after realizing they were still turned on and probably shouldn't be. 
 # n_current[:JHDOtoHpOD] = zeros(length(alt)-2)
@@ -898,7 +906,7 @@ n_current[:OHpl] = reshape(readdlm("../Resources/initial_profiles/OHpl_initial_p
 # n_current[:JHDO2toHDOpO1D] = zeros(length(alt)-2)
 # n_current[:JODtoO1DpD] = zeros(length(alt)-2)
 
-# NEW: photodissociation and photoionization reactions from Roger to be initialized.
+# NEW: photoionization reactions from Roger
 # INITIAL CONVERGENCE ONLY: remove after converging the first equilibrated atmosphere.
 n_current[:JCO2toCO2pl] = zeros(length(alt)-2) # Nair minimal ionosphere
 n_current[:JCO2toOplpCO] = zeros(length(alt)-2) # Nair minimal ionosphere
@@ -1092,17 +1100,13 @@ global const speciesbclist=Dict(
 ################################################################################
 
 #=
-    We now have plot_bgobjects that return the list of indices and coefficients
+    We now have objects that return the list of indices and coefficients
     for transport, assuming no other species in the atmosphere
     (transportmat), and for chemistry, assuming no other altitudes
     (chemical_jacobian). We need to perform a kind of outer product on
     these operators, to determine a fully coupled set of equations for
     all species at all altitudes.
-=#
 
-# need to get a list of all species at all altitudes to iterate over
-
-#=
     the rates at each altitude can be computed using the reaction network
     already in place, plus additional equations describing the transport
     to and from the cells above and below:
@@ -1126,10 +1130,11 @@ transportnet = [[upeqns...;]; [downeqns...;]]
 active_above = [Symbol(string(s)*"_above") for s in activespecies]
 active_below = [Symbol(string(s)*"_below") for s in activespecies]
 
-
 # obtain the rates and jacobian for each altitude
 const rates_local = Expr(:vcat, map(x->getrate(reactionnet, transportnet, x), activespecies)...);
 
+# TODO: Turn these notes into a test that looks for "+()" in rates_local instead of debugging lines. 
+# -----------------------------------------------------------------------------------------------
 # These lines are useful for troubleshooting if you're getting weird errors with ratefn.
 # "no method matching +()" means the chemical system is unbalanced and you've got a
 # species that has production but no consumption, or vice versa.
@@ -1149,8 +1154,14 @@ arglist_local = [activespecies; active_above; active_below; inactivespecies;
 
 arglist_local_typed = [:($s::Float64) for s in arglist_local]
 
+# use these lines if we need the M and E sums to be made out here instead of within the functions
+# M_sum_symb = :(Expr(:call, :+, $(fullspecieslist...)))
+# E_sum_symb = :(Expr(:call, :+, $(fullspecieslist...)))
+
+# NOTE: These functions within @eval cannot be moved. Do not move them.
+
 @eval begin
-    function ratefn_local(arglist_vector_typed::Array{Float64, 1})#($(arglist_local_typed[1:end-1]...))
+    function ratefn_local($(arglist_local_typed[1:end-1]...))  # mike's suggestion to vectorize: (arglist_vector_typed::Array{Float64, 1})
         #=
         Produces the symbolic expression for production and loss of every species
         via both transport and chemistry
@@ -1159,12 +1170,13 @@ arglist_local_typed = [:($s::Float64) for s in arglist_local]
         # stuff mike suggested for debugging compilter errors:
         # use this for the argument: (arglist_vector_typed::Array{Float64, 1})
         # unpack vector 
-        $(arglist_local_typed[1:end-1]...) = arglist_vector_typed
+        #$(arglist_local_typed[1:end-1]...) = arglist_vector_typed
         # $(rates_local) 
         # end mike's suggestions
 
         # M and E are calculated here to ensure that the right number of ions/electrons
-        # is used.
+        # is used. It is for only the altitude at which this function was called 
+        # (i.e. all the arguments to the function, when it's called, are for only one altitude)
         M = eval(Expr(:call, :+, $(fullspecieslist...)))
         E = eval(Expr(:call, :+, $(ionlist...)))
         $rates_local # evaluates the rates_local expression
@@ -1172,27 +1184,27 @@ arglist_local_typed = [:($s::Float64) for s in arglist_local]
 end
 
 @eval begin
-    function chemJmat_local(arglist_vector_typed::Array{Float64, 1})#($(arglist_local_typed...))
+    function chemJmat_local($(arglist_local_typed...)) # mike's suggestion to vectorize: (arglist_vector_typed::Array{Float64, 1})
 
         # mike's suggestions:
-        #(arglist_vector_typed::Array{Float64, 1})
         # unpack vector
-        $(arglist_local_typed...) = arglist_vector_typed
+        #$(arglist_local_typed...) = arglist_vector_typed
 
-        M = eval(Expr(:call, :+, $(fullspecieslist...)))
-        E = eval(Expr(:call, :+, $(ionlist...)))
+        println("Entered chemJmat_local")
+        M = eval(Expr(:call, :+, $(fullspecieslist...)))  #eval($(M_sum_symb)) #
+        E = eval(Expr(:call, :+, $(ionlist...)))  # eval($(E_sum_symb)) #
 
         localchemJi = $(chemJ_local[1])
         localchemJj = $(chemJ_local[2])
-        localchemJval = -dt*$(chemJ_local[3])
+        localchemJval = -dt#*$(chemJ_local[3])  #$(Expr(:vcat, chemJ_local[3]...)) # # this line is DEFINITELY the problem. 
 
         abovechemJi = $(chemJ_above[1])
         abovechemJj = $(chemJ_above[2])
-        abovechemJval = -dt*$(chemJ_above[3])
+        abovechemJval = -dt*$(chemJ_above[3])#(Expr(:vcat, chemJ_above[3]...))
 
         belowchemJi = $(chemJ_below[1])
         belowchemJj = $(chemJ_below[2])
-        belowchemJval = -dt*$(chemJ_below[3])
+        belowchemJval = -dt*$(chemJ_below[3])#$(Expr(:vcat, chemJ_below[3]...))#
 
         ((localchemJi, localchemJj, localchemJval),
          (abovechemJi, abovechemJj, abovechemJval),
@@ -1200,19 +1212,23 @@ end
     end
 end
 
-# TODO: this function also probably needs edits with argument number
+
+
+# TODO: this function is not currently used. It's used with reactionrates to 
+# write reaction rates to the .h5 file, originally done in Mike's version of the 
+# model. It would be useful to include this functionality in this version of the code.
 @eval begin
-    function reactionrates_local(spclist_vector, Jratelist_vector, Tn, Ti, Te)#($(specieslist...), $(Jratelist...), Tn, Ti, Te)#, M, E) # DEBUG: revert as necessary
-        #= 
-        a function to return chemical reaction rates by multiplying the reaction rate coefficient
-        (represented by x[3]) by the concentrations of all reactants (represented by x[1]...).
-        the concentrations and Jrates are contained in specieslist and Jratelist, which are flattened over altitude
-        using the splats (I think).
-        =#
+    function reactionrates_local($(specieslist...), $(Jratelist...), Tn, Ti, Te)#, M, E)  # vectorized: (spclist_vector, Jratelist_vector, Tn, Ti, Te)
+         
+         #= a function to return chemical reaction rates by multiplying the reaction rate coefficient
+          (represented by x[3]) by the concentrations of all reactants (represented by x[1]...).
+          the concentrations and Jrates are contained in specieslist and Jratelist, which are flattened over altitude
+          using the splats (I think).
+           =#
 
         # unpack the vectors
-        $(specieslist...) = spclist_vector
-        $(Jratelist...) = Jratelist_vector
+        #$(specieslist...) = spclist_vector
+        #$(Jratelist...) = Jratelist_vector
 
         M = eval(Expr(:call, :+, $(fullspecieslist...)))
         E = eval(Expr(:call, :+, $(ionlist...)))
@@ -1220,9 +1236,9 @@ end
     end
 end
 
-################################################################################
-#                         PHOTOCHEMICAL CROSS SECTIONS                         #
-################################################################################
+###############################################################################  
+#                        PHOTOCHEMICAL CROSS SECTIONS                         #
+###############################################################################  # TODO: uncomment from after this line
 
 xsecfolder = research_dir * "uvxsect/";
 
@@ -1806,16 +1822,16 @@ plotatm(n_current, [neutrallist, ionlist], results_dir*FNext*"/initial_atmospher
 
 # Edensityfile = open(results_dir*"/Edensiteis.txt", "w") # TODO: Remove
 
+# img_savepath = results_dir*FNext*"/converged_atm_"*FNext*".png"
 println("Beginning Convergence")
-img_savepath = results_dir*FNext*"/converged_atm_"*FNext*".png"
-initdt = -10
-@showprogress 0.1 "Converging over 10 My..." [timeupdate(t, img_savepath) for t in [10.0^(1.0*i) for i in initdt:14]] # TODO: change range to -3:14 (usual) if needed
+#@showprogress 0.1 "Converging over 10 My..." 
+[timeupdate(t, results_dir*FNext*"/converged_atm_"*FNext*".png") for t in [10.0^(1.0*i) for i in -3:14]]
 
-@showprogress 0.1 "Last convergence steps..." for i in 1:100  # TODO: uncomment after debugging plots
-    plotatm(n_current, [neutrallist, ionlist], img_savepath, t="1e14", iter=i)
-    # println("dt: 1e14 iter $(i)")
-    update!(n_current, 1e14, false)
-end
+# @showprogress 0.1 "Last convergence steps..." for i in 1:100  # TODO: uncomment after debugging
+#     plotatm(n_current, [neutrallist, ionlist], img_savepath, t="1e14", iter=i)
+#     # println("dt: 1e14 iter $(i)")
+#     update!(n_current, 1e14, false)
+# end
 
 # close(Edensityfile) # TODO: remove
 
@@ -1833,6 +1849,7 @@ println("Saved figure to same folder")
 ################################################################################
 
 # crosssection dict for logging purposes =======================================
+# TODO: Update this with new cross section stuff.
 xsect_dict = Dict("CO2"=>[co2file, co2exfile],
                   "H2O, HDO"=>[h2ofile, hdofile],
                   "H2O2, HDO2"=>[h2o2file, hdo2file],
