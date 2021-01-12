@@ -1196,15 +1196,24 @@ end
 
         localchemJi = $(chemJ_local[1])
         localchemJj = $(chemJ_local[2])
-        localchemJval = -dt#*$(chemJ_local[3])  #$(Expr(:vcat, chemJ_local[3]...)) # # this line is DEFINITELY the problem. 
+
+        # section to populate localchemJval element by element,
+        # which is having problems with compiler errors when ----->
+        localchemJval = similar($chemJ_local[3], Float64)
+            # unroll the loop and evaluate each expression 1 by 1 thank you 张实唯 of SE
+            $((quote
+                localchemJval[$i] = $(chemJ_local[3][i])
+            end for i in 1:length(chemJ_local[3]))...)
+        localchemJval = -dt*localchemJval  # the old code that throws compiler error:*$(chemJ_local[3])  
+        # <----- end section
 
         abovechemJi = $(chemJ_above[1])
         abovechemJj = $(chemJ_above[2])
-        abovechemJval = -dt*$(chemJ_above[3])#(Expr(:vcat, chemJ_above[3]...))
+        abovechemJval = -dt*$(Expr(:vcat, chemJ_above[3]...))#(chemJ_above[3])#
 
         belowchemJi = $(chemJ_below[1])
         belowchemJj = $(chemJ_below[2])
-        belowchemJval = -dt*$(chemJ_below[3])#$(Expr(:vcat, chemJ_below[3]...))#
+        belowchemJval = -dt*$(Expr(:vcat, chemJ_below[3]...))#(chemJ_below[3])#
 
         ((localchemJi, localchemJj, localchemJval),
          (abovechemJi, abovechemJj, abovechemJval),
@@ -1217,24 +1226,24 @@ end
 # TODO: this function is not currently used. It's used with reactionrates to 
 # write reaction rates to the .h5 file, originally done in Mike's version of the 
 # model. It would be useful to include this functionality in this version of the code.
-@eval begin
-    function reactionrates_local($(specieslist...), $(Jratelist...), Tn, Ti, Te)#, M, E)  # vectorized: (spclist_vector, Jratelist_vector, Tn, Ti, Te)
+# @eval begin
+#     function reactionrates_local($(specieslist...), $(Jratelist...), Tn, Ti, Te)#, M, E)  # vectorized: (spclist_vector, Jratelist_vector, Tn, Ti, Te)
          
-         #= a function to return chemical reaction rates by multiplying the reaction rate coefficient
-          (represented by x[3]) by the concentrations of all reactants (represented by x[1]...).
-          the concentrations and Jrates are contained in specieslist and Jratelist, which are flattened over altitude
-          using the splats (I think).
-           =#
+#           a function to return chemical reaction rates by multiplying the reaction rate coefficient
+#           (represented by x[3]) by the concentrations of all reactants (represented by x[1]...).
+#           the concentrations and Jrates are contained in specieslist and Jratelist, which are flattened over altitude
+#           using the splats (I think).
+           
 
-        # unpack the vectors
-        #$(specieslist...) = spclist_vector
-        #$(Jratelist...) = Jratelist_vector
+#         # unpack the vectors
+#         #$(specieslist...) = spclist_vector
+#         #$(Jratelist...) = Jratelist_vector
 
-        M = eval(Expr(:call, :+, $(fullspecieslist...)))
-        E = eval(Expr(:call, :+, $(ionlist...)))
-        $(Expr(:vcat, map(x->Expr(:call,:*,x[1]..., x[3]), reactionnet)...))
-    end
-end
+#         M = eval(Expr(:call, :+, $(fullspecieslist...)))
+#         E = eval(Expr(:call, :+, $(ionlist...)))
+#         $(Expr(:vcat, map(x->Expr(:call,:*,x[1]..., x[3]), reactionnet)...))
+#     end
+# end
 
 ###############################################################################  
 #                        PHOTOCHEMICAL CROSS SECTIONS                         #
