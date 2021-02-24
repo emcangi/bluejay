@@ -1,6 +1,6 @@
-#OD photodissociation cross-sections. most values are actually for OH.
-#actual OD data from Nee & Lee 1984 inserted for wavelengths 115.5-177.5.
-#lambda [nm], cross-section [cm2]
+# OD photodissociation cross-sections. most values are actually for OH.
+# actual OD data from Nee & Lee 1984 inserted for wavelengths 115.5-177.5.
+# lambda [nm], cross-section [cm2]
 0.5,9.999999999999944e-36
 1.5,9.999999999999944e-36
 2.5,9.999999999999944e-36
