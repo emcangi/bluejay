@@ -24,10 +24,13 @@ PN = 1                          # a number to append to some plot filenames. so 
 
 # Altitude grid discretization =================================================
 const alt = convert(Array, (0:2e5:250e5)) # TODO: Figure out how to get this without being hard-coded
-const intaltgrid = round.(Int64, alt/1e5)[2:end-1]; # the altitude grid but in integers.
+const intaltgrid = round.(Int64, alt/1e5)[2:end-1]; # the altitude grid CELLS but in integers.
 const non_bdy_layers = alt[2:end-1]  # all layers, centered on 2 km, 4...248. Excludes the boundary layers which are [-1, 1] and [249, 251].
 const num_layers = length(alt) - 2 # there are 124 non-boundary layers.
 const plot_grid = non_bdy_layers ./ 1e5;  # for plotting. Points located at atmospheric layer cell centers and in units of km.
+const plot_grid_bdys = collect(1:2:249)  # the boundaries; includes the boundary layers at top and bottom.
+const upper_lower_bdy = 80e5 # the uppermost layer at which water will be fixed, in cm
+const upper_lower_bdy_i = Int64(upper_lower_bdy / 2e5) # the uppermost layer at which water will be fixed, in cm
 
 const zmin = alt[1]
 const zmax = alt[end];
@@ -64,79 +67,70 @@ MR_mean_water = 1.38e-4
 
 # Stuff to change when running different simulations with different species ====================
 conv_neutrals = [:Ar, :CO, :CO2, :H, :H2, :H2O, :H2O2, :HO2, :HOCO, :N2, 
-                     :O, :O1D, :O2, :O3, :OH,
-                     :D, :DO2, :DOCO, :HD, :HDO, :HDO2, :OD,
+                 :O, :O1D, :O2, :O3, :OH,
+                 :D, :DO2, :DOCO, :HD, :HDO, :HDO2, :OD,
 
-                     # neutrals which are new but converged
-                     :C, :CH, :HCO, :N2O, :NO2, :CN, :HCN, :HNO, :N, :NH, :NH2, :NO];
+                 # neutrals which are new but successfully incorporated
+                 :C, :CH, :HCO, :N2O, :NO2, :CN, :HCN, :HNO, :N, :NH, :NH2, :NO];
 new_neutrals = [];
-conv_ions = [:CO2pl, 
-             # ions which are new and converged
-             :HCO2pl, :Opl, :O2pl, # Nair minimal ionosphere
+conv_ions = [:CO2pl, :HCO2pl, :Opl, :O2pl, # Nair minimal ionosphere 
              :Arpl, :ArHpl, :Cpl, :CHpl, :CNpl, :COpl, 
              :Hpl, :H2pl, :H2Opl, :H3pl, :H3Opl,
              :HCNpl, :HCNHpl, :HCOpl, 
              :HNOpl, :HN2Opl, :HOCpl, :HO2pl, 
              :Npl,  :NHpl, :NH2pl, :NH3pl, :N2pl, :N2Hpl, :N2Opl, :NOpl, :NO2pl,
-             :OHpl,]; 
-new_ions = [ 
-           # Deuterated ions
-           #:ArDpl, :CDpl, :Dpl, 
-           #:DCOpl, :DOCOpl, 
-           #:HDpl, :HD2pl, :H2Dpl, :H2DOpl, 
-           #:N_2Dpl, :NDpl, :ODpl
-           ]
+             :OHpl,
+             # Deuterated ions
+             :ArDpl, :Dpl, :DCOpl, :HDpl, :HD2pl, :H2Dpl, :N2Dpl
+            ];# should have but don't: HDO+, DO2+ 
+new_ions = [ ];
 
-# NOTE: These species are produced, but not tracked in the model .- not in the fullspecieslist.
-# :C2Npl, :C2N2pl, :C2Opl, :C2pl, :CH2pl, :CN2, :H2CNpl, :H2COpl, :H2NOpl, :HCOOH2pl, :HeHpl,
-# :HNCOpl, :HNCpl, :N2D, :NCO, :NH3, :NH4pl, :OCNpl, :NHDpl, :NHD2pl, :ND3pl, :HC2Npl,
-
-const nochemspecies = [:Ar, :N2]; #:H2O, :HDO, 
-# append!(nochemspecies, conv_neutrals)  # NOTE: This is what to change EVERY TIME YOU RUN until you find a better way
-const notransportspecies = [:Ar, :N2]; #:H2O, :HDO, 
-# append!(notransportspecies, conv_neutrals)  # NOTE: This is what to change EVERY TIME YOU RUN until you find a better way
-
-const newJrates = [];  # New J rates for species that haven't been converged yet
+const nochemspecies = [:Ar, :N2];
+append!(nochemspecies, conv_ions)  # NOTE: This is what to change EVERY TIME YOU RUN until you find a better way
+const notransportspecies = [:Ar, :N2]; #
+append!(notransportspecies, conv_ions)  # NOTE: This is what to change EVERY TIME YOU RUN until you find a better way
 
 # array of species for which photolysis is important. All rates should
 # start with J and contain a species in specieslist above, which is used to 
 # compute photolysis. 
-const conv_Jrates = [:JCO2toCOpO,:JCO2toCOpO1D,:JO2toOpO,:JO2toOpO1D,
+const newJrates = [# New photoionization/ion-involved photodissociation  (from Roger)
+                    # New neutral photodissociation (from Roger)
+                    ];
+
+const conv_Jrates = [# Original neutral photodissociation
+                    :JCO2toCOpO,:JCO2toCOpO1D,:JO2toOpO,:JO2toOpO1D,
                     :JO3toO2pO,:JO3toO2pO1D,:JO3toOpOpO,:JH2toHpH,:JOHtoOpH,
                     :JOHtoO1DpH,:JHO2toOHpO,:JH2OtoHpOH,:JH2OtoH2pO1D,:JH2OtoHpHpO,
                     :JH2O2to2OH,:JH2O2toHO2pH,:JH2O2toH2OpO1D,
-                    # deuterated species J rates:
+
+                    # Original deuterated neutral photodissociation
                     :JHDOtoHpOD, :JHDOtoDpOH, :JHDO2toOHpOD,
                     :JHDOtoHDpO1D, :JHDOtoHpDpO, :JODtoOpD, :JHDtoHpD, :JDO2toODpO,
                     :JHDO2toDO2pH, :JHDO2toHO2pD, :JHDO2toHDOpO1D, :JODtoO1DpD,
 
-                    # new Jrates for species which are converged
-                    :JCO2toCO2pl, :JCO2toOplpCO, :JOtoOpl, :JO2toO2pl, # Nair minimal ionosphere
-                    :JCO2toCpOpO, :JCO2toCpO2, :JCOtoCpO, 
-
-                    # NEW: photodissociation from Roger
+                    # New neutral photodissociation (from Roger)
+                    :JCO2toCpOpO, :JCO2toCpO2, :JCOtoCpO,
                     :JN2OtoN2pO1D, :JNO2toNOpO, :JNOtoNpO,
-                     
-                    # NEW: Photoionization from Roger                  
+
+                    # New photoionization/ion-involved photodissociation (Roger)
+                    :JCO2toCO2pl, :JCO2toOplpCO, :JOtoOpl, :JO2toO2pl, # Nair minimal ionosphere
                     :JCO2toCO2plpl, :JCO2toCplplpO2, :JCO2toCOplpOpl,:JCO2toOplpCplpO, :JCO2toCplpO2, :JCO2toCOplpO, 
                     :JCOtoCpOpl, :JCOtoCOpl,  :JCOtoOpCpl, 
-                    
                     :JHtoHpl, 
                     :JH2toH2pl, :JH2toHplpH, 
                     :JH2OtoH2Opl, 
                     :JH2OtoOplpH2, :JH2OtoHplpOH, :JH2OtoOHplpH,
                     :JH2O2toH2O2pl, 
-                    
                     :JN2toN2pl, :JN2toNplpN, 
                     :JN2OtoN2Opl, :JNO2toNO2pl, :JNOtoNOpl, 
- 
-                    :JO3toO3pl
+                    :JO3toO3pl,
                   ];
 
-const Jratelist = append!(conv_Jrates, newJrates)
+const Jratelist = [];
+append!(Jratelist, conv_Jrates)
+append!(Jratelist, newJrates)
 
-# dictionary of rules for when to update species
-update_rules = Dict(:H2O=>45:num_layers, :HDO=>45:num_layers)   #"ion"=>45:length(intaltgrid))
+dt_min_and_max = Dict("neutrals"=>[-3, 14], "ions"=>[-4, 5], "both"=>[-4, 14])
 
 # stuff which won't change =============================================================
 
@@ -157,6 +151,16 @@ const chemspecies = setdiff(specieslist, nochemspecies);
 const transportspecies = setdiff(specieslist, notransportspecies);
 const activespecies = union(chemspecies, transportspecies)
 const inactivespecies = intersect(nochemspecies, notransportspecies)
+
+# NEW - for handling different water behavior in upper/lower atmo
+# Get the position of H2O and HDO symbols within active species. This is used so that we can control its behavior differently
+# in different parts of the atmosphere.
+H2Oi = findfirst(x->x==:H2O, activespecies)
+HDOi = findfirst(x->x==:HDO, activespecies)
+
+# List of D bearing species and their H analogues. INCOMPLETE, only has ions right now because we don't need the neutral analogue list.
+const D_H_analogues = Dict( :ArDpl=>:ArHpl, :Dpl=>:Hpl, :DCOpl=>:HCOpl, :HDpl=>:H2pl, :HD2pl=>:H3pl, :H2Dpl=>:H3pl, :N2Dpl=>:N2Hpl)
+
 const speciesmolmasslist = Dict(:Ar=>40, 
                                 :C=>12, :CH=>13, :CN=>26,
                                 :CO=>28, :CO2=>44, 
@@ -186,18 +190,10 @@ const speciesmolmasslist = Dict(:Ar=>40,
                                 :Opl=>16, :O2pl=>32, :OHpl=>17, # O ions 
 
                                 # Deuterated ions
-                                #:ArDpl,
-                                #:CDpl, 
-                                #:Dpl, 
-                                #:DCOpl, :DOCOpl, 
-                                #:HDpl, :HD2pl,
-                                #:H2Dpl, :H2DOpl, 
-                                #:N_2Dpl, :NDpl,
-                                # :ODpl
+                                :ArDpl=>42, :Dpl=>2, :DCOpl=>30, :HDpl=>3, :HD2pl=>5, :H2Dpl=>4, :N2Dpl=>30
                                 )
 
 # Plotty plot plot stuff =======================================================
-
 rcParams = PyDict(matplotlib."rcParams")
 
 global speciescolor = Dict( # H group
@@ -229,22 +225,24 @@ global speciescolor = Dict( # H group
                 :HNO=>"#76bcfd",
 
                 # ions
-                :Arpl=>"#808080", :ArHpl=>"#d70000",
+                :Arpl=>"#808080", :ArHpl=>"#660000", :ArDpl=>"#660000",
                 :Cpl=>"#d9c382", :CHpl=>"#cea3ce", :CNpl=>"#6d5000", 
                 :COpl=>"#ff6600", :CO2pl=>"#000000",  
+                :Dpl=>"#ff0000", :DCOpl=>"#94c6bf", :HDpl=>"#e526d7", :HD2pl=>"#dcb3af", :H2Dpl=>"#dcb3af",
                 :Hpl=>"#ff0000", :H2pl=>"#e526d7", :H3pl=>"#dcb3af",
                 :H2Opl=>"#0083dc",  :H3Opl=>"#280041",
                 :HCNpl=>"#479f5e", :HCNHpl=>"#50455b", 
                 :HCOpl=>"#94c6bf", :HOCpl=>"#5e90ff", :HCO2pl=>"#222222", 
                 :HNOpl=>"#eb0077", :HN2Opl=>"#a37bb3", :HOCOpl=>"#e8ba8c", :HO2pl=>"#046868", 
-                :Npl=>"#6e748a", :N2pl=>"#cccccc", :N2Hpl=>"#9a4700", :N2Opl=>"#be8b65", 
+                :Npl=>"#6e748a", :N2pl=>"#cccccc", :N2Dpl=>"#9a4700", :N2Hpl=>"#9a4700", :N2Opl=>"#be8b65", 
                 :NHpl=>"#cacdda", :NH2pl=>"#6ceb83", :NH3pl=>"#c8c400", 
                 :NOpl=>"#a27fff", :NO2pl=>"#fe03cb", 
                 :Opl=>"#1a6115", :O2pl=>"#15da09", :OHpl=>"#7700d5", 
                 );
 
 # D group will have dashed lines; neutrals, solid (default)
-global speciesstyle = Dict(:D => "--", :HD => "--", :OD => "--", :HDO => "--", :HDO2 => "--", :DO2 => "--", :DOCO => "--");
+global speciesstyle = Dict(:D => "--", :HD => "--", :OD => "--", :HDO => "--", :HDO2 => "--", :DO2 => "--", :DOCO => "--", 
+                           :ArDpl=>"--", :Dpl=>"--", :DCOpl=>"--", :HDpl=>"--", :HD2pl=>"--", :H2Dpl=>"-.", :N2Dpl=>"--");
                 
 medgray = "#444444"
 
@@ -302,7 +300,6 @@ reactionnet = [   #Photodissociation
              [[:NO], [:N, :O], :JNOtoNpO], # N neutrals
              
              # NEW: photoionization from Roger's model
-             
              [[:CO2], [:CO2pl], :JCO2toCO2pl],  # Nair minimal ionosphere
              [[:CO2], [:Opl, :CO], :JCO2toOplpCO], # Nair minimal ionosphere
              [[:CO2], [:CO2plpl], :JCO2toCO2plpl],  
@@ -332,11 +329,11 @@ reactionnet = [   #Photodissociation
              [[:O3], [:O3pl], :JO3toO3pl],
 
              # recombination of O
-             [[:O, :O, :M], [:O2, :M], :(1.8 .* 3.0e-33 .* (300 ./ Tn) .^ 3.25)], # Deighan 2012
-             [[:O, :O2, :N2], [:O3, :N2], :(5e-35 .* exp.(724 ./ Tn))],
-             [[:O, :O2, :CO2], [:O3, :CO2], :(2.5 .* 6.0e-34 .* (300 ./ Tn) .^ 2.4)], # Burkholder2020
+             [[:O, :O, :M], [:O2, :M], :(1.8 .* 3.0e-33 .* (300 ./ Tn) .^ 3.25)], # Deighan 2012 # Checked no dups 
+             [[:O, :O2, :N2], [:O3, :N2], :(5e-35 .* exp.(724 ./ Tn))], # Checked no dups 
+             [[:O, :O2, :CO2], [:O3, :CO2], :(2.5 .* 6.0e-34 .* (300 ./ Tn) .^ 2.4)], # Burkholder2020 # Checked no dups 
              [[:O, :O3], [:O2, :O2], :(8.0e-12 .* exp.(-2060 ./ Tn))],  # Burkholder 2020
-             [[:O, :CO, :M], [:CO2, :M], :(2.2e-33 .* exp.(-1780 ./ Tn))],
+             # [[:O, :CO, :M], [:CO2, :M], :(2.2e-33 .* exp.(-1780 ./ Tn))],  # DUPLICATE - commented out in favor of Roger's reaction
 
              # O1D attack
              [[:O1D, :O2], [:O, :O2], :(3.3e-11 .* exp.(55 ./ Tn))], # Burkholder 2020 (upd. 31 Dec 2020)
@@ -472,7 +469,7 @@ reactionnet = [   #Photodissociation
 
              # NEW .- Neutral reactions from Roger Yelle
              # Type 1
-             [[:O1D], [:O], :(5.10e-3)],  # TODO: is this suspicious?
+             # [[:O1D], [:O], :(5.10e-3)],  # TODO: is this suspicious?
 
              # Type 2
              [[:C, :C], [:C2], :(2.16e-11)],  # UMIST: 4.36e-18 .* ((Tn ./ 300) .^ 0.35) .* exp.(-161.30 ./ Tn)
@@ -493,7 +490,7 @@ reactionnet = [   #Photodissociation
              [[:CN, :O], [:NO, :C], :(5.37e-11 .* exp.(-13800.0 ./ Tn))],  # KIDA: :(3.81e-11 .* (Tn ./ 300) .^ 0.5 .* exp.(-14500 ./ Tn))
              [[:CO2, :CH], [:HCO, :CO], :((1.70e-14 .* Tn .^ 0.5) .* exp.(-3000.0 ./ Tn))],  # KIDA: :(2.94e-13 .* (Tn ./ 300) .^ 0.5 .* exp.(3000 ./ Tn))
              [[:CO2, :H], [:CO, :OH], :(3.38e-10 .* exp.(-13163.0 ./ Tn))],  # KIDA: :(2.51e-10 .* exp.(-13300 ./ Tn))
-             [[:CO2, :N], [:NO, :CO], :(3.20e-13 .* exp.(-1710.0 ./ Tn))],  # KIDA agrees 
+             # [[:CO2, :N], [:NO, :CO], :(3.20e-13 .* exp.(-1710.0 ./ Tn))],  # KIDA agrees 
              [[:CO2, :O], [:O2, :CO], :(2.46e-11 .* exp.(-26567.0 ./ Tn))], # KIDA agrees
              [[:H2, :C], [:CH, :H], :(6.64e-10 .* exp.(-11700.0 ./ Tn))],  # KIDA agrees
              [[:H2O, :H], [:OH, :H2], :((1.69e-14 .* Tn .^ 1.2) .* exp.(-9610.0 ./ Tn))], # KIDA :(6.82e-12 .* (Tn ./ 300) .^ 1.6 .* exp.(-9720 ./ Tn))
@@ -535,19 +532,19 @@ reactionnet = [   #Photodissociation
              [[:HO2, :CH], [:CH2, :O2], :(1.7e-14 .* (Tn .^ 0.5) .* exp.(-7550.0 ./ Tn))],
              [[:HO2, :CH], [:HCO, :OH], :(8.31e-13 .* (Tn .^ 0.5) .* exp.(-3000.0 ./ Tn))],
              [[:HO2, :CO], [:CO2, :OH], :(5.6e-10 .* exp.(-12160.0 ./ Tn))],
-             [[:HO2, :H], [:H2O, :O], :(1.6e-12)],
-             [[:HO2, :H], [:O2, :H2], :(6.9e-12)],
-             [[:HO2, :H], [:OH, :OH], :(7.2e-11)],
+             # [[:HO2, :H], [:H2O, :O], :(1.6e-12)], # DUPLICATES
+             # [[:HO2, :H], [:O2, :H2], :(6.9e-12)], # DUPLICATES
+             # [[:HO2, :H], [:OH, :OH], :(7.2e-11)], # DUPLICATES
              [[:HO2, :H2], [:H2O2, :H], :(5.0e-11 .* exp.(-13110.0 ./ Tn))],
              [[:HO2, :H2O], [:H2O2, :OH], :(4.65e-11 .* exp.(-16500.0 ./ Tn))],
              [[:HO2, :HCO], [:H2CO, :O2], :(5.0e-11)],
-             [[:HO2, :HO2], [:H2O2, :O2], :(3.0e-13 .* exp.(460.0 ./ Tn))],
+             # [[:HO2, :HO2], [:H2O2, :O2], :(3.0e-13 .* exp.(460.0 ./ Tn))], # DUPLICATE
              [[:HO2, :N], [:NO, :OH], :(2.2e-11)],
              [[:HO2, :N], [:O2, :NH], :(1.7e-13)],
              [[:HO2, :NO], [:NO2, :OH], :(3.3e-12 .* exp.(270.0 ./ Tn))],
-             [[:HO2, :O], [:O2, :OH], :(3.0e-11 .* exp.(200.0 ./ Tn))],
-             [[:HO2, :OH], [:H2O, :O2], :(4.8e-11 .* exp.(250.0 ./ Tn))],
-             [[:HOCO, :O2], [:CO2, :HO2], :(2.0e-12)],
+             # [[:HO2, :O], [:O2, :OH], :(3.0e-11 .* exp.(200.0 ./ Tn))], # DUPLICATE
+             # [[:HO2, :OH], [:H2O, :O2], :(4.8e-11 .* exp.(250.0 ./ Tn))], # DUPLICATE
+             # [[:HOCO, :O2], [:CO2, :HO2], :(2.0e-12)], # DUPLICATE
              [[:HOCO, :OH], [:CO2, :H2O], :(1.03e-11)],
              [[:N, :C], [:CN], :(3.49e-19 .* (Tn .^ 0.14) .* exp.(-0.18 ./ Tn))],
              [[:N2O, :CO], [:CO2, :N2], :(1.62e-13 .* exp.(-8780.0 ./ Tn))],
@@ -606,9 +603,9 @@ reactionnet = [   #Photodissociation
              [[:O, :H], [:OH], :(8.65e-18 .* (Tn .^ -0.38))],
              [[:O1D, :CO], [:CO, :O], :(4.7e-11 .* exp.(63.0 ./ Tn))],
              [[:O1D, :CO], [:CO2], :(8.0e-11)],
-             [[:O1D, :CO2], [:CO2, :O], :(7.5e-11 .* exp.(115.0 ./ Tn))],
-             [[:O1D, :H2], [:OH, :H], :(1.2e-10)],
-             [[:O1D, :H2O], [:OH, :OH], :(1.63e-10 .* exp.(60.0 ./ Tn))],
+             # [[:O1D, :CO2], [:CO2, :O], :(7.5e-11 .* exp.(115.0 ./ Tn))], # DUPLICATE
+             # [[:O1D, :H2], [:OH, :H], :(1.2e-10)], # DUPLICATE
+             # [[:O1D, :H2O], [:OH, :OH], :(1.63e-10 .* exp.(60.0 ./ Tn))], # DUPLICATE
              [[:O1D, :H2O2], [:H2O2, :O], :(5.2e-10)],
              [[:O1D, :N2], [:N2, :O], :(2.15e-11 .* exp.(110.0 ./ Tn))],
              [[:O1D, :N2O], [:NO, :NO], :(7.26e-11 .* exp.(20.0 ./ Tn))],
@@ -616,9 +613,9 @@ reactionnet = [   #Photodissociation
              [[:O1D, :NO], [:NO, :O], :(4.0e-11)],
              [[:O1D, :NO2], [:NO2, :O], :(1.13e-10 .* exp.(115.0 ./ Tn))],
              [[:O1D, :NO2], [:O2, :NO], :(2.31e-10)],
-             [[:O1D, :O2], [:O2, :O], :(3.3e-11 .* exp.(55.0 ./ Tn))],
-             [[:O1D, :O3], [:O2, :O, :O], :(1.2e-10)],
-             [[:O1D, :O3], [:O2, :O2], :(1.2e-10)],
+             # [[:O1D, :O2], [:O2, :O], :(3.3e-11 .* exp.(55.0 ./ Tn))], # DUPLICATE
+             # [[:O1D, :O3], [:O2, :O, :O], :(1.2e-10)], # DUPLICATE
+             # [[:O1D, :O3], [:O2, :O2], :(1.2e-10)], # DUPLICATE
              [[:O2, :C], [:CO, :O], :(3.03e-10 .* (Tn .^ -0.32))],
              [[:O2, :CH], [:CO, :O, :H], :(1.2e-11)],
              [[:O2, :CH], [:CO, :OH], :(8.0e-12)],
@@ -633,25 +630,22 @@ reactionnet = [   #Photodissociation
              [[:O2, :N], [:NO, :O], :(1.5e-11 .* exp.(-3600.0 ./ Tn))],
              [[:O2, :NH], [:HNO, :O], :(4.0e-11 .* exp.(-6970.0 ./ Tn))],
              [[:O2, :NH], [:NO, :OH], :(1.5e-13 .* exp.(-770.0 ./ Tn))],
-             [[:O3, :H], [:O2, :OH], :(1.4e-10 .* exp.(-470.0 ./ Tn))],
-             [[:O3, :HO2], [:O2, :O2, :OH], :(1.0e-14 .* exp.(-490.0 ./ Tn))],
+             # [[:O3, :H], [:O2, :OH], :(1.4e-10 .* exp.(-470.0 ./ Tn))], # DUPLICATE
+             # [[:O3, :HO2], [:O2, :O2, :OH], :(1.0e-14 .* exp.(-490.0 ./ Tn))], # DUPLICATE
              [[:O3, :N], [:O2, :NO], :(1.0e-16)],
              [[:O3, :NO], [:NO2, :O2], :(3.0e-12 .* exp.(-1500.0 ./ Tn))],
              [[:O3, :NO2], [:NO3, :O2], :(1.2e-13 .* exp.(-2450.0 ./ Tn))],
-             [[:O3, :O], [:O2, :O2], :(8.0e-12 .* exp.(-2060.0 ./ Tn))],
-             [[:O3, :OH], [:HO2, :O2], :(1.7e-12 .* exp.(-940.0 ./ Tn))],
+             # [[:O3, :O], [:O2, :O2], :(8.0e-12 .* exp.(-2060.0 ./ Tn))], # DUPLICATE!!!
+             # [[:O3, :OH], [:HO2, :O2], :(1.7e-12 .* exp.(-940.0 ./ Tn))], # DUPLICATE
              [[:OH, :C], [:CO, :H], :(7.98e-10 .* (Tn .^ -0.34) .* exp.(-0.108 ./ Tn))],
              [[:OH, :CH], [:HCO, :H], :(8.31e-13 .* (Tn .^ 0.5) .* exp.(-5000.0 ./ Tn))],
              [[:OH, :H], [:H2, :O], :(8.1e-21 .* (Tn .^ 2.8) .* exp.(-1950.0 ./ Tn))],
-             [[:OH, :H2], [:H2O, :H], :(2.8e-12 .* exp.(-1800.0 ./ Tn))],
              [[:OH, :N], [:NH, :O], :(1.06e-11 .* (Tn .^ 0.1) .* exp.(-10700.0 ./ Tn))],
              [[:OH, :N], [:NO, :H], :(1.8e-10 .* (Tn .^ -0.2))],
              [[:OH, :NH], [:H2O, :N], :(3.3e-15 .* (Tn .^ 1.2))],
              [[:OH, :NH], [:HNO, :H], :(3.3e-11)],
              [[:OH, :NH], [:NH2, :O], :(1.66e-12 .* (Tn .^ 0.1) .* exp.(-5800.0 ./ Tn))],
              [[:OH, :NH], [:NO, :H2], :(4.16e-11)],
-             [[:OH, :O], [:O2, :H], :(1.8e-11 .* exp.(180.0 ./ Tn))],
-             [[:OH, :OH], [:H2O, :O], :(1.8e-12)],
 
              # Type 4
              # simpler type, when Troe parameter is 0. Updated 5 Feb 2021 to match Roger's code
@@ -662,7 +656,6 @@ reactionnet = [   #Photodissociation
              # More complicated - need the minimum of the two expressions. These updated 5 Feb 2021 to match Roger's code.
              [[:CH, :H2], [:CH2, :H], :(min.($:(8.5e-11 .* (Tn .^ 0.15)), $:(0.0 .+ (10 .^ ((log10.(0.6)) ./ (1 .+ ((log10.((4.7e-26 .* (Tn .^ -1.6) .* M) ./ (8.5e-11 .* (Tn .^ 0.15))) .- 0.4 .- 0.67 .* log10.(0.6)) ./ (0.75 .- 1.27 .* log10.(0.6) .- 0.14 .* (log10.((4.7e-26 .* (Tn .^ -1.6) .* M) ./ (8.5e-11 .* (Tn .^ 0.15))) .- 0.4 .- 0.67 .* log10.(0.6)))) .^ 2)) .* 4.7e-26 .* (Tn .^ -1.6) .* 8.5e-11 .* (Tn .^ 0.15) .* M) ./ (4.7e-26 .* (Tn .^ -1.6) .* M .+ 8.5e-11 .* (Tn .^ 0.15)))))],
              [[:CO, :O], [:CO2], :(min.($:(1.0 .* exp.(-1509.0 ./ Tn)), $:(0.0 .+ (10 .^ ((log10.(0.4)) ./ (1 .+ ((log10.((1.7e-33 .* exp.(-1509.0 ./ Tn) .* M) ./ (1.0 .* exp.(-1509.0 ./ Tn))) .- 0.4 .- 0.67 .* log10.(0.4)) ./ (0.75 .- 1.27 .* log10.(0.4) .- 0.14 .* (log10.((1.7e-33 .* exp.(-1509.0 ./ Tn) .* M) ./ (1.0 .* exp.(-1509.0 ./ Tn))) .- 0.4 .- 0.67 .* log10.(0.4)))) .^ 2)) .* 1.7e-33 .* exp.(-1509.0 ./ Tn) .* 1.0 .* exp.(-1509.0 ./ Tn) .* M) ./ (1.7e-33 .* exp.(-1509.0 ./ Tn) .* M .+ 1.0 .* exp.(-1509.0 ./ Tn)))))],
- 
              [[:NO, :H], [:HNO], :(min.($:(2.53e-9 .* (Tn .^ -0.41)), $:(0.0 .+ (10 .^ ((log10.(0.82)) ./ (1 .+ ((log10.((9.56e-29 .* (Tn .^ -1.17) .* exp.(-212.0 ./ Tn) .* M) ./ (2.53e-9 .* (Tn .^ -0.41))) .- 0.4 .- 0.67 .* log10.(0.82)) ./ (0.75 .- 1.27 .* log10.(0.82) .- 0.14 .* (log10.((9.56e-29 .* (Tn .^ -1.17) .* exp.(-212.0 ./ Tn) .* M) ./ (2.53e-9 .* (Tn .^ -0.41))) .- 0.4 .- 0.67 .* log10.(0.82)))) .^ 2)) .* 9.56e-29 .* (Tn .^ -1.17) .* exp.(-212.0 ./ Tn) .* 2.53e-9 .* (Tn .^ -0.41) .* M) ./ (9.56e-29 .* (Tn .^ -1.17) .* exp.(-212.0 ./ Tn) .* M .+ 2.53e-9 .* (Tn .^ -0.41)))))],
              [[:NO, :O], [:NO2], :(min.($:(4.9e-10 .* (Tn .^ -0.4)), $:(0.0 .+ (10 .^ ((log10.(0.8)) ./ (1 .+ ((log10.((9.2e-28 .* (Tn .^ -1.6) .* M) ./ (4.9e-10 .* (Tn .^ -0.4))) .- 0.4 .- 0.67 .* log10.(0.8)) ./ (0.75 .- 1.27 .* log10.(0.8) .- 0.14 .* (log10.((9.2e-28 .* (Tn .^ -1.6) .* M) ./ (4.9e-10 .* (Tn .^ -0.4))) .- 0.4 .- 0.67 .* log10.(0.8)))) .^ 2)) .* 9.2e-28 .* (Tn .^ -1.6) .* 4.9e-10 .* (Tn .^ -0.4) .* M) ./ (9.2e-28 .* (Tn .^ -1.6) .* M .+ 4.9e-10 .* (Tn .^ -0.4)))))],
              [[:O, :N], [:NO], :(min.($:(1.0 .* Tn .^ 0), $:(0.0 .+ (10 .^ ((log10.(0.4)) ./ (1 .+ ((log10.((5.46e-33 .* exp.(155.0 ./ Tn) .* M) ./ (1.0)) .- 0.4 .- 0.67 .* log10.(0.4)) ./ (0.75 .- 1.27 .* log10.(0.4) .- 0.14 .* (log10.((5.46e-33 .* exp.(155.0 ./ Tn) .* M) ./ (1.0)) .- 0.4 .- 0.67 .* log10.(0.4)))) .^ 2)) .* 5.46e-33 .* exp.(155.0 ./ Tn) .* 1.0 .* M) ./ (5.46e-33 .* exp.(155.0 ./ Tn) .* M .+ 1.0))))],
@@ -752,15 +745,15 @@ reactionnet = [   #Photodissociation
              [[:CNpl, :OH], [:OHpl, :CN], :(2 .* 1.11e-8 .* (Ti .^ -0.5))],
              [[:CO2pl, :H], [:HCOpl, :O], :(2 .* 4.47e-10)],
              [[:CO2pl, :H], [:Hpl, :CO2], :(2 .* 5.53e-11)],
-             [[:CO2pl, :H2], [:HCO2pl, :H], :(4.7e-10)], # Borodi2009: :(9.5e-10 .* ((Ti ./ 300) .^ -0.15)). Roger: :(2 .* 2.24e-9 .* (Ti .^ -0.15)). Nair: in use # Nair minimal ionosphere. BAD RATE? 2.24e-9 .* ((300 ./ Ti) .^ -0.15)
+             [[:CO2pl, :H2], [:HCO2pl, :H], :(4.7e-10)], # Nair minimal ionosphere. # Borodi2009: :(9.5e-10 .* ((Ti ./ 300) .^ -0.15)). Roger: :(2 .* 2.24e-9 .* (Ti .^ -0.15)). Nair: in use. BAD RATE? 2.24e-9 .* ((300 ./ Ti) .^ -0.15)
              [[:CO2pl, :H2O], [:H2Opl, :CO2], :(2 .* 1.8e-9)],
              [[:CO2pl, :H2O], [:HCO2pl, :OH], :(2 .* 6.0e-10)],
              [[:CO2pl, :HCN], [:HCNpl, :CO2], :(2 .* 8.1e-10)],
              [[:CO2pl, :HCN], [:HCO2pl, :CN], :(2 .* 9.0e-11)],
              [[:CO2pl, :N], [:COpl, :NO], :(2 .* 3.4e-10)],
              [[:CO2pl, :NO], [:NOpl, :CO2], :(2 .* 1.23e-10)],
-             [[:CO2pl, :O], [:O2pl, :CO], :(1.6e-10)], # Fehsenfeld1970: -in use-. Tenewitz 2018, sect 3b. 2e-11 * 0.98: :(1.96e-11). Roger: :(2 .* 1.6e-10). Nair minimal ionosphere
-             [[:CO2pl, :O], [:Opl, :CO2], :(9.6e-11)], # Fehsenfeld1970: -in use- Tenewitz 2018, sect 3b. 2e-11 * 0.02: :(4e-13). Nair: :(1.0e-10) Roger: :(2 .* 1.0e-10). Nair minimal ionosphere.
+             [[:CO2pl, :O], [:O2pl, :CO], :(1.6e-10)], # Nair minimal ionosphere # Fehsenfeld1970: -in use-. Tenewitz 2018, sect 3b. 2e-11 * 0.98: :(1.96e-11). Roger: :(2 .* 1.6e-10). 
+             [[:CO2pl, :O], [:Opl, :CO2], :(9.6e-11)], # Nair minimal ionosphere. # Fehsenfeld1970: -in use- Tenewitz 2018, sect 3b. 2e-11 * 0.02: :(4e-13). Nair: :(1.0e-10) Roger: :(2 .* 1.0e-10).
              [[:CO2pl, :O2], [:O2pl, :CO2], :(2 .* 5.5e-11)],
              [[:COpl, :C], [:Cpl, :CO], :(2 .* 1.1e-10)],
              [[:COpl, :CH], [:CHpl, :CO], :(2 .* 5.54e-9 .* (Ti .^ -0.5))],
@@ -1185,7 +1178,7 @@ reactionnet = [   #Photodissociation
              [[:Opl, :CH], [:CHpl, :O], :(2 .* 6.06e-9 .* (Ti .^ -0.5))],
              [[:Opl, :CH], [:COpl, :H], :(2 .* 6.06e-9 .* (Ti .^ -0.5))],
              [[:Opl, :CN], [:NOpl, :C], :(2 .* 1.73e-8 .* (Ti .^ -0.5))],
-             [[:Opl, :CO2], [:O2pl, :CO], :(9.6e-10)], # Roger: :(2 .* 1.1e-9) # Nair: -in use-  # Nair minimal ionosphere
+             [[:Opl, :CO2], [:O2pl, :CO], :(9.6e-10)], # Nair minimal ionosphere # Roger: :(2 .* 1.1e-9) # Nair: -in use-  
              [[:Opl, :H], [:Hpl, :O], :(2 .* 6.4e-10)],
              [[:Opl, :H2], [:OHpl, :H], :(2 .* 1.62e-9)],
              [[:Opl, :H2O], [:H2Opl, :O], :(2 .* 2.6e-9)],
@@ -1209,7 +1202,7 @@ reactionnet = [   #Photodissociation
              [[:Arpl, :E], [:Ar], :(2 .* 4.0e-12 .* (Te .^ 0.6))],
              [[:CHpl, :E], [:C, :H], :(2 .* 1.65e-6 .* (Te .^ -0.42))],
              [[:CNpl, :E], [:N, :C], :(2 .* 3.12e-6 .* (Te .^ -0.5))],
-             [[:CO2pl, :E], [:CO, :O], :(3.8e-7)],# Vuitton: :(4.2e-7 .* (Te ./ 300) .^ -0.75) Roger: :(2 .* 3.03e-5 .* (Te .^ -0.75)) Nair: in use # Nair minimal ionosphere. BAD RATE?: 3.03e-5 .* ((300 ./ Te) .^ -0.75)
+             [[:CO2pl, :E], [:CO, :O], :(3.8e-7)], # Nair minimal ionosphere # Vuitton: :(4.2e-7 .* (Te ./ 300) .^ -0.75) Roger: :(2 .* 3.03e-5 .* (Te .^ -0.75)) Nair: in use. BAD RATE?: 3.03e-5 .* ((300 ./ Te) .^ -0.75)
              [[:COpl, :E], [:O, :C], :(2 .* 4.82e-6 .* (Te .^ -0.55))],
              [[:COpl, :E], [:O1D, :C], :(2 .* 2.48e-8 .* (Te .^ -0.55))],
              [[:Cpl, :E], [:C], :(2 .* 6.28e-10 .* (Te .^ -0.59))],
@@ -1227,7 +1220,7 @@ reactionnet = [   #Photodissociation
              [[:HCNpl, :E], [:CN, :H], :(2 .* 3.46e-6 .* (Te .^ -0.5))],
              [[:HCO2pl, :E], [:CO, :O, :H], :(8.1e-7 .* (Te ./ 300) .^ -0.64)], # Roger: :(2 .* 2.18e-7)
              [[:HCO2pl, :E], [:CO, :OH], :(3.2e-7 .* (Te ./ 300) .^ -0.64)], # Roger: :(2 .* 9.18e-8)
-             [[:HCO2pl, :E], [:CO2, :H], :(3.0e-7)], # New: :(6e-8 .* (Te ./ 300) .^ -0.64) (where did I get this? probably Vuitton?) Roger: :(2 .* 1.7e-8) Nair: in use  # Nair minimal ionosphere
+             [[:HCO2pl, :E], [:CO2, :H], :(3.0e-7)], # Nair minimal ionosphere # New: :(6e-8 .* (Te ./ 300) .^ -0.64) (where did I get this? probably Vuitton?) Roger: :(2 .* 1.7e-8) Nair: in use  
              [[:HCOpl, :E], [:CH, :O], :(2 .* 1.15e-7 .* (Te .^ -0.64))],
              [[:HCOpl, :E], [:CO, :H], :(2 .* 1.06e-5 .* (Te .^ -0.64))],
              [[:HCOpl, :E], [:OH, :C], :(2 .* 8.08e-7 .* (Te .^ -0.64))],
@@ -1256,7 +1249,58 @@ reactionnet = [   #Photodissociation
              [[:NOpl, :E], [:O, :N], :(2 .* 8.52e-7 .* (Te .^ -0.37))],
              [[:NOpl, :E], [:O, :N2D], :(2 .* 4.53e-9 .* (Te .^ 0.75))],
              [[:Npl, :E], [:N], :(2 .* 1.9e-10 .* (Te .^ -0.7))],
-             [[:O2pl, :E], [:O, :O], :(6.6e-5 .* Te .^ -1.0)],# Vuitton: :(1.95e-7 .* (Te ./ 300) .^ (-0.7)) Roger: :(2 .* 8.15e-6 .* (Te .^ -0.65)) Nair: in use # Nair minimal ionosphere. BAD RATE?: 8.15e-6 .* ((300 ./ Te) .^ -0.65)
+             [[:O2pl, :E], [:O, :O], :(6.6e-5 .* Te .^ -1.0)], # Nair minimal ionosphere.  # Vuitton: :(1.95e-7 .* (Te ./ 300) .^ (-0.7)) Roger: :(2 .* 8.15e-6 .* (Te .^ -0.65)) Nair: in use. BAD RATE?: 8.15e-6 .* ((300 ./ Te) .^ -0.65)
              [[:OHpl, :E], [:O, :H], :(2 .* 6.5e-7 .* (Te .^ -0.5))],
-             [[:Opl, :E], [:O], :(2 .* 1.4e-10 .* (Te .^ -0.66))]
+             [[:Opl, :E], [:O], :(2 .* 1.4e-10 .* (Te .^ -0.66))],
+
+             # D IONS!
+             [[:Arpl, :HD], [:HDpl, :Ar], :(0.06*8.0e-10)],
+             [[:Arpl, :HD], [:ArHpl, :D], :(0.46*8.0e-10)],
+             [[:Arpl, :HD], [:ArDpl, :H], :(0.48*8.0e-10)],
+             [[:ArHpl, :HD], [:H2Dpl, :Ar], :(8.6e-10)],
+             [[:ArDpl, :H2], [:H2Dpl, :Ar], :(8.8e-10)],
+             [[:ArDpl, :H2], [:ArHpl, :HD], :(4.5e-10)],
+             [[:ArDpl, :N2], [:N2Dpl, :Ar], :(6e-10)],
+             [[:ArDpl, :CO], [:DCOpl, :Ar], :(1.25e-9)],
+             [[:ArDpl, :CO2], [:OCODpl, :Ar], :(1.1e-9)],
+             [[:Cpl, :HD], [:CHpl, :D], :(0.17*1.2e-16)],
+             [[:Cpl, :HD], [:CDpl, :H], :(0.83*1.2e-16)],
+             [[:COpl, :D], [:Dpl, :CO], :(9e-11)],
+             [[:CO2pl, :D], [:DCOpl, :O], :(0.76*8.4e-11)],
+             [[:CO2pl, :D], [:Dpl, :CO2], :(0.24*8.4e-11)],
+             [[:Dpl, :H2], [:Hpl, :HD], :(2.2e-9)],
+             [[:Dpl, :O], [:Opl, :D], :(2.8e-10)],
+             [[:Dpl, :H2O], [:H2Opl, :D], :(5.2e-9)],
+             [[:Dpl, :O2], [:O2pl, :D], :(1.6e-9)],
+             [[:Dpl, :CO2], [:DCOpl, :O], :(2.6e-9)],
+             [[:Dpl, :CO2], [:CO2pl, :D], :(2.6e-9)],
+             [[:Dpl, :N2O], [:N2Opl, :D], :(0.85 * 1.7e-9)],
+             [[:Dpl, :N2O], [:N2Dpl, :O], :(0.15 * 1.7e-9)],
+             [[:Dpl, :NO], [:NOpl, :D], :(1.8e-9)],
+             [[:Dpl, :NO2], [:NOpl, :OD], :(0.95*1.6e-9)],
+             [[:Dpl, :NO2], [:NO2pl, :D], :(0.05*1.6e-9)],
+             [[:DCOpl, :H], [:HCOpl, :D], :(1.5e-11)],
+             # [[:DOCpl, :H2], [:HCOpl, :HD], :(0.43*6.2e-10)], # removed for now as no production mechanism that doesn't involve a species we're not using
+             [[:Hpl, :HD], [:Dpl, :H2], :(1.1e-10)],
+             [[:HCNpl, :D], [:Dpl, :HCN], :(3.7e-11)],
+             [[:HCOpl, :D], [:DCOpl, :H], :(4.25e-11)],
+             [[:H2Dpl, :H2], [:H3pl, :HD], :(5.3e-10)],
+             [[:H2Dpl, :HD], [:H3pl, :D2], :(0.1*5.0e-10)],
+             [[:H2Dpl, :HD], [:HD2pl, :H2], :(0.9*5.0e-10)],
+             # [[:H2DOpl, :H2O], [:H3Opl, :HDO], :(6.3e-10)],  # removed for now as we don't have a production mechanism that doesn't involve species like D3
+             [[:HDpl, :HD], [:H2Dpl, :D], :(0.55*1.53e-9)],
+             [[:HDpl, :HD], [:HD2pl, :H], :(0.45*1.53e-9)],
+             [[:HDpl, :Ar], [:ArDpl, :H], :(1.53e-9)],
+             [[:HD2pl, :H2], [:H3pl, :D2], :(0.25*7.6e-10)],
+             [[:HD2pl, :H2], [:H2Dpl, :HD], :(0.75*7.6e-10)],
+             [[:HD2pl, :HD], [:H2Dpl, :D2], :(0.25*4.5e-10)],
+             [[:HD2pl, :HD], [:D3pl, :H2], :(0.75*4.5e-10)],
+             [[:Npl, :HD], [:NHpl, :D], :(0.25*3.1e-10)],
+             [[:Npl, :HD], [:NDpl, :H], :(0.75*3.1e-10)],
+             [[:N2pl, :HD], [:N2Hpl, :D], :(0.49*1.34e-9)],
+             [[:N2pl, :HD], [:N2Dpl, :H], :(0.51*1.34e-9)],
+             [[:N2Hpl, :D], [:N2Dpl, :H], :(8e-11)],
+             [[:N2Dpl, :H], [:N2Hpl, :D], :(2.5e-11)],
+             [[:Opl, :HD], [:OHpl, :D], :(0.54*1.25e-9)],
+             [[:Opl, :HD], [:ODpl, :H], :(0.46*1.25e-9)],
              ];

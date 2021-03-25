@@ -10,6 +10,8 @@
 # Currently tested for Julia: 1.4.1
 ###############################################################################
 
+t1 = time()
+
 using PyPlot
 using PyCall
 using HDF5, JLD
@@ -21,19 +23,27 @@ using LinearAlgebra
 using ProgressMeter
 using Photochemistry  # custom module for this project
 
+t2 = time()
+
+println("Time to load modules: $(round(t2-t1, digits=1)) seconds")
+
+t3 = time()
 include("PARAMETERS.jl")
+t4 = time()
+
+println("Time to load PARAMETERS: $(round(t4-t3, digits=1)) seconds")
+
+t5 = time()
 
 ################################################################################
 #                                   FUNCTIONS                                  #
 ################################################################################
 
 #=
-These functions are required to be in this file for one of three reasons:
-1) because they, or one of their overrides, call on the dynamically-defined 
-   Temp(z) function,
-2) Because they call a function that is couched in an @eval statement, which 
+These functions are required to be in this file for one of two reasons:
+1) Because they call a function that is couched in an @eval statement, which 
    cannot be relocated,
-3) They are the main routine functions and will not be shared by any other scripts.
+2) They are the main routine functions and will not be shared by any other scripts.
 
 The Temp(z) function is defined during each run as a shortcut to Tpiecewise(), 
 which takes as arguments the temperatures at the surface, tropopause, and exobase.
@@ -42,28 +52,6 @@ may be fixed in the future.
 
 For additional functions, see the Photochemistry module.
 =#
-
-
-# transport/scale height =======================================================
-
-function scaleH(z, species::Symbol)
-    #=
-    Same as first scaleH, but for a particular atomic/molecular species.
-    =#
-
-    if ision(species)
-        T = Temp_i(z)
-    else
-        if iselectron(species)
-            T = Temp_e(z)
-        else
-            T = Temp_n(z)
-        end
-    end
-
-    mm = speciesmolmasslist[species]
-    return scaleH(z, T, mm)
-end
 
 # chemistry functions ==========================================================
 
@@ -95,9 +83,8 @@ function ratefn(nthis, inactive, inactivespecies, activespecies, Jrates, Tn, Ti,
     at each altitude, get the appropriate group of concentrations,
     coefficients, and rates to pass to ratefn_local
     =#
-    # println("ratefn has been called") # DEBUG: remove
-    nthismat = reshape(nthis, (length(activespecies), length(intaltgrid)))
-    inactivemat = reshape(inactive,(length(inactivespecies),length(intaltgrid)))
+    nthismat = reshape(nthis, (length(activespecies), num_layers))
+    inactivemat = reshape(inactive, (length(inactivespecies), num_layers))
     returnrates = zero(nthismat)
 
     # fill the first altitude entry with information for all species
@@ -108,8 +95,8 @@ function ratefn(nthis, inactive, inactivespecies, activespecies, Jrates, Tn, Ti,
                                     tlower[:,2]]...)
 
 
-    # iterate through other altitudes except the last level, filling the info in
-    for ialt in 2:(length(intaltgrid)-1)
+    # iterate through other altitudes in the lower atmosphere
+    for ialt in 2:(num_layers-1)
         returnrates[:,ialt] = ratefn_local([nthismat[:,ialt];
                                           nthismat[:,ialt+1];
                                           nthismat[:,ialt-1];
@@ -120,6 +107,7 @@ function ratefn(nthis, inactive, inactivespecies, activespecies, Jrates, Tn, Ti,
                                           tdown[:,ialt+1]; tup[:,ialt-1]]...)
     end
 
+
     # fill in the last level of altitude
     returnrates[:,end] = ratefn_local([nthismat[:,end];
                                        fill(1.0, length(activespecies));
@@ -129,6 +117,14 @@ function ratefn(nthis, inactive, inactivespecies, activespecies, Jrates, Tn, Ti,
                                        Tn[end]; Ti[end]; Te[end];
                                        tupper[:,1]; tdown[:,end];
                                        tupper[:,2]; tup[:,end-1]]...)
+
+    # NEW: Overwrite the entries for water in the lower atmosphere with 0s so that it will behave as fixed.
+    # Only runs when water is in the activespecies list. If neutrals are set to inactive, it will be taken care of already.
+    if in(:H2O, activespecies) && in(:HDO, activespecies)
+        returnrates[H2Oi, 1:upper_lower_bdy_i] .= 0
+        returnrates[HDOi, 1:upper_lower_bdy_i] .= 0
+    end
+
     return [returnrates...;]
 end
 
@@ -137,18 +133,19 @@ function chemJmat(nthis, inactive, activespecies, inactivespecies, Jrates, Tn, T
     TODO: docstring
     =#
 
-    nthismat = reshape(nthis, (length(activespecies), length(intaltgrid)))
-    inactivemat = reshape(inactive, (length(inactivespecies), length(intaltgrid)))
+    nthismat = reshape(nthis, (length(activespecies), num_layers))
+    inactivemat = reshape(inactive, (length(inactivespecies), num_layers))
     chemJi = Int64[]
     chemJj = Int64[]
     chemJval = Float64[]
 
-    # tc___ are the coordinate tuples containing (I, J, V) to be use to fill a sparse matrix.
+    # tc___ are the coordinate tuples containing (I, J, V) to be used to fill a sparse matrix.
     (tclocal, tcupper, tclower) = chemJmat_local([nthismat[:,1]; nthismat[:,2]; fill(1.0, length(activespecies));
                                                   inactivemat[:,1]; Jrates[:,1];
                                                   Tn[1]; Ti[1]; Te[1]; 
                                                   tup[:,1]; tlower[:,1];
                                                   tdown[:,2]; tlower[:,2]; dt]...) 
+
 
     # add the influence of the local densities
     append!(chemJi, tclocal[1])
@@ -160,7 +157,7 @@ function chemJmat(nthis, inactive, activespecies, inactivespecies, Jrates, Tn, T
     append!(chemJj, tcupper[2] .+ length(activespecies))
     append!(chemJval, tcupper[3])
 
-    for ialt in 2:(length(intaltgrid)-1)
+    for ialt in 2:(num_layers-1)
         (tclocal, tcupper, tclower) = chemJmat_local([nthismat[:,ialt];
                                                       nthismat[:,ialt+1];
                                                       nthismat[:,ialt-1];
@@ -194,19 +191,38 @@ function chemJmat(nthis, inactive, activespecies, inactivespecies, Jrates, Tn, T
                                               tupper[:,2]; tup[:,end-1]; dt]...)
 
     # add the influence of the local densities
-    append!(chemJi, tclocal[1].+(length(intaltgrid)-1)*length(activespecies))
-    append!(chemJj, tclocal[2].+(length(intaltgrid)-1)*length(activespecies))
+    append!(chemJi, tclocal[1].+(num_layers-1)*length(activespecies))
+    append!(chemJj, tclocal[2].+(num_layers-1)*length(activespecies))
     append!(chemJval, tclocal[3])
 
     # and the lower densities
-    append!(chemJi, tclower[1].+(length(intaltgrid)-1)*length(activespecies))
-    append!(chemJj, tclower[2].+(length(intaltgrid)-2)*length(activespecies))
+    append!(chemJi, tclower[1].+(num_layers-1)*length(activespecies))
+    append!(chemJj, tclower[2].+(num_layers-2)*length(activespecies))
     append!(chemJval, tclower[3])
 
+    # NEW: fix water below whatever we set as upper/lower atmosphere boundary.
+    # This only runs if water is designated as an active species; if it's in inactivespecies, this doesn't need to run,
+    # and in fact, CAN'T run. When it is active, this finds all the H2O and HDO indices for the lower atmosphere. 
+    # It's like above where we add (ialt-1)*length(activespecies), but this way it's outside the loop.
+    if in(:H2O, activespecies) && in(:HDO, activespecies)
+        H2Opositions = H2Oi .+ length(activespecies)*collect(0:upper_lower_bdy_i-1) # if H2Oi is 5, this returns 5, 69, 133...
+        HDOpositions = HDOi .+ length(activespecies)*collect(0:upper_lower_bdy_i-1)
+        water_positions = sort(union(H2Opositions, HDOpositions))
+
+        i_remove = findall(x->in(x, water_positions), chemJi)
+        j_remove = findall(x->in(x, water_positions), chemJj)
+        remove_these = sort(union(i_remove, j_remove)) # This makes a set, since it describes the locations where the H2O and HDO indices are.
+                                                       # Kinda confusing since we're talking about indices of indices.
+        deleteat!(chemJi, remove_these)
+        deleteat!(chemJj, remove_these)
+        deleteat!(chemJval, remove_these)
+    end
+
     # make sure to add 1's along the diagonal
-    append!(chemJi,[1:length(nthis);])
-    append!(chemJj,[1:length(nthis);])
+    append!(chemJi, [1:length(nthis);])
+    append!(chemJj, [1:length(nthis);])
     append!(chemJval, fill(1.0, length(nthis)))
+
 
     return sparse(chemJi, chemJj, chemJval, length(nthis), length(nthis), +);
 end
@@ -294,23 +310,36 @@ end
 
 function timeupdate(mytime, thefolder)
     # plot rates to inspect them! Used while converging an atmosphere.
-    if PN == 1
-        # set up the plots folder on the first iteration
-        create_folder("chemeq_plots", join([results_dir[1:end-1], FNext], "/")*"/")
-    end
-    for s in fullspecieslist
-        plot_rxns(s, n_current, [T_surf, T_tropo, T_exo], speciesbclist; plot_indiv_rxns=false, subfolder=FNext, plotsfolder="chemeq_plots", dt=mytime, num=PN)
-    end
-    global PN += 1 # increment the number to append to plot filenames 
-
-    write_ncurrent(n_current, thefolder*"/ncurrent_$(mytime).h5")  # used while slowly converging an atmosphere
+    # if PN == 1
+    #     # set up the plots folder on the first iteration
+    #     create_folder("chemeq_plots", join([results_dir[1:end-1], FNext], "/")*"/")
+    #     # Plot initial reaction rates for this timestep
+    #     for s in fullspecieslist
+    #         plot_rxns(s, n_current, [T_surf, T_tropo, T_exo], speciesbclist; plot_indiv_rxns=false, subfolder=FNext, plotsfolder="chemeq_plots", dt=mytime, num=PN)
+    #     end
+    # end
 
     numiters = 15
     for i = 1:numiters
-        update!(n_current, mytime)
-        plot_atm(n_current, [neutrallist, ionlist], thefolder*"/converged_atm_"*FNext*".png", t=mytime, iter=i)  # only plot at the end of the iterations, speeds up code given the way I changed plot_atm.
+        update!(n_current, mytime)   
+        # plot_atm(n_current, [neutrallist, ionlist], thefolder*"/converged_atm_$(FNext).png", t=mytime, iter=i)
+        if mytime == 0.001
+            println("iter $(i)")
+        end
     end
-    
+    plot_atm(n_current, [neutrallist, ionlist], thefolder*"/converged_atm_$(FNext).png", t=mytime)  # only plot at the end of the iterations, speeds up code given the way I changed plot_atm.
+
+    # Plot chemical/transport balance and write out the file - only occasionally, to avoid taking too much time.
+    # if (in(PN, [1,2])) || (PN % 7 == 0)
+        # for s in fullspecieslist
+        #     plot_rxns(s, n_current, [T_surf, T_tropo, T_exo], speciesbclist; plot_indiv_rxns=false, subfolder=FNext, plotsfolder="chemeq_plots", dt=mytime, num=PN)
+        # end
+    write_ncurrent(n_current, thefolder*"/ncurrent_$(mytime).h5")  # To keep track of atmosphere state at every timestep, used for plotting later.
+    # end
+    # Uncomment if trying to examine detailed changes timestep to timestep.
+    # plot_atm(n_current, [neutrallist, ionlist], thefolder*"/atm_plot_$(PN).png", t=mytime)
+
+    # global PN += 1 # increment the number to append to plot filenames 
 end
 
 function next_timestep(nstart::Array{Float64, 1}, nthis::Array{Float64, 1},
@@ -333,15 +362,12 @@ function next_timestep(nstart::Array{Float64, 1}, nthis::Array{Float64, 1},
         # stuff concentrations into update function and jacobian.
         ratefn_output = dt*ratefn(nthis, inactive, inactivespecies, activespecies, Jrates, Tn, Ti, Te,  
                                           tup, tdown, tlower, tupper)  #Eulerian (P*L) * dt
+
         # println("Eulerian update (dt*ratefn / nthis): $(ratefn_output ./ nthis)")
         fval = nthis - nstart - ratefn_output
-        # println("ratefn_output: $(ratefn_output)")
         
         updatemat = chemJmat(nthis, inactive, activespecies, inactivespecies, Jrates, Tn, Ti, Te, 
                              tup, tdown, tlower, tupper, dt)
-        # println("type updatemat: $(typeof(updatemat))")
-
-        # update
         # updatemat_divided_by_fval = updatemat \ fval  # backslash - matrix solution operator
 
         # for i in range(1, length=length(nthis))
@@ -353,10 +379,9 @@ function next_timestep(nstart::Array{Float64, 1}, nthis::Array{Float64, 1},
         # check relative size of update
         eps = maximum(abs.(nthis-nold)./nold)
         iter += 1
-        if iter>2e3
+        if iter>3e3
             throw("too many iterations in next_timestep! eps: $(eps)")
         end
-        # throw("Breakpoint within next_timestep to examine values")
     end
 
     return nthis
@@ -417,9 +442,7 @@ function update!(n_current::Dict{Symbol, Array{Float64, 1}}, dt; plotJratesflag=
 
     # write found values out to n_current
     for s in 1:length(activespecies)
-        # set the updated altitude range
-        altrange = get(update_rules, activespecies[s], 1:num_layers)
-        for ia in altrange
+        for ia in 1:num_layers
             tn = nthismat[s, ia]
             n_current[activespecies[s]][ia] = tn > 0. ? tn : 0.  # prevents negative concentrations
         end
@@ -453,14 +476,17 @@ elseif args[1]=="water"
     FNext = "water_$(args[2])"
 elseif args[1]=="dh"
     FNext = "dh_$(args[2])"
+    DH = parse(Float64, args[2]) * 1.6e-4
 elseif args[1]=="Oflux"
     FNext = "Oflux_$(args[2])"
 else
     throw("Error! Bad experiment type")
 end
 
+user_input_folder_name = input("Enter a name for the results folder or press enter to use default: ")
+sim_folder_name = user_input_folder_name == "" ? FNext : user_input_folder_name
 # Set up the folder if it doesn't exist
-create_folder(FNext, results_dir)
+create_folder(sim_folder_name, results_dir)
 
 # Case where this file will be used to converge an atmosphere of a different extent
 make_new_alt_grid = input("Would you like to use the script to converge a new atmosphere of a different extent? (y/n): ")
@@ -489,29 +515,106 @@ elseif make_new_alt_grid=="n"
     file_to_use = input("Enter the name of a file containing a converged, 250 km atmosphere to use (press enter to use default): ")   # TODO: revert
     readfile = file_to_use == "" ? "converged_250km_atmosphere.h5" : file_to_use
     n_current = get_ncurrent(readfile)
-
-    # Set whether neutrals or ions are being converged. The other group must be entered in nochemspecies, notransportspecies.
-    converge_which = input("Converging ions or neutrals? (Used for setting timesteps): ")
-    while converge_which != "neutrals" && converge_which != "ions" && converge_which != "both"
-        println("Bad entry! Please enter ions or neturals or both.")
-        global converge_which = input("Converging ions or neutrals? (Used for setting timesteps): ")
-    end
-    println()
-
-    if converge_which == "neutrals"
-        mindt = -3
-        maxdt = 14
-        println("ALERT: Did you make sure that the ions are added to nochemspecies and notransportspecies?")
-    elseif converge_which == "ions"
-        mindt = -3
-        maxdt = 5
-        println("ALERT: Did you make sure that the neutrals are added to nochemspecies and notransportspecies?")
-    else
-        throw("Uncaught exception")
-    end
 else
     error("Didn't understand response")
 end
+
+# Whether to initialize new species as zeros or not
+use_nonzero_initial_profiles = true
+
+# Set whether neutrals or ions are being converged. The other group must be entered in nochemspecies, notransportspecies.
+converge_which = input("Converging ions, neutrals or both?: ")
+while converge_which != "neutrals" && converge_which != "ions" && converge_which != "both"
+    println("Bad entry! Please enter ions or neturals or both.")
+    global converge_which = input("Converging ions, neutrals or both?: ")
+end
+println()
+
+# Set up initial profiles and time steps 
+if converge_which == "neutrals"
+    println("ALERT: Did you make sure that the ions are added to nochemspecies and notransportspecies?")
+
+    for nn in new_neutrals
+        n_current[nn] = zeros(num_layers)
+    end
+
+    if use_nonzero_initial_profiles
+        if length(new_neutrals) != 0
+            println("Initializing non-zero profiles for $(new_neutrals)")
+        end
+        for nn in new_neutrals
+            n_current[nn] = reshape(readdlm("../Resources/initial_profiles/$(string(nn))_initial_profile.txt", '\r', comments=true, comment_char='#'), (num_layers,))
+        end
+    end
+elseif converge_which == "ions"
+    println("ALERT: Did you make sure that the neutrals are added to nochemspecies and notransportspecies?")
+
+    for ni in new_ions
+        n_current[ni] = zeros(num_layers)
+    end
+
+    if use_nonzero_initial_profiles
+        if length(new_ions) != 0
+            println("Initializing non-zero profiles for $(new_ions)")
+        end
+        for ni in new_ions
+            try
+                n_current[ni] = reshape(readdlm("../Resources/initial_profiles/$(string(ni))_initial_profile.txt", '\r', comments=true, comment_char='#'), (num_layers,))
+            catch
+                println("Skipping ion $(ni) for now because we need to set it after its analogue has been set...")
+            end  
+        end
+        for Dion in keys(D_H_analogues)
+            if in(Dion, new_ions)
+                n_current[Dion] = DH .* n_current[D_H_analogues[Dion]]
+                println("Set a profile for $(Dion): $(n_current[Dion][length(n_current[Dion])-10:end])...etc")
+            end
+        end
+    end
+elseif converge_which == "both"  # Currently this doesn't really work.
+    println("ALERT: Did you make sure nochemspecies and notransportspecies are only :Ar and :N2?")
+    for nn in new_neutrals
+        n_current[nn] = zeros(num_layers)
+    end
+    for ni in new_ions
+        n_current[ni] = zeros(num_layers)
+    end
+
+    if use_nonzero_initial_profiles
+        if length(new_ions) != 0 || length(new_neutrals) != 0
+            println("Initializing non-zero profiles for $(new_neutrals) and $(new_ions)")
+        end
+        for nn in new_neutrals
+            n_current[nn] = reshape(readdlm("../Resources/initial_profiles/$(string(nn))_initial_profile.txt", '\r', comments=true, comment_char='#'), (num_layers,))
+        end
+
+        for ni in new_ions
+            try
+                n_current[ni] = reshape(readdlm("../Resources/initial_profiles/$(string(ni))_initial_profile.txt", '\r', comments=true, comment_char='#'), (num_layers,))
+            catch
+                println("Skipping ion $(ni) for now because we need to set it after its analogue has been set...")
+            end  
+        end
+        for Dion in keys(D_H_analogues)
+            if in(Dion, new_ions)
+                n_current[Dion] = DH .* n_current[D_H_analogues[Dion]]
+                println("Set a profile for $(Dion): $(n_current[Dion][length(n_current[Dion])-10:end])...etc")
+            end
+        end
+    end
+else
+    throw("Uncaught exception")
+end
+
+# Zero out the new Jrates
+for nj in newJrates
+    n_current[nj] = zeros(num_layers)
+end
+
+# Set up the timesteps
+mindt = dt_min_and_max[converge_which][1]
+maxdt = dt_min_and_max[converge_which][2]
+total_timesteps = abs(mindt) + maxdt + 1 # the 1 is to account for 10^0. Used in some plotting codes. TODO: Check if not used anymore.
 
 # Set solar cycle file and alert user 
 cycle = args[end]
@@ -526,25 +629,8 @@ for i in 2:1:length(args)-1
 end
 
 # Let the user know what is being done 
-println("ALERT: running sim for $(FNext)")
-println("ALERT: Using file: ", readfile)
 if cycle != "mean"
     println("ALERT: Solar $(cycle) data being used")
-end
-
-# Any modifications to n_current 
-
-# Modify D-bearing profiles if D/H ratio different from standard
-if args[1] == "dh"
-    DH = parse(Float64, args[2]) * 1.6e-4
-    # modify n_current with deuterated species profiles
-    n_current[:HDO] = n_current[:H2O] * DH
-    n_current[:OD] = n_current[:OH] * DH
-    n_current[:HDO2] = n_current[:H2O2] * DH
-    n_current[:D] = n_current[:H] * DH
-    n_current[:DO2] = n_current[:HO2] * DH
-    n_current[:HD] = n_current[:H2] * DH
-    n_current[:DOCO] = n_current[:HOCO] * DH
 end
 
 # Plot styles ==================================================================
@@ -559,10 +645,7 @@ rcParams["ytick.labelsize"] = 22
 ################################################################################
 #                       TEMPERATURE/PRESSURE PROFILES                          #
 ################################################################################
-
-# println("As a safety check, here are the mean temperatures as entered in code:")
-# println("Surface: $(meanTs), Tropopause: $(meanTt), Exobase: $(meanTe)")
-
+println("Setting up temperature functions...")
 # If changes to the temperature are needed, they should be made here 
 if args[1]=="temp"
     global T_surf = args[2]
@@ -582,13 +665,13 @@ else
 end
 
 # plot all 3 profiles on top of each other
-plot_nie_temp_profs([Temp_n(a) for a in alt], [Temp_i(a) for a in alt], [Temp_e(a) for a in alt], results_dir*FNext, alt)
+plot_temp_prof([Temp_n(a) for a in alt], results_dir*sim_folder_name, i_temps=[Temp_i(a) for a in alt], e_temps=[Temp_e(a) for a in alt])
 
 
 ################################################################################
 #                               WATER PROFILES                                 #
 ################################################################################
-
+println("Setting up the water profile...")
 # set SVP to be fixed or variable with temperature
 if args[1] == "temp"
     fix_SVP = true
@@ -606,7 +689,7 @@ H2Osatfrac = H2Osat./map(z->n_tot(n_current, z), alt)  # get SVP as fraction of 
 # set H2O SVP fraction to minimum for all alts above first time min is reached
 H2Oinitfrac = H2Osatfrac[1:something(findfirst(isequal(minimum(H2Osatfrac)), H2Osatfrac), 0)]
 H2Oinitfrac = [H2Oinitfrac;   # ensures no supersaturation
-               fill(minimum(H2Osatfrac), length(alt)-2-length(H2Oinitfrac))]
+               fill(minimum(H2Osatfrac), num_layers-length(H2Oinitfrac))]
 
 # make profile constant in the lower atmosphere (well-mixed).
 # when doing water experiments, the temperature profile is such that the minimum
@@ -616,7 +699,7 @@ H2Oinitfrac = [H2Oinitfrac;   # ensures no supersaturation
 if args[1] == "water"
     H2Oinitfrac[findall(x->x<hygropause_alt, alt)] .= args[2]
     MR = args[2] # mixing ratio 
-else  # i believe 30 km is supposed to be approximately the hygropause.
+else
     MR = MR_mean_water
     H2Oinitfrac[findall(x->x<hygropause_alt, alt)] .= MR # 10 pr μm
 end
@@ -625,13 +708,16 @@ for i in [1:length(H2Oinitfrac);]
     H2Oinitfrac[i] = H2Oinitfrac[i] < H2Osatfrac[i+1] ? H2Oinitfrac[i] : H2Osatfrac[i+1]
 end
 
-# HDO water profile ============================================================
-HDOsatfrac = HDOsat./map(z->n_tot(n_current, z), alt)
-# use D/H ratio to set population of HDO
-HDOinitfrac = H2Oinitfrac * DH  # initial profile for HDO
+# set the water profiles =======================================================
+n_current[:H2O] = H2Oinitfrac.*map(z->n_tot(n_current, z), non_bdy_layers)
+n_current[:HDO] = 2 * DH * n_current[:H2O] # This should be the correct way to set the HDO profile.
+# n_current[:HDO] = HDOinitfrac.*map(z->n_tot(n_current, z), non_bdy_layers) # OLD WAY that is wrong.
+# We still have to calculate the HDO initial fraction in order to calculate the pr um 
+# and make water plots.
+HDOinitfrac = n_current[:HDO] ./ map(z->n_tot(n_current, z), non_bdy_layers)  
 
-# Compute total water column in pr μm starting with mixing ratio array =========
-# H2O #/cm^3 = sum(MR * n_tot) for each alt
+# Compute total water column for logging and checking that we did things right =
+# H2O #/cm^3 (whole atmosphere) = sum(MR * n_tot) for each alt
 H2O_per_cc = sum([MR; H2Oinitfrac] .* map(z->n_tot(n_current, z), alt[1:end-1]))
 HDO_per_cc = sum([MR*DH; HDOinitfrac] .* map(z->n_tot(n_current, z), alt[1:end-1]))
 
@@ -642,19 +728,15 @@ HDO_per_cc = sum([MR*DH; HDOinitfrac] .* map(z->n_tot(n_current, z), alt[1:end-1
 H2Oprum = (H2O_per_cc * dz) * (18/1) * (1/6.02e23) * (1/1) * (1e4/1)
 HDOprum = (HDO_per_cc * dz) * (19/1) * (1/6.02e23) * (19/18) * (1e4/1)
 
+
 ################################################################################
 #                             BOUNDARY CONDITIONS                              #
 ################################################################################
-
+println("Setting boundary conditions and creating metaprogramming...")
 H_veff = effusion_velocity(Temp_n(zmax), 1.0, zmax)
 H2_veff = effusion_velocity(Temp_n(zmax), 2.0, zmax)
 D_veff = effusion_velocity(Temp_n(zmax), 2.0, zmax)
 HD_veff = effusion_velocity(Temp_n(zmax), 3.0, zmax)
-
-# H_ion_veff = effusion_velocity(Temp_i(zmax), 1.0, zmax)
-# H2_ion_veff = effusion_velocity(Temp_i(zmax), 2.0, zmax)
-# D_ion_veff = effusion_velocity(Temp_i(zmax), 2.0, zmax)
-# HD_ion_veff = effusion_velocity(Temp_i(zmax), 3.0, zmax)
 
 #=
     boundary conditions for each species (mostly from Nair 1994, Yung 1988). For 
@@ -718,11 +800,15 @@ local_transport_rates = [[[Symbol("t"*string(s)*"_up") for s in specieslist]
 transportnet = [[upeqns...;]; [downeqns...;]]
 
 # define names for all the species active in the coupled rates:
-active_above = [Symbol(string(s)*"_above") for s in activespecies]
-active_below = [Symbol(string(s)*"_below") for s in activespecies]
+# DO NOT CHANGE!!
+const active_above = [Symbol(string(s)*"_above") for s in activespecies]
+const active_below = [Symbol(string(s)*"_below") for s in activespecies]
 
 # obtain the rates and jacobian for each altitude
-const rates_local = Expr(:vcat, map(x->getrate(reactionnet, transportnet, x),activespecies)...);
+const rates_local = Expr(:vcat, map(x->getrate(reactionnet, transportnet, x), activespecies)...);
+const chemJ_local = chemical_jacobian(reactionnet, transportnet, activespecies, activespecies);
+const chemJ_above = chemical_jacobian(reactionnet, transportnet, activespecies, active_above);
+const chemJ_below = chemical_jacobian(reactionnet, transportnet, activespecies, active_below);
 
 # TODO: Turn these notes into a test that looks for "+()" in rates_local instead of debugging lines. 
 # -----------------------------------------------------------------------------------------------
@@ -734,15 +820,12 @@ const rates_local = Expr(:vcat, map(x->getrate(reactionnet, transportnet, x),act
 # println(rates_local)
 # println("That was rates_local")
 
-const chemJ_local = chemical_jacobian(reactionnet, transportnet, activespecies, activespecies);
-const chemJ_above = chemical_jacobian(reactionnet, transportnet, activespecies, active_above);
-const chemJ_below = chemical_jacobian(reactionnet, transportnet, activespecies, active_below);
-
 arglist_local = [activespecies; active_above; active_below; inactivespecies;
                  Jratelist; :Tn; :Ti; :Te; local_transport_rates; :dt]
 
 arglist_local_typed = [:($s::Float64) for s in arglist_local]
 
+# These expressions which are evaluated below enable a more accurate assessment of M and E values.
 Mexpr = Expr(:call, :+, fullspecieslist...)
 Eexpr = Expr(:call, :+, ionlist...)
 
@@ -781,11 +864,11 @@ end
 
         abovechemJi = $(chemJ_above[1])
         abovechemJj = $(chemJ_above[2])
-        abovechemJval = -dt*$(Expr(:vcat, chemJ_above[3]...))#(chemJ_above[3])#
+        abovechemJval = -dt*$(Expr(:vcat, chemJ_above[3]...))
 
         belowchemJi = $(chemJ_below[1])
         belowchemJj = $(chemJ_below[2])
-        belowchemJval = -dt*$(Expr(:vcat, chemJ_below[3]...))#(chemJ_below[3])#
+        belowchemJval = -dt*$(Expr(:vcat, chemJ_below[3]...))
 
         # return the actual values of I, J, and V (indices and numerical value):
         return ((localchemJi, localchemJj, localchemJval),
@@ -794,24 +877,25 @@ end
     end
 end
 
+
 # TODO: this function is not currently used. It's used with reactionrates to 
 # write reaction rates to the .h5 file, originally done in Mike's version of the 
 # model. It would be useful to include this functionality in this version of the code.
-@eval begin
-    function reactionrates_local($(specieslist...), $(Jratelist...), T, M)
-        #= a function to return chemical reaction rates for specified species
-           concentrations =#
-        M = $Mexpr
-        E = $Eexpr
+# @eval begin
+#     function reactionrates_local($(specieslist...), $(Jratelist...), T, M)
+#          a function to return chemical reaction rates for specified species
+#            concentrations 
+#         M = $Mexpr
+#         E = $Eexpr
 
-        $(Expr(:vcat, map(x->Expr(:call,:*,x[1]..., x[3]), reactionnet)...))
-    end
-end
+#         $(Expr(:vcat, map(x->Expr(:call,:*,x[1]..., x[3]), reactionnet)...))
+#     end
+# end
 
 ################################################################################
 #                         PHOTOCHEMICAL CROSS SECTIONS                         #
 ################################################################################
-
+println("Populating cross section dictionary...")
 # Change following line as needed depending on local machine
 xsecfolder = research_dir * "uvxsect/";
 
@@ -1350,7 +1434,7 @@ solarabs = fill(fill(0.,size(solarflux, 1)), num_layers);
 ################################################################################
 #                                 LOGGING                                      #
 ################################################################################
-
+println("Creating the simulation log file...")
 # crosssection dict for logging purposes =======================================
 xsect_dict = Dict("CO2"=>[co2file],
                   "H2O, HDO"=>[h2ofile, hdofile],
@@ -1379,10 +1463,10 @@ elseif args[1]=="Oflux"
 end
 
 # Write the log ================================================================
-f = open(results_dir*FNext*"/simulation_params_"*FNext*".txt", "w")
+f = open(results_dir*sim_folder_name*"/simulation_params_"*FNext*".txt", "w")
 write(f, "$(args[1]) experiment: \n")
 write(f, input_string)
-write(f, "\n\n")
+write(f, "\n")
 
 # Mean temperatures
 write(f, "Mean temperatures used:\n")
@@ -1391,7 +1475,8 @@ write(f, "Surface: $(meanTs) K, Tropopause: $(meanTt) K, Exobase: $(meanTe) K\n\
 # which species are turned on
 write(f, "All species: $(join([string(i) for i in fullspecieslist], ", "))\n")
 write(f, "No-chem species: $(join([string(i) for i in nochemspecies], ", "))\n")
-write(f, "No-transport species: $(join([string(i) for i in notransportspecies], ", "))\n\n")
+write(f, "No-transport species: $(join([string(i) for i in notransportspecies], ", "))\n")
+write(f, "Active species: $(join(sort([string(i) for i in activespecies]), ", "))\n\n")
 
 # Which ion reactions are turned on 
 write(f, "New J rates that are turned on: \n")
@@ -1408,8 +1493,8 @@ for rxn in [string(i) for i in ion_chem_rxns]
 end
 write(f, "\n")
 
-# Whether we fixed things below a certain altitude
-write(f, "Altitudes able to have ion densities updated: $(get(update_rules, "ion", "all"))\n\n")
+# Whether nonzero initial profiles were used
+write(f, "Non-zero initial profiles used: $(use_nonzero_initial_profiles)\n\n")
 
 # Solar cycle and SVP stuff
 write(f, "\nSVP fixed: $(fix_SVP)\n\n")
@@ -1444,7 +1529,7 @@ end
 write(f, "\n")
 
 # timestep etc
-write(f, "Initial atmosphere state: $(readfile)\n")
+write(f, "Initial atmosphere state: $(readfile)\n\n")
 
 close(f)
 
@@ -1452,24 +1537,25 @@ close(f)
 #                             CONVERGENCE CODE                                 #
 ################################################################################
 
-# set the water profiles =======================================================
-n_current[:H2O] = H2Oinitfrac.*map(z->n_tot(n_current, z), non_bdy_layers)
-n_current[:HDO] = HDOinitfrac.*map(z->n_tot(n_current, z), non_bdy_layers)
+# Uncomment this line if you'd like to add an extra parcel to some species. You must specify the species.
+# n_current[:D] = map(x->1e5*exp(-((x-184)/20)^2), non_bdy_layers/1e5) + n_current[:D]
+
+# write initial atmospheric state ==============================================
+write_ncurrent(n_current, results_dir*sim_folder_name*"/initial_state.h5")
 
 # Plot initial water profile ===================================================
-plot_water_profile(H2Oinitfrac, HDOinitfrac, n_current[:H2O], n_current[:HDO], results_dir*FNext, watersat=[H2Osatfrac, HDOsatfrac])
+plot_water_profile(H2Oinitfrac, HDOinitfrac, n_current[:H2O], n_current[:HDO], results_dir*sim_folder_name, watersat=H2Osatfrac)
 
 # do the convergence ===========================================================
-
 println("Plotting the initial condition")
-plot_atm(n_current, [neutrallist, ionlist], results_dir*FNext*"/initial_atmosphere.png")
+plot_atm(n_current, [neutrallist, ionlist], results_dir*sim_folder_name*"/initial_atmosphere.png")
 
-img_savepath = results_dir*FNext*"/converged_atm_"*FNext*".png"
+img_savepath = results_dir*sim_folder_name*"/converged_atm_"*FNext*".png"
 println("Beginning Convergence")
 
-@showprogress 0.1 "Converging..." [timeupdate(t, results_dir*FNext) for t in [10.0^(1.0*i) for i in mindt:maxdt]]
+@showprogress 0.1 "Converging..." [timeupdate(t, results_dir*sim_folder_name) for t in [10.0^(1.0*i) for i in mindt:maxdt]]
 
-if converge_which == "neutrals"
+if converge_which == "neutrals" || converge_which == "both"
     @showprogress 0.1 "Last convergence steps..." for i in 1:100 
         plot_atm(n_current, [neutrallist, ionlist], img_savepath, t="1e14", iter=i)
         # println("dt: 1e14 iter $(i)")
@@ -1477,18 +1563,18 @@ if converge_which == "neutrals"
     end
 end
 
-for s in fullspecieslist
-    plot_rxns(s, n_current, [T_surf, T_tropo, T_exo], speciesbclist; plot_indiv_rxns=false, subfolder=FNext, extra_title="converged")
-end
-
 # write out the new converged file to matching folder.
-towrite = results_dir*FNext*"/converged_"*FNext*".h5"
+towrite = results_dir*sim_folder_name*"/converged_"*FNext*".h5"
 write_ncurrent(n_current, towrite)
 println("Wrote $(towrite)")
-
-# save the figure
-# savefig(img_savepath, bbox_inches="tight")
 println("Saved figure to same folder")
 
 println("ALERT: Finished")
 println()
+
+f = open(results_dir*sim_folder_name*"/simulation_params_"*FNext*".txt", "a")
+t6 = time()
+write(f, "Total runtime $((t6-t5) / 60) minutes\n")
+write(f, "Module load time $(t2-t1) seconds\n")
+write(f, "Parameter file load time $(t4-t3) seconds\n")
+close(f)
