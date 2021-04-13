@@ -14,7 +14,9 @@ using Photochemistry
 using PyPlot
 using PyCall
 
-include("PARAMETERS.jl")
+user_input_paramfile = input("Enter a parameter file or press enter to use default (PARAMETERS.jl): ")
+paramfile = user_input_paramfile == "" ? "PARAMETERS.jl" : user_input_paramfile
+include(paramfile)
 
 parentfolder = input("Which folder? (no trailing slash please): ")
 
@@ -32,7 +34,6 @@ Temp_keepSVP(z::Float64) = T_all(z, meanTs, meanTt, meanTe, "neutral")
 
 
 # Do the actual plotting =====================================================================================
-println("Trying to call create_folder for $(results_dir*parentfolder)")
 create_folder("chemeq_plots", results_dir*parentfolder*"/")
 
 filelist = search_subfolders(results_dir*parentfolder, "$(fnstr).h5", type="files")#r"ncurrent_\d+\.\d+e*14\.h5", type="files")
@@ -68,7 +69,7 @@ for f in filelist
     end
 
     println("Working on dt=$(dtval)")
-    for sp in activespecies
+    for sp in fullspecieslist
         plot_rxns(sp, ncur, controltemps, speciesbclist; subfolder=parentfolder, plotsfolder="chemeq_plots", num=dtval, extra_title="dt=$(dtval)")
     end
 end

@@ -1,13 +1,14 @@
 ################################################################################
-# PARAMETERS.jl
+# PARAMETERS-conv1.jl
 # TYPE: (1) Model files - required
-# DESCRIPTION: Just some standard global constants that need to get used 
-# EVERYWHERE. Also the chemical reaction network.
+# DESCRIPTION: Use only when converging an atmosphere after introducing ions, as
+# step 3. Adds N-bearing neutrals and all ions to an atmosphere that contains 
+# standard neutrals, C, CH, HCO, and the Nair minimal ions.
 # 
 # Eryn Cangi
 # Created December 2019
-# Last edited: 21 July 2020
-# Currently tested for Julia: 1.4.1
+# Last edited: 7 April 2021
+# Currently tested for Julia: 1.5.3
 ################################################################################
 
 research_dir = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/"
@@ -79,12 +80,15 @@ conv_neutrals = [:Ar, :CO, :CO2, :H, :H2, :H2O, :H2O2, :HO2, :HOCO, :N2,
                  :O, :O1D, :O2, :O3, :OH,
                  :D, :DO2, :DOCO, :HD, :HDO, :HDO2, :OD,
 
-                 # neutrals which are new but successfully incorporated
-                 :C, :CH, :HCO, :N2O, :NO2, :CN, :HCN, :HNO, :N, :NH, :NH2, :NO];
+                 # new neutrals that are incorporated
+                 :C, :CH, :HCO,];
 N_species = [:N2O, :NO2, :CN, :HCN, :HNO, :N, :NH, :NH2, :NO];
-new_neutrals = [];
+new_neutrals = [# neutrals which are new but successfully incorporated
+                 :N2O, :NO2, :CN, :HCN, :HNO, :N, :NH, :NH2, :NO
+               ];
 conv_ions = [:CO2pl, :HCO2pl, :Opl, :O2pl, # Nair minimal ionosphere 
-             :Arpl, :ArHpl, :Cpl, :CHpl, :CNpl, :COpl, 
+            ];# should have but don't: HDO+, DO2+ 
+new_ions = [:Arpl, :ArHpl, :Cpl, :CHpl, :CNpl, :COpl, 
              :Hpl, :H2pl, :H2Opl, :H3pl, :H3Opl,
              :HCNpl, :HCNHpl, :HCOpl, 
              :HNOpl, :HN2Opl, :HOCpl, :HO2pl, 
@@ -92,8 +96,7 @@ conv_ions = [:CO2pl, :HCO2pl, :Opl, :O2pl, # Nair minimal ionosphere
              :OHpl,
              # Deuterated ions
              :ArDpl, :Dpl, :DCOpl, :HDpl, :HD2pl, :H2Dpl, :N2Dpl
-            ];# should have but don't: HDO+, DO2+ 
-new_ions = [ ];
+            ];
 
 # To converge neutrals: add conv_ions to nochemspecies and notransportspecies.
 # To converge ions: add setdiff(conv_neutrals, N_species) to nochemspecies and notransportspecies.
@@ -101,13 +104,10 @@ new_ions = [ ];
 const nochemspecies = [:Ar, :N2];
 const notransportspecies = [:Ar, :N2];
 
-# append!(nochemspecies, conv_ions)  # NOTE: This is what to change EVERY TIME YOU RUN until you find a better way
-# append!(notransportspecies, conv_ions)  # NOTE: This is what to change EVERY TIME YOU RUN until you find a better way
+append!(nochemspecies, conv_neutrals)  # NOTE: This is what to change EVERY TIME YOU RUN until you find a better way
+append!(notransportspecies, conv_neutrals)  # NOTE: This is what to change EVERY TIME YOU RUN until you find a better way
 
 # Photolysis and Photoionization rate symbol lists
-const newJrates = [# New photoionization/ion-involved photodissociation  (from Roger)
-                    # New neutral photodissociation (from Roger)
-                    ];
 const conv_Jrates = [# Original neutral photodissociation
                     :JCO2toCOpO,:JCO2toCOpO1D,:JO2toOpO,:JO2toOpO1D,
                     :JO3toO2pO,:JO3toO2pO1D,:JO3toOpOpO,:JH2toHpH,:JOHtoOpH,
@@ -117,14 +117,19 @@ const conv_Jrates = [# Original neutral photodissociation
                     # Original deuterated neutral photodissociation
                     :JHDOtoHpOD, :JHDOtoDpOH, :JHDO2toOHpOD,
                     :JHDOtoHDpO1D, :JHDOtoHpDpO, :JODtoOpD, :JHDtoHpD, :JDO2toODpO,
-                    :JHDO2toDO2pH, :JHDO2toHO2pD, :JHDO2toHDOpO1D, :JODtoO1DpD,
-
-                    # New neutral photodissociation (from Roger)
-                    :JCO2toCpOpO, :JCO2toCpO2, :JCOtoCpO,
-                    :JN2OtoN2pO1D, :JNO2toNOpO, :JNOtoNpO,
+                    :JHDO2toDO2pH, :JHDO2toHO2pD, :JHDO2toHDOpO1D, :JODtoO1DpD, 
 
                     # New photoionization/ion-involved photodissociation (Roger)
                     :JCO2toCO2pl, :JCO2toOplpCO, :JOtoOpl, :JO2toO2pl, # Nair minimal ionosphere
+
+                    # New neutral photodissociation (from Roger)
+                    :JCO2toCpOpO, :JCO2toCpO2, :JCOtoCpO,
+                  ];
+
+const newJrates = [# New neutral photodissociation (from Roger)
+                    :JN2OtoN2pO1D, :JNO2toNOpO, :JNOtoNpO,
+
+                    # New photoionization/ion-involved photodissociation (Roger)
                     :JCO2toCO2plpl, :JCO2toCplplpO2, :JCO2toCOplpOpl,:JCO2toOplpCplpO, :JCO2toCplpO2, :JCO2toCOplpO, 
                     :JCOtoCpOpl, :JCOtoCOpl,  :JCOtoOpCpl, 
                     :JHtoHpl, 
@@ -134,10 +139,10 @@ const conv_Jrates = [# Original neutral photodissociation
                     :JH2O2toH2O2pl, 
                     :JN2toN2pl, :JN2toNplpN, 
                     :JN2OtoN2Opl, :JNO2toNO2pl, :JNOtoNOpl, 
-                    :JO3toO3pl,
-                  ];
-const Jratelist = [];
+                    :JO3toO3pl
+                ];
 
+const Jratelist = [];
 append!(Jratelist, conv_Jrates)
 append!(Jratelist, newJrates)
 
@@ -212,19 +217,20 @@ const speciesmolmasslist = Dict(:Ar=>40,
 # I used the calcualtions that use "Density functional", "aug-cc-PVDZ", and "mPW1PW91" 
 # because that was the method that gave the closest answer for HD to the experimental value. 
 # I have no idea what any of it means or whether it's reasonable. I'm not a quantum chemist.
-# Values are given in cm^3
-const species_polarizability = Dict(# Values available from experiment
-                                    :Ar=>1.664e-24, :C=>1.760e-24, :CO=>1.953e-24, :CO2=>2.507e-24, 
-                                    :H=>0.667e-24, :H2=>0.787e-24, :H2O=>1.501e-24, :HCN=>2.593e-24, :HD=>0.791e-24, 
-                                    :N=>1.1e-24, :N2=>1.710e-24, :N2O=>2.998e-24, :NO=>1.698e-24, :NO2=>2.910e-24, 
-                                    :O=>0.802e-24,  :O2=>1.59e-24, :O3=>3.079e-24, 
+# Values are given in Å^3 (*10^-24 cm^3)
+const species_polarizability = Dict(:Ar=>1.664e-24, 
+                                    :C=>1.760e-24, :CH=>2.108e-24, :CN=>3.042e-24,
+                                    :CO=>1.953e-24, :CO2=>2.507e-24, 
+                                    :H=>0.667e-24, :H2=>0.787e-24, :H2O=>1.501e-24, :H2O2=>2.143e-24, 
+                                    :HCN=>2.593e-24, :HCO=>2.505, :HNO=>2.123e-24, 
+                                    :HO2=>1.858e-24, :HOCO=>3.224e-24, 
+                                    :N=>1.1e-24, :N2=>1.710e-24,
+                                    :N2O=>2.998e-24, :NH=>1.418e-24, :NH2=>1.752e-24, :NO=>1.698e-24, :NO2=>2.910e-24, 
+                                    :O=>0.802e-24, :O1D=>0.802e-24, :O2=>1.59e-24, :O3=>3.079e-24, :OH=>1.020e-24,
 
-                                    # Values from calculation
-                                    :CH=>2.108e-24, :CN=>3.042e-24, :D=>0.713e-24, :DO2=>1.858e-24, :DOCO=>3.224e-24, 
-                                    :H2O2=>2.143e-24, :HCO=>2.505, :HDO=>1.358e-24, :HDO2=>2.143e-24, :HNO=>2.123e-24, 
-                                    :HO2=>1.858e-24, :HOCO=>3.224e-24, :NH=>1.418e-24, :NH2=>1.752e-24, 
-                                    :O1D=>0.802e-24, :OH=>1.020e-24, :OD=>1.020e-24
-                                    )
+                                    # Neutrals .- deuterated
+                                    :D=>0.713e-24,  # average of similar calculated values from NIST
+                                    :DO2=>1.858e-24, :DOCO=>3.224e-24, :HD=>0.791e-24, :HDO=>1.358e-24, :HDO2=>2.143e-24, :OD=>1.020e-24)
 
 # This dictionary could probably be replaced with some simple regular expression code, but I haven't done it yet.
 const absorber = Dict(:JCO2ion =>:CO2,
@@ -294,48 +300,50 @@ const absorber = Dict(:JCO2ion =>:CO2,
                 );
 
 # Common plot specifications =======================================================
-global speciescolor = Dict(:H => "#ff0000", :D => "#ff0000", # red
-                           :H2 => "#e526d7", :HD =>  "#e526d7", # dark pink/magenta
 
-                           # hydroxides
-                           :OH => "#7700d5", :OD => "#7700d5", # purple
+global speciescolor = Dict( # H group
+                :H => "#ff0000", :D => "#ff0000", # red
+                :H2 => "#e526d7", :HD =>  "#e526d7", # dark pink/magenta
 
-                           # water group (roughly, I ain't a chemist)
-                           :H2O => "#0083dc", :HDO => "#0083dc", # cornflower blue
-                           :H2O2 => "#0000ff", :HDO2 => "#0000ff", # true blue
-                           :HO2 => "#046868", :DO2 => "#046868",  # dark teal
+                # hydroxides
+                :OH => "#7700d5", :OD => "#7700d5", # purple
 
-                           # O group
-                           :O1D => "#808000", # olive
-                           :O => "#1a6115",   # forest green
-                           :O2 => "#15da09",  # kelly/grass green
-                           :O3 => "#269e56",  # light green
+                # water group (roughly, I ain't a chemist)
+                :H2O => "#0083dc", :HDO => "#0083dc", # cornflower blue
+                :H2O2 => "#0000ff", :HDO2 => "#0000ff", # true blue
+                :HO2 => "#046868", :DO2 => "#046868",  # dark teal
 
-                           # CO group
-                           :CO2 => "#000000",   # black
-                           :CO => "#ff6600",    # orange
-                           :HOCO => "#e8ba8c", :DOCO => "#e8ba8c",  #tannish
+                # O group
+                :O1D => "#808000", # olive
+                :O => "#1a6115",   # forest green
+                :O2 => "#15da09",  # kelly/grass green
+                :O3 => "#269e56",  # light green
 
-                           # Other neutrals
-                           :Ar=>"#808080", :C=>"#d9c382", :CH=>"#cea3ce", :CN=>"#6d5000", :HCN=>"#479f5e", :HCO=>"#94c6bf", 
-                           :N=>"#6e748a", :N2=>"#cccccc", :N2O=>"#be8b65", :NCO=>"#633339", :NH=>"#FD8C9B", :NH2=>"#6ceb83", :NO=>"#a27fff", :NO2=>"#fe03cb", 
-                           :HNO=>"#76bcfd",
+                # CO group
+                :CO2 => "#000000",   # black
+                :CO => "#ff6600",    # orange
+                :HOCO => "#e8ba8c", :DOCO => "#e8ba8c",  #tannish
 
-                           # ions
-                           :Arpl=>"#808080", :ArHpl=>"#660000", :ArDpl=>"#660000",
-                           :Cpl=>"#d9c382", :CHpl=>"#cea3ce", :CNpl=>"#6d5000", 
-                           :COpl=>"#ff6600", :CO2pl=>"#000000",  
-                           :Dpl=>"#ff0000", :DCOpl=>"#3366ff", :HDpl=>"#e526d7", :HD2pl=>"#b9675f", :H2Dpl=>"#b9675f",
-                           :Hpl=>"#ff0000", :H2pl=>"#e526d7", :H3pl=>"#b9675f",
-                           :H2Opl=>"#0083dc",  :H3Opl=>"#280041",
-                           :HCNpl=>"#479f5e", :HCNHpl=>"#50455b", 
-                           :HCOpl=>"#3366ff", :HOCpl=>"#5e90ff", :HCO2pl=>"#222222", 
-                           :HNOpl=>"#eb0077", :HN2Opl=>"#a37bb3", :HOCOpl=>"#e8ba8c", :HO2pl=>"#046868", 
-                           :Npl=>"#6e748a", :N2pl=>"#cccccc", :N2Dpl=>"#9a4700", :N2Hpl=>"#9a4700", :N2Opl=>"#be8b65", 
-                           :NHpl=>"#cacdda", :NH2pl=>"#6ceb83", :NH3pl=>"#c8c400", 
-                           :NOpl=>"#a27fff", :NO2pl=>"#fe03cb", 
-                           :Opl=>"#1a6115", :O2pl=>"#15da09", :OHpl=>"#7700d5", 
-                           );
+                # Other neutrals
+                :Ar=>"#808080", :C=>"#d9c382", :CH=>"#cea3ce", :CN=>"#6d5000", :HCN=>"#479f5e", :HCO=>"#94c6bf", 
+                :N=>"#6e748a", :N2=>"#cccccc", :N2O=>"#be8b65", :NCO=>"#633339", :NH=>"#FD8C9B", :NH2=>"#6ceb83", :NO=>"#a27fff", :NO2=>"#fe03cb", 
+                :HNO=>"#76bcfd",
+
+                # ions
+                :Arpl=>"#808080", :ArHpl=>"#660000", :ArDpl=>"#660000",
+                :Cpl=>"#d9c382", :CHpl=>"#cea3ce", :CNpl=>"#6d5000", 
+                :COpl=>"#ff6600", :CO2pl=>"#000000",  
+                :Dpl=>"#ff0000", :DCOpl=>"#3366ff", :HDpl=>"#e526d7", :HD2pl=>"#b9675f", :H2Dpl=>"#b9675f",
+                :Hpl=>"#ff0000", :H2pl=>"#e526d7", :H3pl=>"#b9675f",
+                :H2Opl=>"#0083dc",  :H3Opl=>"#280041",
+                :HCNpl=>"#479f5e", :HCNHpl=>"#50455b", 
+                :HCOpl=>"#3366ff", :HOCpl=>"#5e90ff", :HCO2pl=>"#222222", 
+                :HNOpl=>"#eb0077", :HN2Opl=>"#a37bb3", :HOCOpl=>"#e8ba8c", :HO2pl=>"#046868", 
+                :Npl=>"#6e748a", :N2pl=>"#cccccc", :N2Dpl=>"#9a4700", :N2Hpl=>"#9a4700", :N2Opl=>"#be8b65", 
+                :NHpl=>"#cacdda", :NH2pl=>"#6ceb83", :NH3pl=>"#c8c400", 
+                :NOpl=>"#a27fff", :NO2pl=>"#fe03cb", 
+                :Opl=>"#1a6115", :O2pl=>"#15da09", :OHpl=>"#7700d5", 
+                );
 
 # D group will have dashed lines; neutrals, solid (default)
 global speciesstyle = Dict(:D => "--", :HD => "--", :OD => "--", :HDO => "--", :HDO2 => "--", :DO2 => "--", :DOCO => "--", 
@@ -344,8 +352,6 @@ global speciesstyle = Dict(:D => "--", :HD => "--", :OD => "--", :HDO => "--", :
 medgray = "#444444"
 
 # Crosssection filenames ======================================================
-# There's gotta be a better way to do this. Probably a dictionary of Jrates to strings.
-
 co2file = "CO2.dat"
 co2exfile = "binnedCO2e.csv" # added to shield short λ of sunlight in upper atmo
 h2ofile = "h2oavgtbl.dat"

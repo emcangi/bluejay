@@ -27,10 +27,11 @@ t2 = time()
 
 println("Time to load modules: $(round(t2-t1, digits=1)) seconds")
 
+user_input_paramfile = input("Enter a parameter file or press enter to use default (PARAMETERS.jl): ")
+paramfile = user_input_paramfile == "" ? "PARAMETERS.jl" : user_input_paramfile
 t3 = time()
-include("PARAMETERS.jl")
+include(paramfile)
 t4 = time()
-
 println("Time to load PARAMETERS: $(round(t4-t3, digits=1)) seconds")
 
 t5 = time()
@@ -45,38 +46,10 @@ These functions are required to be in this file for one of two reasons:
    cannot be relocated,
 2) They are the main routine functions and will not be shared by any other scripts.
 
-The Temp(z) function is defined during each run as a shortcut to Tpiecewise(), 
-which takes as arguments the temperatures at the surface, tropopause, and exobase.
-Temp(z) is defined so that those arguments need not be passed constantly. This 
-may be fixed in the future.
-
 For additional functions, see the Photochemistry module.
 =#
 
 # chemistry functions ==========================================================
-
-# TODO: This function isn't currently used. It was used with get_rates_and_fluxes in 
-# mike's original code, which was responsible for printing reaction rates into the h5 file.
-# It might be a good idea to write some new code to store this information in the converged
-# atmosphere files just to have it.
-# function reactionrates(n_current)
-#     #=
-#     Creates an array of size length(intaltgrid) x (number of reactions).
-#     Populated with chemical reaction rates for each reaction based on species
-#     populations.
-#     =#
-    
-#     theserates = fill(convert(Float64, NaN), (length(intaltgrid), length(reactionnet)))
-#     for ialt in 1:length(intaltgrid)
-#         theserates[ialt,:] = reactionrates_local([[n_current[sp][ialt] for sp in specieslist];  # non-vectorized function call
-#                                                 [n_current[J][ialt] for J in Jratelist];
-#                                                 Temp_n(alt[ialt+1]); Temp_i(alt[ialt+1]); Temp_e(alt[ialt+1])]...)
-#                                                 # n_tot(n_current, alt[ialt+1])]...)   # M is no longer pssed in.
-
-                                                
-#     end
-#     return theserates
-# end
 
 function ratefn(nthis, inactive, inactivespecies, activespecies, Jrates, Tn, Ti, Te, tup, tdown, tlower, tupper)
     #=
@@ -309,33 +282,24 @@ function update_Jrates!(n_current::Dict{Symbol, Array{Float64, 1}}; plot_opt_dep
 end
 
 function timeupdate(mytime, thefolder)
-    # plot rates to inspect them! Used while converging an atmosphere.
-    # if PN == 1
-    #     # set up the plots folder on the first iteration
-    #     create_folder("chemeq_plots", join([results_dir[1:end-1], FNext], "/")*"/")
-    #     # Plot initial reaction rates for this timestep
-    #     for s in fullspecieslist
-    #         plot_rxns(s, n_current, [T_surf, T_tropo, T_exo], speciesbclist; plot_indiv_rxns=false, subfolder=FNext, plotsfolder="chemeq_plots", dt=mytime, num=PN)
-    #     end
-    # end
+    #=
+    Key function that runs the update! function and steps the simulation forward.
 
-    numiters = 15
+    mytime: a timestep size, logarithmic, in seconds
+    thefolder: location in which to save the atmospheric state files and plots.
+    =#
+
     for i = 1:numiters
         update!(n_current, mytime)   
         # plot_atm(n_current, [neutrallist, ionlist], thefolder*"/converged_atm_$(FNext).png", t=mytime, iter=i)
-        if mytime == 0.001
+        if mytime == mindt
             println("iter $(i)")
         end
     end
     plot_atm(n_current, [neutrallist, ionlist], thefolder*"/converged_atm_$(FNext).png", t=mytime)  # only plot at the end of the iterations, speeds up code given the way I changed plot_atm.
 
-    # Plot chemical/transport balance and write out the file - only occasionally, to avoid taking too much time.
-    # if (in(PN, [1,2])) || (PN % 7 == 0)
-        # for s in fullspecieslist
-        #     plot_rxns(s, n_current, [T_surf, T_tropo, T_exo], speciesbclist; plot_indiv_rxns=false, subfolder=FNext, plotsfolder="chemeq_plots", dt=mytime, num=PN)
-        # end
-    write_ncurrent(n_current, thefolder*"/ncurrent_$(mytime).h5")  # To keep track of atmosphere state at every timestep, used for plotting later.
-    # end
+    # Write out the current atmospheric state for making plots later 
+    write_ncurrent(n_current, thefolder*"/ncurrent_$(mytime).h5") 
     # Uncomment if trying to examine detailed changes timestep to timestep.
     # plot_atm(n_current, [neutrallist, ionlist], thefolder*"/atm_plot_$(PN).png", t=mytime)
 
@@ -348,7 +312,7 @@ function next_timestep(nstart::Array{Float64, 1}, nthis::Array{Float64, 1},
                        Tn::Array{Float64, 1}, Ti::Array{Float64, 1}, Te::Array{Float64, 1},
                        tup::Array{Float64, 2}, tdown::Array{Float64, 2},
                        tlower::Array{Float64, 2}, tupper::Array{Float64, 2},
-                       dt::Float64)
+                       dt::Float64, abs_tol::Array{Float64, 1})
     #=
     moves to the next timestep using Newton's method on the linearized
     coupled transport and chemical reaction network.
@@ -356,31 +320,44 @@ function next_timestep(nstart::Array{Float64, 1}, nthis::Array{Float64, 1},
 
     eps = 1.0 # ensure at least one iteration
     iter = 0
-    while eps>1e-8 
+
+    abs_criterion = abs_tol # This criterion is 1 ppt, adjusted for density at different altitudes.
+    rel_criterion = 1e-8
+
+    # Set up the array to track whether all elements have met criterion
+    met_criterion = BitArray(undef, length(nthis))
+
+    while !all(met_criterion) # will quit when all elements of met_criterion are true.     # eps>1e-8 # old condition 
         nold = deepcopy(nthis)
 
-        # stuff concentrations into update function and jacobian.
-        ratefn_output = dt*ratefn(nthis, inactive, inactivespecies, activespecies, Jrates, Tn, Ti, Te,  
-                                          tup, tdown, tlower, tupper)  #Eulerian (P*L) * dt
-
-        # println("Eulerian update (dt*ratefn / nthis): $(ratefn_output ./ nthis)")
-        fval = nthis - nstart - ratefn_output
+        # stuff concentrations into update function and jacobian. This is the Eulerian (P*L) * dt
+        fval = nthis - nstart - dt*ratefn(nthis, inactive, inactivespecies, activespecies, Jrates, Tn, Ti, Te,  
+                                          tup, tdown, tlower, tupper) 
         
         updatemat = chemJmat(nthis, inactive, activespecies, inactivespecies, Jrates, Tn, Ti, Te, 
                              tup, tdown, tlower, tupper, dt)
-        # updatemat_divided_by_fval = updatemat \ fval  # backslash - matrix solution operator
 
-        # for i in range(1, length=length(nthis))
-        #     if ratefn_output[i]/nthis[i] > 1e-6  # Eulerian update  
-        #         nthis[i] = nthis[i] - updatemat_divided_by_fval[i]
-        #     end
+        nthis = nthis - (updatemat \ fval)
+
+        # Check whether error tolerance is met         
+        abs_eps = abs.(nthis-nold) ./ abs_criterion  # calculated for every species.
+        rel_eps = (abs.(nthis-nold)./nold) ./ rel_criterion
+        # eps = maximum(abs.(nthis-nold)./nold) # old epsilon
+
+        # Check each element to see if < 1. 
+        abs_bool = abs_eps .< 1
+        rel_bool = rel_eps .< 1
+
+        # Assign values to the array that governs when the loop runs.
+        met_criterion = abs_bool .| rel_bool
+
+        # if all(met_criterion)
+        #     println("All elements of nthis have met the tolerance after $(iter) iterations")
         # end
-        nthis = nthis - (updatemat \ fval)#updatemat_divided_by_fval #
-        # check relative size of update
-        eps = maximum(abs.(nthis-nold)./nold)
+
         iter += 1
-        if iter>3e3
-            throw("too many iterations in next_timestep! eps: $(eps)")
+        if iter>1e3
+            throw("too many iterations in next_timestep! number of elements that met the criteria: $(count(met_criterion))/$(length(met_criterion))")
         end
     end
 
@@ -396,11 +373,14 @@ function update!(n_current::Dict{Symbol, Array{Float64, 1}}, dt; plotJratesflag=
     =#
 
     # set auxiliary (not solved for in chemistry) species values, photolysis rates
-    inactive = deepcopy(Float64[[n_current[sp][ialt] for sp in inactivespecies, ialt in 1:length(intaltgrid)]...])
-    Jrates = deepcopy(Float64[n_current[sp][ialt] for sp in Jratelist, ialt in 1:length(intaltgrid)])
+    inactive = deepcopy(Float64[[n_current[sp][ialt] for sp in inactivespecies, ialt in 1:length(non_bdy_layers)]...])
+    Jrates = deepcopy(Float64[n_current[sp][ialt] for sp in Jratelist, ialt in 1:length(non_bdy_layers)])
 
     # extract concentrations
-    nstart = deepcopy([[n_current[sp][ialt] for sp in activespecies, ialt in 1:length(intaltgrid)]...])
+    nstart = deepcopy([[n_current[sp][ialt] for sp in activespecies, ialt in 1:length(non_bdy_layers)]...])
+    # Next line calculates 1 ppt of the total density at each altitude - used for absolute error tolerance.
+    # This gets it into the same shape as nstart.
+    ppt_vals = 1e-12 .* [[n_tot(n_current, a) for sp in activespecies, a in non_bdy_layers]...]
 
     # plot J rates if required
     if plotJratesflag 
@@ -437,8 +417,8 @@ function update!(n_current::Dict{Symbol, Array{Float64, 1}}, dt; plotJratesflag=
     end
 
     nthis = next_timestep(nstart, nthis, inactive, activespecies, inactivespecies, Jrates, Tn, Ti, Te,
-                          tup, tdown, tlower, tupper, dt)
-    nthismat = reshape(nthis, (length(activespecies), length(intaltgrid)))
+                          tup, tdown, tlower, tupper, dt, ppt_vals)
+    nthismat = reshape(nthis, (length(activespecies), length(non_bdy_layers)))
 
     # write found values out to n_current
     for s in 1:length(activespecies)
@@ -512,8 +492,9 @@ if make_new_alt_grid=="y"
     end
 elseif make_new_alt_grid=="n"
     # Set up the converged file to read from and load the simulation state at init.
-    file_to_use = input("Enter the name of a file containing a converged, 250 km atmosphere to use (press enter to use default): ")   # TODO: revert
-    readfile = file_to_use == "" ? "converged_250km_atmosphere.h5" : file_to_use
+    defaultatm = "4wdDae_notquiteconverged.h5"
+    file_to_use = input("Enter the name of a file containing a converged, 250 km atmosphere to use (press enter to use default: $(defaultatm)): ")   # TODO: revert
+    readfile = file_to_use == "" ?  defaultatm : file_to_use
     n_current = get_ncurrent(readfile)
 else
     error("Didn't understand response")
@@ -665,7 +646,7 @@ else
 end
 
 # plot all 3 profiles on top of each other
-plot_temp_prof([Temp_n(a) for a in alt], results_dir*sim_folder_name, i_temps=[Temp_i(a) for a in alt], e_temps=[Temp_e(a) for a in alt])
+plot_temp_prof([Temp_n(a) for a in alt], savepath=results_dir*sim_folder_name, i_temps=[Temp_i(a) for a in alt], e_temps=[Temp_e(a) for a in alt])
 
 
 ################################################################################
@@ -712,9 +693,17 @@ end
 n_current[:H2O] = H2Oinitfrac.*map(z->n_tot(n_current, z), non_bdy_layers)
 n_current[:HDO] = 2 * DH * n_current[:H2O] # This should be the correct way to set the HDO profile.
 # n_current[:HDO] = HDOinitfrac.*map(z->n_tot(n_current, z), non_bdy_layers) # OLD WAY that is wrong.
+
+
 # We still have to calculate the HDO initial fraction in order to calculate the pr um 
 # and make water plots.
 HDOinitfrac = n_current[:HDO] ./ map(z->n_tot(n_current, z), non_bdy_layers)  
+
+# ADD EXCESS WATER AS FOR DUST STORMS. TODO: revert
+# H2Oppm = 1e-6*map(x->250 .* exp(-((x-42)/12.5)^2), non_bdy_layers/1e5) + H2Oinitfrac  # 250 ppm at 42 km (peak)
+# HDOppm = 1e-6*map(x->0.350 .* exp(-((x-38)/12.5)^2), non_bdy_layers/1e5) + HDOinitfrac  # 350 ppb at 38 km (peak)
+# n_current[:H2O] = H2Oppm .* map(z->n_tot(n_current, z), non_bdy_layers)
+# n_current[:HDO] = HDOppm .* map(z->n_tot(n_current, z), non_bdy_layers)
 
 # Compute total water column for logging and checking that we did things right =
 # H2O #/cm^3 (whole atmosphere) = sum(MR * n_tot) for each alt
@@ -825,7 +814,8 @@ arglist_local = [activespecies; active_above; active_below; inactivespecies;
 
 arglist_local_typed = [:($s::Float64) for s in arglist_local]
 
-# These expressions which are evaluated below enable a more accurate assessment of M and E values.
+# These expressions which are evaluated below enable a more accurate assessment of M and E values
+# by calculating at the time of being called rather than only at each timestep.
 Mexpr = Expr(:call, :+, fullspecieslist...)
 Eexpr = Expr(:call, :+, ionlist...)
 
@@ -878,542 +868,18 @@ end
 end
 
 
-# TODO: this function is not currently used. It's used with reactionrates to 
-# write reaction rates to the .h5 file, originally done in Mike's version of the 
-# model. It would be useful to include this functionality in this version of the code.
-# @eval begin
-#     function reactionrates_local($(specieslist...), $(Jratelist...), T, M)
-#          a function to return chemical reaction rates for specified species
-#            concentrations 
-#         M = $Mexpr
-#         E = $Eexpr
-
-#         $(Expr(:vcat, map(x->Expr(:call,:*,x[1]..., x[3]), reactionnet)...))
-#     end
-# end
-
 ################################################################################
 #                         PHOTOCHEMICAL CROSS SECTIONS                         #
 ################################################################################
 println("Populating cross section dictionary...")
-# Change following line as needed depending on local machine
-xsecfolder = research_dir * "uvxsect/";
 
-# Crosssection Files ===========================================================
-co2file = "CO2.dat"
-co2exfile = "binnedCO2e.csv" # added to shield short λ of sunlight in upper atmo
-h2ofile = "h2oavgtbl.dat"
-hdofile = "HDO.dat"#"HDO_250K.dat"#
-h2o2file = "H2O2.dat"
-hdo2file = "H2O2.dat" #TODO: do HDO2 xsects exist?
-o3file = "O3.dat"
-o3chapfile = "O3Chap.dat"
-o2file = "O2.dat"
-o2_130_190 = "130-190.cf4"
-o2_190_280 = "190-280.cf4"
-o2_280_500 = "280-500.cf4"
-h2file = "binnedH2.csv"
-hdfile = "binnedH2.csv" # TODO: change this to HD file if xsects ever exist
-ohfile = "binnedOH.csv"
-oho1dfile = "binnedOHo1D.csv"
-odfile = "OD.csv"
+crosssection = populate_xsect_dict([T_surf, T_tropo, T_exo])#, o3xdata)
 
-# NEW: files for crosssections of specific photodissociation/photoionization
-# Source: Roger Yelle
-# Order has changed compared to the order in the Jrates list and the absorber dict,
-# for ease of reading.
-H2O_ionize_file = "JH2OtoH2Opl.csv"
-H2O_ionOdiss_file = "JH2OtoOplpH2.csv"
-H2O_ionHdiss_file = "JH2OtoHplpOH.csv"
-H2O_ionOHdiss_file = "JH2OtoOHplpH.csv"
-
-CO_diss_file = "JCOtoCpO.csv"
-CO_ionize_file = "JCOtoCOpl.csv"
-CO_ionOdiss_file = "JCOtoCpOpl.csv"
-CO_ionCdiss_file = "JCOtoOpCpl.csv"
-
-N2_diss_file = "JN2OtoN2pO1D.csv"
-N2_ionize_file = "JN2toN2pl.csv"
-N2_iondiss_file = "JN2toNplpN.csv"
-NO2_diss_file = "JNO2toNOpO.csv"
-NO2_ionize_file = "JNO2toNO2pl.csv"
-NO_diss_file = "JNOtoNpO.csv"
-NO_ionize_file = "JNOtoNOpl.csv"
-N2O_ionize_file = "JN2OtoN2Opl.csv"
-
-H_ionize_file = "JHtoHpl.csv"
-H2_ion_file = "JH2toH2pl.csv"
-H2_iondiss_file = "JH2toHplpH.csv"
-
-CO2_totaldiss_file = "JCO2toCpOpO.csv"
-CO2_diss_file = "JCO2toCpO2.csv"
-CO2_ionize_file = "JCO2toCO2pl.csv"
-CO2_doubleion_file = "JCO2toCO2plpl.csv"
-CO2_ionC2diss_file = "JCO2toCplplpO2.csv"
-CO2_ionCdiss_file = "JCO2toCplpO2.csv"
-CO2_ionCOandOdiss_file = "JCO2toCOplpOpl.csv"
-CO2_ionCOdiss_file = "JCO2toCOplpO.csv"
-CO2_ionOdiss_file = "JCO2toOplpCO.csv"
-CO2_ionCandOdiss_file = "JCO2toOplpCplpO.csv"
-
-H2O2_ionize_file = "JH2O2toH2O2pl.csv"
-
-O_ionize_file = "JOtoOpl.csv"
-O2_ionize_file = "JO2toO2pl.csv"#"O2-photoionize-swri.csv"#
-O3_ionize_file = "JO3toO3pl.csv"
-
-# Loading Data =================================================================
-# CO2 photodissociation --------------------------------------------------------
-# temperature-dependent between 195-295K
-co2xdata = readdlm(xsecfolder*co2file,'\t', Float64, comments=true, comment_char='#')
-
-# CO2 photoionization (used to screen high energy sunlight)
-# co2exdata = readdlm(xsecfolder*co2exfile,',',Float64, comments=true, comment_char='#')
-
-# H2O & HDO --------------------------------------------------------------------
-h2oxdata = readdlm(xsecfolder*h2ofile,'\t', Float64, comments=true, comment_char='#')
-
-# These crosssections for HDO are for 298K.
-hdoxdata = readdlm(xsecfolder*hdofile,'\t', Float64, comments=true, comment_char='#')
-
-# H2O2 + HDO2 ------------------------------------------------------------------
-# the data in the following table cover the range 190-260nm
-h2o2xdata = readdlm(xsecfolder*h2o2file,'\t', Float64, comments=true, comment_char='#')
-hdo2xdata = readdlm(xsecfolder*hdo2file,'\t', Float64, comments=true, comment_char='#')
-
-# O3 ---------------------------------------------------------------------------
-# including IR bands which must be resampled from wavenumber
-o3xdata = readdlm(xsecfolder*o3file,'\t', Float64, comments=true, comment_char='#')
-o3ls = o3xdata[:,1]
-o3xs = o3xdata[:,2]
-o3chapxdata = readdlm(xsecfolder*o3chapfile,'\t', Float64, comments=true, comment_char='#')
-o3chapxdata[:,1] = map(p->1e7/p, o3chapxdata[:,1])
-for i in [round(Int, floor(minimum(o3chapxdata[:,1]))):round(Int, ceil(maximum(o3chapxdata))-1);]
-    posss = getpos(o3chapxdata, x->i<x<i+1)
-    dl = diff([map(x->o3chapxdata[x[1],1], posss); i])
-    x = map(x->o3chapxdata[x[1],2],posss)
-    ax = reduce(+,map(*,x, dl))/reduce(+,dl)
-    global o3ls = [o3ls; i+0.5]
-    global o3xs = [o3xs; ax]
-end
-o3xdata = reshape([o3ls; o3xs],length(o3ls),2)
-
-# O2 ---------------------------------------------------------------------------
-o2xdata = readdlm(xsecfolder*o2file,'\t', Float64, comments=true, comment_char='#')
-o2schr130K = readdlm(xsecfolder*o2_130_190,'\t', Float64, comments=true, comment_char='#')
-o2schr130K[:,1] = map(p->1e7/p, o2schr130K[:,1])
-o2schr130K = binupO2(o2schr130K)
-o2schr190K = readdlm(xsecfolder*o2_190_280,'\t', Float64, comments=true, comment_char='#')
-o2schr190K[:,1] = map(p->1e7/p, o2schr190K[:,1])
-o2schr190K = binupO2(o2schr190K)
-o2schr280K = readdlm(xsecfolder*o2_280_500,'\t', Float64, comments=true, comment_char='#')
-o2schr280K[:,1] = map(p->1e7/p, o2schr280K[:,1])
-o2schr280K = binupO2(o2schr280K)
-
-# HO2 & DO2 --------------------------------------------------------------------
-ho2xsect = [190.5:249.5;]
-ho2xsect = reshape([ho2xsect; map(ho2xsect_l, ho2xsect)],length(ho2xsect),2)
-do2xsect = deepcopy(ho2xsect)
-
-# H2 & HD ----------------------------------------------------------------------
-h2xdata = readdlm(xsecfolder*h2file,',',Float64, comments=true, comment_char='#')
-hdxdata = readdlm(xsecfolder*hdfile,',',Float64, comments=true, comment_char='#')
-
-# OH & OD ----------------------------------------------------------------------
-ohxdata = readdlm(xsecfolder*ohfile,',',Float64, comments=true, comment_char='#')
-ohO1Dxdata = readdlm(xsecfolder*oho1dfile,',',Float64, comments=true, comment_char='#')
-odxdata = readdlm(xsecfolder*odfile,',',Float64, comments=true, comment_char='#')
-
-# PHOTODISSOCIATION ============================================================
+# Solar Input ==================================================================
 
 const solarflux=readdlm(research_dir*solarfile,'\t', Float64, comments=true, comment_char='#')[1:2000,:]
 solarflux[:,2] = solarflux[:,2]/2  # To roughly put everything at an SZA=60° (from a Kras comment)
 
-absorber = Dict(:JCO2ion =>:CO2,
-                :JCO2toCOpO =>:CO2,
-                :JCO2toCOpO1D =>:CO2,
-                :JO2toOpO =>:O2,
-                :JO2toOpO1D =>:O2,
-                :JO3toO2pO =>:O3,
-                :JO3toO2pO1D =>:O3,
-                :JO3toOpOpO =>:O3,
-                :JH2toHpH =>:H2,
-                :JHDtoHpD => :HD,
-                :JOHtoOpH =>:OH,
-                :JOHtoO1DpH =>:OH,
-                :JODtoOpD =>:OD,
-                :JODtoO1DpD => :OD,
-                :JHO2toOHpO =>:HO2,
-                :JDO2toODpO => :DO2,
-                :JH2OtoHpOH =>:H2O,
-                :JH2OtoH2pO1D =>:H2O,
-                :JH2OtoHpHpO =>:H2O,
-                :JH2O2to2OH =>:H2O2,
-                :JH2O2toHO2pH =>:H2O2,
-                :JH2O2toH2OpO1D =>:H2O2,
-                :JHDO2toHDOpO1D => :HDO2,
-                :JHDOtoHpOD=>:HDO,
-                :JHDO2toOHpOD=>:HDO2,
-                :JHDO2toDO2pH => :HDO2,
-                :JHDO2toHO2pD => :HDO2,
-                :JHDOtoDpOH=>:HDO,
-                :JHDOtoHpDpO=>:HDO,
-                :JHDOtoHDpO1D=>:HDO,
-                # NEW: reactions from Roger's model. 
-                :JH2OtoH2Opl=>:H2O,
-                :JH2OtoOplpH2=>:H2O,
-                :JCOtoCpO=>:CO,
-                :JCOtoCOpl=>:CO,
-                :JN2OtoN2pO1D =>:N2O,
-                :JH2toH2pl=>:H2,
-                :JCOtoCpOpl=>:CO,
-                :JNO2toNOpO=>:NO2,
-                :JCO2toCpO2=>:CO2,
-                :JCO2toCplplpO2=>:CO2,
-                :JNOtoNOpl=>:NO,
-                :JH2toHplpH=>:H2,
-                :JH2OtoHplpOH=>:H2O,
-                :JH2O2toH2O2pl=>:H2O2,
-                :JN2toN2pl=>:N2,
-                :JCO2toCOplpOpl=>:CO2,
-                :JCOtoOpCpl=>:CO,
-                :JCO2toOplpCplpO=>:CO2,
-                :JNOtoNpO=>:NO,
-                :JCO2toCplpO2=>:CO2,
-                :JCO2toCO2pl=>:CO2,
-                :JOtoOpl=>:O,
-                :JH2OtoOHplpH=>:H2O,
-                :JNO2toNO2pl=>:NO2,
-                :JCO2toCOplpO=>:CO2,
-                :JN2toNplpN=>:N2,
-                :JCO2toCpOpO=>:CO2,
-                :JCO2toCO2plpl=>:CO2,
-                :JCO2toOplpCO=>:CO2,
-                :JO2toO2pl=>:O2,
-                :JHtoHpl=>:H,
-                :JN2OtoN2Opl=>:N2O,
-                :JO3toO3pl=>:O3
-                );
-
-#=
-    this is a dictionary of the 1-nm photodissociation or photoionization
-    cross-sections important in the atmosphere. keys are symbols found in
-    jratelist. each entry is an array of arrays, yielding the wavelengths
-    and cross-sections for each altitude in the atmosphere.
-
-    NOTE: jspecies refers to the photodissociation or photoionization
-    cross section for a particular species which produces a UNIQUE SET OF
-    PRODUCTS. In this sense, crosssection has already folded in quantum
-    efficiency considerations.
-=#
-crosssection = Dict{Symbol, Array{Array{Float64}}}()
-
-# CO2 photodissociation --------------------------------------------------------
-# setindex!(crosssection, fill(co2exdata, length(alt)), :JCO2ion)
-
-#CO2+hv->CO+O
-setindex!(crosssection,
-          map(xs->quantumyield(xs,((l->l>167, 1), (l->95>l, 0.5))),
-          map(t->co2xsect(co2xdata, t),map(Temp_n, alt))), :JCO2toCOpO)
-#CO2+hv->CO+O1D
-setindex!(crosssection,
-          map(xs->quantumyield(xs,((l->95<l<167, 1), (l->l<95, 0.5))),
-          map(t->co2xsect(co2xdata, t),map(Temp_n, alt))), :JCO2toCOpO1D)
-
-# O2 photodissociation ---------------------------------------------------------
-#O2+hv->O+O
-setindex!(crosssection,
-          map(xs->quantumyield(xs,((x->x>175, 1),)), map(t->o2xsect(o2xdata, o2schr130K, o2schr190K, o2schr280K, t), map(Temp_n, alt))),
-          :JO2toOpO)
-#O2+hv->O+O1D
-setindex!(crosssection,
-          map(xs->quantumyield(xs,((x->x<175, 1),)), map(t->o2xsect(o2xdata, o2schr130K, o2schr190K, o2schr280K, t), map(Temp_n, alt))),
-          :JO2toOpO1D)
-
-# O3 photodissociation ---------------------------------------------------------
-# O3+hv->O2+O
-setindex!(crosssection,
-          map(t->quantumyield(o3xdata,
-                              (
-                               (l->l<193, 1-(1.37e-2*193-2.16)),
-                               (l->193<=l<225, l->(1 .- (1.37e-2*l-2.16))),
-                               (l->225<=l<306, 0.1),
-                               (l->306<=l<328, l->(1 .- O3O1Dquantumyield(l, t))),
-                               (l->328<=l<340, 0.92),
-                               (l->340<=l, 1.0)
-                              )), map(Temp_n, alt)), :JO3toO2pO)
-# O3+hv->O2+O1D
-setindex!(crosssection,
-          map(t->quantumyield(o3xdata,
-                              (
-                               (l->l<193, 1.37e-2*193-2.16),
-                               (l->193<=l<225, l->(1.37e-2*l-2.16)),
-                               (l->225<=l<306, 0.9),
-                               (l->306<=l<328, l->O3O1Dquantumyield(l, t)),
-                               (l->328<=l<340, 0.08),
-                               (l->340<=l, 0.0)
-                              )), map(Temp_n, alt)), :JO3toO2pO1D)
-# O3+hv->O+O+O
-setindex!(crosssection,
-          fill(quantumyield(o3xdata,((x->true, 0.),)),length(alt)),
-          :JO3toOpOpO)
-
-# H2 and HD photodissociation --------------------------------------------------
-# H2+hv->H+H
-setindex!(crosssection, fill(h2xdata, length(alt)), :JH2toHpH)
-# HD+hν -> H+D 
-setindex!(crosssection, fill(hdxdata, length(alt)), :JHDtoHpD)
-
-# OH and OD photodissociation --------------------------------------------------
-# OH+hv->O+H
-setindex!(crosssection, fill(ohxdata, length(alt)), :JOHtoOpH)
-# OH+hv->O1D+H
-setindex!(crosssection, fill(ohO1Dxdata, length(alt)), :JOHtoO1DpH)
-# OD + hv -> O+D  
-setindex!(crosssection, fill(odxdata, length(alt)), :JODtoOpD)
-# OD + hν -> O(¹D) + D 
-setindex!(crosssection, fill(ohO1Dxdata, length(alt)), :JODtoO1DpD)
-
-# HO2 and DO2 photodissociation ------------------------------------------------
-# HO2 + hν -> OH + O
-setindex!(crosssection, fill(ho2xsect, length(alt)), :JHO2toOHpO)
-# DO2 + hν -> OD + O
-setindex!(crosssection, fill(do2xsect, length(alt)), :JDO2toODpO)
-
-# H2O and HDO photodissociation ------------------------------------------------
-# H2O+hv->H+OH
-setindex!(crosssection,
-          fill(quantumyield(h2oxdata,((x->x<145, 0.89),(x->x>145, 1))),length(alt)),
-          :JH2OtoHpOH)
-
-# H2O+hv->H2+O1D
-setindex!(crosssection,
-          fill(quantumyield(h2oxdata,((x->x<145, 0.11),(x->x>145, 0))),length(alt)),
-          :JH2OtoH2pO1D)
-
-# H2O+hv->H+H+O
-setindex!(crosssection,
-          fill(quantumyield(h2oxdata,((x->true, 0),)),length(alt)),
-          :JH2OtoHpHpO)
-
-# HDO + hν -> H + OD
-setindex!(crosssection,
-          fill(quantumyield(hdoxdata,((x->x<145, 0.5*0.89),(x->x>145, 0.5*1))),length(alt)),
-          :JHDOtoHpOD)
-
-# HDO + hν -> D + OH
-setindex!(crosssection,
-          fill(quantumyield(hdoxdata,((x->x<145, 0.5*0.89),(x->x>145, 0.5*1))),length(alt)),
-          :JHDOtoDpOH)
-
-# HDO + hν -> HD + O1D
-setindex!(crosssection,
-          fill(quantumyield(hdoxdata,((x->x<145, 0.11),(x->x>145, 0))),length(alt)),
-          :JHDOtoHDpO1D)
-
-# HDO + hν -> H + D + O
-setindex!(crosssection,
-          fill(quantumyield(hdoxdata,((x->true, 0),)),length(alt)),
-          :JHDOtoHpDpO)
-
-
-# H2O2 and HDO2 photodissociation ----------------------------------------------
-setindex!(crosssection,
-          map(xs->quantumyield(xs,((x->x<230, 0.85),(x->x>230, 1))),
-          map(t->h2o2xsect(h2o2xdata, t), map(Temp_n, alt))), :JH2O2to2OH)
-
-# H2O2+hv->HO2+H
-setindex!(crosssection,
-          map(xs->quantumyield(xs,((x->x<230, 0.15),(x->x>230, 0))),
-          map(t->h2o2xsect(h2o2xdata, t), map(Temp_n, alt))), :JH2O2toHO2pH)
-
-# H2O2+hv->H2O+O1D
-setindex!(crosssection,
-          map(xs->quantumyield(xs,((x->true, 0),)), map(t->h2o2xsect(h2o2xdata, t),
-          map(Temp_n, alt))), :JH2O2toH2OpO1D)
-
-# HDO2 + hν -> OH + OD
-setindex!(crosssection,
-          map(xs->quantumyield(xs,((x->x<230, 0.85),(x->x>230, 1))),
-          map(t->hdo2xsect(hdo2xdata, t), map(Temp_n, alt))), :JHDO2toOHpOD)
-
-# HDO2 + hν-> DO2 + H
-setindex!(crosssection,
-          map(xs->quantumyield(xs,((x->x<230, 0.5*0.15),(x->x>230, 0))),
-          map(t->hdo2xsect(hdo2xdata, t), map(Temp_n, alt))), :JHDO2toDO2pH)
-
-# HDO2 + hν-> HO2 + D
-setindex!(crosssection,
-          map(xs->quantumyield(xs,((x->x<230, 0.5*0.15),(x->x>230, 0))),
-          map(t->hdo2xsect(hdo2xdata, t), map(Temp_n, alt))), :JHDO2toHO2pD)
-
-# HDO2 + hν -> HDO + O1D
-setindex!(crosssection,
-          map(xs->quantumyield(xs,((x->true, 0),)), map(t->hdo2xsect(hdo2xdata, t),
-          map(Temp_n, alt))), :JHDO2toHDOpO1D)
-
-# NEW: CO2 photodissociation ---------------------------------------------------------
-# Source: Roger Yelle
-# CO₂ + hν -> C + O + O
-CO2_totaldiss_data = readdlm(xsecfolder*CO2_totaldiss_file,',',Float64, comments=true, comment_char='#')
-setindex!(crosssection, fill(CO2_totaldiss_data, length(alt)), :JCO2toCpOpO)
-
-# CO2 + hν -> C + O₂
-CO2_diss_data = readdlm(xsecfolder*CO2_diss_file,',',Float64, comments=true, comment_char='#')
-setindex!(crosssection, fill(CO2_diss_data, length(alt)), :JCO2toCpO2)
-
-# NEW: CO photodissociation ---------------------------------------------------------
-# Source: Roger Yelle
-
-# CO + hν -> C + O
-CO_diss_data = readdlm(xsecfolder*CO_diss_file,',',Float64, comments=true, comment_char='#')
-setindex!(crosssection, fill(CO_diss_data, length(alt)), :JCOtoCpO)
-
-
-# NEW: Nitrogen species photodissociation --------------------------------------------
-# Source: Roger Yelle
-
-# N₂ + hν -> N₂ + O(¹D)
-N2_diss_data = readdlm(xsecfolder*N2_diss_file,',',Float64, comments=true, comment_char='#')
-setindex!(crosssection, fill(N2_diss_data, length(alt)), :JN2OtoN2pO1D)
-
-# NO₂ + hν -> NO + O
-NO2_diss_data = readdlm(xsecfolder*NO2_diss_file,',',Float64, comments=true, comment_char='#')
-setindex!(crosssection, fill(NO2_diss_data, length(alt)), :JNO2toNOpO)
-
-# NO + hν -> N + O
-NO_diss_data = readdlm(xsecfolder*NO_diss_file,',',Float64, comments=true, comment_char='#')
-setindex!(crosssection, fill(NO_diss_data, length(alt)), :JNOtoNpO)
-
-# Photoionization or ionizing dissociation reactions ============================================
-
-# NEW: CO₂ ionization -----------------------------------------------------------------
-# Source: Roger Yelle
-
-# CO₂ + hν -> CO₂⁺
-CO2_ionize_data = readdlm(xsecfolder*CO2_ionize_file, ',', Float64, comments=true, comment_char='#')  # NOTE: replaced with Mike's file 19-Jan-2021.
-setindex!(crosssection, fill(CO2_ionize_data, length(alt)), :JCO2toCO2pl)
-
-# CO₂ + hν -> CO₂²⁺  (even though we don't track doubly ionized CO₂)
-CO2_doubleion_data = readdlm(xsecfolder*CO2_doubleion_file,',',Float64, comments=true, comment_char='#')
-setindex!(crosssection, fill(CO2_doubleion_data, length(alt)), :JCO2toCO2plpl)
-
-# CO₂ + hν -> C²⁺ + O₂
-CO2_ionC2diss_data = readdlm(xsecfolder*CO2_ionC2diss_file,',',Float64, comments=true, comment_char='#')
-setindex!(crosssection, fill(CO2_ionC2diss_data, length(alt)), :JCO2toCplplpO2)
-
-# CO₂ + hν -> C⁺ + O₂
-CO2_ionCdiss_data = readdlm(xsecfolder*CO2_ionCdiss_file,',',Float64, comments=true, comment_char='#')
-setindex!(crosssection, fill(CO2_ionCdiss_data, length(alt)), :JCO2toCplpO2)
-
-# CO₂ + hν -> CO⁺ + O⁺
-CO2_ionCOandOdiss_data = readdlm(xsecfolder*CO2_ionCOandOdiss_file,',',Float64, comments=true, comment_char='#')
-setindex!(crosssection, fill(CO2_ionCOandOdiss_data, length(alt)), :JCO2toCOplpOpl)
-
-# CO₂ + hν -> CO⁺ + O
-CO2_ionCOdiss_data = readdlm(xsecfolder*CO2_ionCOdiss_file,',',Float64, comments=true, comment_char='#')
-setindex!(crosssection, fill(CO2_ionCOdiss_data, length(alt)), :JCO2toCOplpO)
-
-# CO₂ + hν -> CO + O⁺
-CO2_ionOdiss_data = readdlm(xsecfolder*CO2_ionOdiss_file,',',Float64, comments=true, comment_char='#')
-setindex!(crosssection, fill(CO2_ionOdiss_data, length(alt)), :JCO2toOplpCO)
-
-# CO₂ + hν -> C⁺ + O⁺ + O
-CO2_ionCandOdiss_data = readdlm(xsecfolder*CO2_ionCandOdiss_file,',',Float64, comments=true, comment_char='#')
-setindex!(crosssection, fill(CO2_ionCandOdiss_data, length(alt)), :JCO2toOplpCplpO)
-
-# NEW: H2O ionization --------------------------------------------------------------
-# Source: Roger Yelle
-
-# H2O + hν -> H2O⁺
-h2o_ionize_data = readdlm(xsecfolder*H2O_ionize_file, ',', Float64, comments=true, comment_char='#')
-setindex!(crosssection, fill(h2o_ionize_data, length(alt)), :JH2OtoH2Opl)
-
-# H2O + hν -> O⁺ + H2
-h2o_ionOdiss_data = readdlm(xsecfolder*H2O_ionOdiss_file, ',', Float64, comments=true, comment_char='#')
-setindex!(crosssection, fill(h2o_ionOdiss_data, length(alt)), :JH2OtoOplpH2)
-
-# # H2O + hν -> H⁺ + OH
-h2o_ionHdiss_data = readdlm(xsecfolder*H2O_ionHdiss_file, ',', Float64, comments=true, comment_char='#')
-setindex!(crosssection, fill(h2o_ionHdiss_data, length(alt)), :JH2OtoHplpOH)
-
-# # H2O + hν -> OH⁺ + H
-h2o_ionOHdiss_data = readdlm(xsecfolder*H2O_ionOHdiss_file, ',', Float64, comments=true, comment_char='#')
-setindex!(crosssection, fill(h2o_ionOHdiss_data, length(alt)), :JH2OtoOHplpH)
-
-# # NEW: CO ionization ----------------------------------------------------------------
-# # Source: Roger Yelle
-
-# # CO + hν -> CO⁺
-CO_ionize_data = readdlm(xsecfolder*CO_ionize_file,',',Float64, comments=true, comment_char='#')
-setindex!(crosssection, fill(CO_ionize_data, length(alt)), :JCOtoCOpl)
-
-# # CO + hν -> C + O⁺
-CO_ionOdiss_data = readdlm(xsecfolder*CO_ionOdiss_file,',',Float64, comments=true, comment_char='#')
-setindex!(crosssection, fill(CO_ionOdiss_data, length(alt)), :JCOtoCpOpl)
-
-# # CO + hν -> C⁺ + O
-CO_ionCdiss_data = readdlm(xsecfolder*CO_ionCdiss_file,',',Float64, comments=true, comment_char='#')
-setindex!(crosssection, fill(CO_ionCdiss_data, length(alt)), :JCOtoOpCpl)
-
-# NEW: Nitrogen species ionization --------------------------------------------------
-# Source: Roger Yelle
-
-# # N₂ + hν -> N₂⁺
-N2_ionize_data = readdlm(xsecfolder*N2_ionize_file,',',Float64, comments=true, comment_char='#')
-setindex!(crosssection, fill(N2_ionize_data, length(alt)), :JN2toN2pl)
-
-# # N₂ + hν -> N⁺ + N
-N2_iondiss_data = readdlm(xsecfolder*N2_iondiss_file,',',Float64, comments=true, comment_char='#')
-setindex!(crosssection, fill(N2_iondiss_data, length(alt)), :JN2toNplpN)
-
-# # NO₂ + hν -> NO₂⁺
-NO2_ionize_data = readdlm(xsecfolder*NO2_ionize_file,',',Float64, comments=true, comment_char='#')
-setindex!(crosssection, fill(NO2_ionize_data, length(alt)), :JNO2toNO2pl)
-
-# # NO + hν -> NO⁺
-NO_ionize_data = readdlm(xsecfolder*NO_ionize_file,',',Float64, comments=true, comment_char='#')
-setindex!(crosssection, fill(NO_ionize_data, length(alt)), :JNOtoNOpl)
-
-# # N₂O + hν -> N₂O⁺
-N2O_ionize_data = readdlm(xsecfolder*N2O_ionize_file,',',Float64, comments=true, comment_char='#')
-setindex!(crosssection, fill(N2O_ionize_data, length(alt)), :JN2OtoN2Opl)
-
-# # NEW: Molecular and atomic hydrogen ionization -------------------------------------
-# # Source: Roger Yelle
-
-# # H + hν -> H⁺
-H_ionize_data = readdlm(xsecfolder*H_ionize_file,',',Float64, comments=true, comment_char='#')
-setindex!(crosssection, fill(H_ionize_data, length(alt)), :JHtoHpl)
-
-# # H₂ + hν -> H₂⁺
-H2_ion_data = readdlm(xsecfolder*H2_ion_file,',',Float64, comments=true, comment_char='#')
-setindex!(crosssection, fill(H2_ion_data, length(alt)), :JH2toH2pl)
-
-# # H₂ + hν -> H⁺ + H
-H2_iondiss_data = readdlm(xsecfolder*H2_iondiss_file,',',Float64, comments=true, comment_char='#')
-setindex!(crosssection, fill(H2_iondiss_data, length(alt)), :JH2toHplpH)
-
-# # H₂O₂ + hν -> H₂O₂⁺
-H2O2_ionize_data = readdlm(xsecfolder*H2O2_ionize_file,',',Float64, comments=true, comment_char='#')
-setindex!(crosssection, fill(H2O2_ionize_data, length(alt)), :JH2O2toH2O2pl)
-
-# # NEW: Oxygen and ozone ionization --------------------------------------------------
-# # Source: Roger Yelle
-
-# O + hν -> O⁺
-O_iondiss_data = readdlm(xsecfolder*O_ionize_file,',',Float64, comments=true, comment_char='#')
-setindex!(crosssection, fill(O_iondiss_data, length(alt)), :JOtoOpl)
-
-# O₂ + hν -> O₂⁺
-O2_ionize_data = readdlm(xsecfolder*O2_ionize_file,',',Float64, comments=true, comment_char='#')
-setindex!(crosssection, fill(O2_ionize_data, length(alt)), :JO2toO2pl)
-
-# # O₃ + hν -> O₃⁺
-O3_ionize_data = readdlm(xsecfolder*O3_ionize_file,',',Float64, comments=true, comment_char='#')
-setindex!(crosssection, fill(O3_ionize_data, length(alt)), :JO3toO3pl)
-
-# Solar Input ==================================================================
 lambdas = Float64[]
 for j in Jratelist, ialt in 1:length(alt)
     global lambdas = union(lambdas, crosssection[j][ialt][:,1])
@@ -1442,10 +908,7 @@ xsect_dict = Dict("CO2"=>[co2file],
                   "O3"=>[o3file, o3chapfile],
                   "O2"=>[o2file, o2_130_190, o2_190_280, o2_280_500],
                   "H2, HD"=>[h2file, hdfile],
-                  "OH, OD"=>[ohfile, oho1dfile, odfile],
-                  "CO2pl"=>[CO2_diss_file, CO2_ionOdiss_file],
-                  "O2pl"=>[O2_ionize_file],
-                  "Opl"=>[O_ionize_file])
+                  "OH, OD"=>[ohfile, oho1dfile, odfile])
 
 # Log temperature and water parameters =========================================
 if args[1]=="temp"
