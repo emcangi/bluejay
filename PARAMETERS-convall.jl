@@ -2,8 +2,7 @@
 # PARAMETERS-conv1.jl
 # TYPE: (1) Model files - required
 # DESCRIPTION: Use only when converging an atmosphere after introducing ions, as
-# step 3. Adds N-bearing neutrals and all ions to an atmosphere that contains 
-# standard neutrals, C, CH, HCO, and the Nair minimal ions.
+# step 1. Converges the minimal ionosphere as specified by Nair 1994.
 # 
 # Eryn Cangi
 # Created December 2019
@@ -23,7 +22,7 @@ const mH = 1.67e-24;            # g
 const marsM = 0.1075*5.972e27;  # g 
 const radiusM = 3396e5;         # cm
 const q = 4.8032e-10            # statcoulomb (cm^1.5 g^0.5 s^-1)
-const DH = 5.5 * 1.6e-4         # SMOW value from Yung 1988
+const DH = 5.5 * 1.6e-4               # SMOW value from Yung 1988
 
 # Altitude grid discretization =================================================
 const alt = convert(Array, (0:2e5:250e5)) # TODO: Figure out how to get this without being hard-coded
@@ -72,22 +71,18 @@ const MR_mean_water = 1.38e-4
 const dt_min_and_max = Dict("neutrals"=>[-4, 14], "ions"=>[-4, 6], "both"=>[-4, 14])
 const rel_tol = 1e-3
 
+
 # Species, Jrates, and which are active ========================================
 
 # !----------------- You may modify per simulation starting here -------------------!
 const conv_neutrals = [:Ar, :CO, :CO2, :H, :H2, :H2O, :H2O2, :HO2, :HOCO, :N2, 
                        :O, :O1D, :O2, :O3, :OH,
-                       :D, :DO2, :DOCO, :HD, :HDO, :HDO2, :OD,
-
-                        # new neutrals that are incorporated
-                       :C, :CH, :HCO,];
+                       :D, :DO2, :DOCO, :HD, :HDO, :HDO2, :OD,];
 const N_species = [:N2O, :NO2, :CN, :HCN, :HNO, :N, :NH, :NH2, :NO];
-const new_neutrals = [# neutrals which are new 
-                       :N2O, :NO2, :CN, :HCN, :HNO, :N, :NH, :NH2, :NO
-                     ];
-const conv_ions = [:CO2pl, :HCO2pl, :Opl, :O2pl, ];# Nair minimal ionosphere 
-                  
-const new_ions = [:Arpl, :ArHpl, :Cpl, :CHpl, :CNpl, :COpl, 
+const new_neutrals = [:C, :CH, :HCO, :N2O, :NO2, :CN, :HCN, :HNO, :N, :NH, :NH2, :NO];
+const conv_ions = [];
+const new_ions = [:CO2pl, :HCO2pl, :Opl, :O2pl, # Nair minimal ionosphere 
+                  :Arpl, :ArHpl, :Cpl, :CHpl, :CNpl, :COpl, 
                   :Hpl, :H2pl, :H2Opl, :H3pl, :H3Opl,
                   :HCNpl, :HCNHpl, :HCOpl, 
                   :HNOpl, :HN2Opl, :HOCpl, :HO2pl, 
@@ -95,16 +90,16 @@ const new_ions = [:Arpl, :ArHpl, :Cpl, :CHpl, :CNpl, :COpl,
                   :OHpl,
                   # Deuterated ions
                   :ArDpl, :Dpl, :DCOpl, :HDpl, :HD2pl, :H2Dpl, :N2Dpl
-                 ]; # should have but don't: HDO+, DO2+ 
+                 ];
 
 # To converge neutrals: add conv_ions to nochemspecies and notransportspecies.
 # To converge ions: add setdiff(conv_neutrals, N_species) to nochemspecies and notransportspecies.
 # This is because the N chemistry is intimiately tied up with the ions.
-const nochemspecies = [];
-const notransportspecies = [];
+const nochemspecies = [];#:Ar, :N2];
+const notransportspecies = [];#:Ar, :N2]; 
 
-append!(nochemspecies, conv_neutrals)  # NOTE: This is what to change EVERY TIME YOU RUN until you find a better way
-append!(notransportspecies, conv_neutrals)  # NOTE: This is what to change EVERY TIME YOU RUN until you find a better way
+# append!(nochemspecies, conv_neutrals)  # NOTE: This is what to change EVERY TIME YOU RUN until you find a better way
+# append!(notransportspecies, conv_neutrals)  # NOTE: This is what to change EVERY TIME YOU RUN until you find a better way
 
 # Photolysis and Photoionization rate symbol lists
 const conv_Jrates = [# Original neutral photodissociation
@@ -117,18 +112,14 @@ const conv_Jrates = [# Original neutral photodissociation
                     :JHDOtoHpOD, :JHDOtoDpOH, :JHDO2toOHpOD,
                     :JHDOtoHDpO1D, :JHDOtoHpDpO, :JODtoOpD, :JHDtoHpD, :JDO2toODpO,
                     :JHDO2toDO2pH, :JHDO2toHO2pD, :JHDO2toHDOpO1D, :JODtoO1DpD, 
-
-                    # New photoionization/ion-involved photodissociation (Roger)
-                    :JCO2toCO2pl, :JCO2toOplpCO, :JOtoOpl, :JO2toO2pl, # Nair minimal ionosphere
-
-                    # New neutral photodissociation (from Roger)
-                    :JCO2toCpOpO, :JCO2toCpO2, :JCOtoCpO,
                   ];
 
 const newJrates = [# New neutral photodissociation (from Roger)
+                    :JCO2toCpOpO, :JCO2toCpO2, :JCOtoCpO,
                     :JN2OtoN2pO1D, :JNO2toNOpO, :JNOtoNpO,
 
                     # New photoionization/ion-involved photodissociation (Roger)
+                    :JCO2toCO2pl, :JCO2toOplpCO, :JOtoOpl, :JO2toO2pl, # Nair minimal ionosphere
                     :JCO2toCO2plpl, :JCO2toCplplpO2, :JCO2toCOplpOpl,:JCO2toOplpCplpO, :JCO2toCplpO2, :JCO2toCOplpO, 
                     :JCOtoCpOpl, :JCOtoCOpl,  :JCOtoOpCpl, 
                     :JHtoHpl, 
@@ -158,7 +149,7 @@ append!(fullspecieslist, ionlist)
 
 const neutrallist = setdiff(fullspecieslist, ionlist)
 
-const specieslist = fullspecieslist;  
+const specieslist=fullspecieslist;  
 
 const chemspecies = setdiff(specieslist, nochemspecies);
 const transportspecies = setdiff(specieslist, notransportspecies);
@@ -299,7 +290,6 @@ const absorber = Dict(:JCO2ion =>:CO2,
                 );
 
 # Common plot specifications =======================================================
-
 const speciescolor = Dict( # H group
                 :H => "#ff0000", :D => "#ff0000", # red
                 :H2 => "#e526d7", :HD =>  "#e526d7", # dark pink/magenta
@@ -452,9 +442,9 @@ const reactionnet = [   #Photodissociation
              [[:O3], [:O3pl], :JO3toO3pl],
 
              # recombination of O
-             [[:O, :O, :M], [:O2, :M], :(1.8 .* 3.0e-33 .* (300 ./ Tn) .^ 3.25)], # Deighan 2012 # Checked no dups 
-             [[:O, :O2, :N2], [:O3, :N2], :(5e-35 .* exp.(724 ./ Tn))], # Checked no dups 
-             [[:O, :O2, :CO2], [:O3, :CO2], :(2.5 .* 6.0e-34 .* (300 ./ Tn) .^ 2.4)], # Burkholder2020 # Checked no dups 
+             [[:O, :O, :M], [:O2, :M], :(1.8 .* 3.0e-33 .* (300 ./ Tn) .^ 3.25)], # Deighan 2012 
+             [[:O, :O2, :N2], [:O3, :N2], :(5e-35 .* exp.(724 ./ Tn))], 
+             [[:O, :O2, :CO2], [:O3, :CO2], :(2.5 .* 6.0e-34 .* (300 ./ Tn) .^ 2.4)], # Burkholder2020 
              [[:O, :O3], [:O2, :O2], :(8.0e-12 .* exp.(-2060 ./ Tn))],  # Burkholder 2020
              # [[:O, :CO, :M], [:CO2, :M], :(2.2e-33 .* exp.(-1780 ./ Tn))],  # DUPLICATE - commented out in favor of Roger's reaction
 
@@ -580,15 +570,15 @@ const reactionnet = [   #Photodissociation
              [[:CO, :OH], [:CO2, :H], threebodyca(:(1.5e-13 .* (Tn ./ 300.) .^ 0.6),:(2.1e9 .* (Tn ./ 300.) .^ 6.1))], # Sander2011
              [[:CO, :OD], [:CO2, :D], threebodyca(:(1.5e-13 .* (Tn ./ 300.) .^ 0.6),:(2.1e9 .* (Tn ./ 300.) .^ 6.1))], # Yung88: same as H-ana.
              ### possible deuterated analogues below
-             [[:OH, :CO], [:HOCO], threebody(:(5.9e-33 .* (Tn ./ 300.) .^ -1.4),:(1.1e-12 .* (Tn ./ 300.) .^ 1.3))], # Sander2011
-             [[:OD, :CO], [:DOCO], threebody(:(5.9e-33 .* (Tn ./ 300.) .^ -1.4),:(1.1e-12 .* (Tn ./ 300.) .^ 1.3))],
+             [[:OH, :CO], [:HOCO], threebody(:(5.9e-33 .* (Tn ./ 300.) .^ -1.4), :(1.1e-12 .* (Tn ./ 300.) .^ 1.3))], # Sander2011
+             [[:OD, :CO], [:DOCO], threebody(:(5.9e-33 .* (Tn ./ 300.) .^ -1.4), :(1.1e-12 .* (Tn ./ 300.) .^ 1.3))],
 
              [[:HOCO, :O2], [:HO2, :CO2], :(2.09e-12)], # verified NIST 4/3/18
              [[:DOCO, :O2], [:DO2,:CO2], :(2.09e-12)],  # assumed?
 
              # CO2+ attack on molecular hydrogen
              [[:CO2pl, :H2], [:CO2, :H, :H], :(8.7e-10)], # from Kras 2010 ./ Scott 1997
-             [[:CO2pl, :HD], [:CO2pl, :H, :D], :((2/5) .* 8.7e-10)],
+             [[:CO2pl, :HD], [:CO2pl, :H, :D], :((2 ./ 5) .* 8.7e-10)],
 
              # NEW .- Neutral reactions from Roger Yelle
              # Type 1
@@ -613,7 +603,7 @@ const reactionnet = [   #Photodissociation
              [[:CN, :O], [:NO, :C], :(5.37e-11 .* exp.(-13800.0 ./ Tn))],  # KIDA: :(3.81e-11 .* (Tn ./ 300) .^ 0.5 .* exp.(-14500 ./ Tn))
              [[:CO2, :CH], [:HCO, :CO], :((1.70e-14 .* Tn .^ 0.5) .* exp.(-3000.0 ./ Tn))],  # KIDA: :(2.94e-13 .* (Tn ./ 300) .^ 0.5 .* exp.(3000 ./ Tn))
              [[:CO2, :H], [:CO, :OH], :(3.38e-10 .* exp.(-13163.0 ./ Tn))],  # KIDA: :(2.51e-10 .* exp.(-13300 ./ Tn))
-             [[:CO2, :N], [:NO, :CO], :(3.20e-13 .* exp.(-1710.0 ./ Tn))],  # KIDA agrees 
+             # [[:CO2, :N], [:NO, :CO], :(3.20e-13 .* exp.(-1710.0 ./ Tn))],  # KIDA agrees 
              [[:CO2, :O], [:O2, :CO], :(2.46e-11 .* exp.(-26567.0 ./ Tn))], # KIDA agrees
              [[:H2, :C], [:CH, :H], :(6.64e-10 .* exp.(-11700.0 ./ Tn))],  # KIDA agrees
              [[:H2O, :H], [:OH, :H2], :((1.69e-14 .* Tn .^ 1.2) .* exp.(-9610.0 ./ Tn))], # KIDA :(6.82e-12 .* (Tn ./ 300) .^ 1.6 .* exp.(-9720 ./ Tn))

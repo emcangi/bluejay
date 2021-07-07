@@ -12,11 +12,11 @@ using SparseArrays
 using LinearAlgebra
 using PlotUtils
 
-export charge_type, create_folder, deletefirst, fluxsymbol, getpos, input, next_in_loop, searchdir, search_subfolders,         # Basic utility functions
+export charge_type, create_folder, deletefirst, find_nonfinites, fluxsymbol, getpos, input, next_in_loop, searchdir, search_subfolders,         # Basic utility functions
        get_colors, get_grad_colors, plot_atm, plot_bg, plot_extinction, plot_Jrates, plot_rxns, plot_temp_prof,                # plotting functions
             plot_water_profile,     
        get_column_rates, make_ratexdensity, rxn_chem, rxn_photo,                                                               # Reaction rate functions
-       get_ncurrent, write_ncurrent, n_tot,                                                                                    # Atmosphere array manipulation
+       flatten_atm, get_ncurrent, n_tot, unflatten_atm, write_ncurrent,                                                                  # Atmosphere array manipulation
        boundaryconditions, effusion_velocity,                                                                                  # Boundary condition functions
        Dcoef, fluxcoefs, flux_pos_and_neg, get_flux, Keddy, lower_up, scaleH, upper_down, #total_H_or_D_flux,                  # transport functions
        chemical_jacobian, getrate, lossequations, loss_rate, meanmass, production_equations, production_rate,                  # Chemistry functions
@@ -27,15 +27,33 @@ export charge_type, create_folder, deletefirst, fluxsymbol, getpos, input, next_
 
 # Load the parameter file ==========================================================
 # TODO: Make this smarter somehow
+
+# Standard case for doing science!
+# include("/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS.jl")     
+# println("NOTICE: Parameter file in use is /home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS.jl")
+
+# Files for slowly incorporating ions into the atmosphere.
 # include("/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-conv1.jl")     
 # println("NOTICE: Parameter file in use is /home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-conv1.jl")
-# include("/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-conv2.jl")     
-# println("NOTICE: Parameter file in use is /home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-conv2.jl")
-# include("/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-conv3.jl")
-# println("NOTICE: Parameter file in use is /home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-conv3.jl")
+ #include("/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-conv2.jl")     
+ #println("NOTICE: Parameter file in use is /home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-conv2.jl")
+ include("/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-conv3.jl")
+ println("NOTICE: Parameter file in use is /home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-conv3.jl")
+#include("/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-convall.jl")
+#println("NOTICE: Parameter file in use is /home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-convall.jl")
 
-include("/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS.jl")     
-println("NOTICE: Parameter file in use is /home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS.jl")
+
+# For using the final neutral atmosphere from 2020 paper, and messing around with it 
+# include("/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-NeutralsOnly.jl")     
+# println("NOTICE: Parameter file in use is /home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-NeutralsOnly.jl")
+
+# Converge a CO2 only atmosphere, no chemistry. Starts from scratch.
+# include("/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-CO2Only.jl")     
+# println("NOTICE: Parameter file in use is /home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-CO2Only.jl")
+
+# Build up the neutral atmosphere starting with the basic CO2 atmosphere converged using the files in the lines directly above.
+# include("/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-buildupatm.jl")     
+# println("NOTICE: Parameter file in use is /home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-buildupatm.jl")
 
 # include("/home/emc/GDrive-CU/Research-Modeling/FractionationFactor/Code/PARAMETERS.jl")
 # println("NOTICE: Parameter file in use is /home/emc/GDrive-CU/Research-Modeling/FractionationFactor/Code/PARAMETERS.jl")
@@ -87,6 +105,16 @@ function deletefirst(A::Array, v)
     index = something(findfirst(isequal(v), A), 0)  # this horrible syntax introduced by Julia.
     keep = setdiff([1:length(A);],index)
     return A[keep]
+end
+
+function find_nonfinites(collection; collec_name="collection")
+    #=
+    Alert to any nonfinite values (inf or nan) in collection.
+    =#
+    nonfinites = findall(x->x==0, map(el->isfinite(el), collection))
+    if length(nonfinites) != 0
+        throw("ALERT: Found nonfinite values in $(collec_name) at indices $(nonfinites)")
+    end
 end
 
 function fluxsymbol(x)
@@ -921,7 +949,7 @@ end
 function get_column_rates(sp, ncur, controltemps, bcdict)
     #=
     I can't believe I haven't written this function earlier, but it calculates total column rates 
-    for a given reaction. Bonus: the returned arrays are sorted, so you can just look at
+    for all reactions of species sp. Bonus: the returned arrays are sorted, so you can just look at
     sorted_prod[1] to get the top production mechanism, etc. Note that the returns are NOT dictionaries!!!
     
     sp: species for which to search for reactions
@@ -1098,6 +1126,19 @@ function rxn_photo(ncur, reactant::Symbol, Jrate)
 end
 
 # Atmosphere array manipulation ================================================
+function flatten_atm(atmdict, splist)
+    #=
+    Given a dictionary of atmospheric densities by altitude, atmdict, 
+    this function flattens it to the form 
+    [n_sp1(z=0), n_sp2(z=0)...n_sp1(z=250)...n_spN(z=250)] for the species included in splist.
+    This function is the reverse of unflatten_atm. 
+
+    splist: either 'fullspecieslist' or 'activespecies' or 'inactivespecies'
+    =#
+
+    return deepcopy(Float64[[atmdict[sp][ialt] for sp in splist, ialt in 1:length(non_bdy_layers)]...])
+end
+
 function get_ncurrent(readfile::String)
     #=
     Retrieves the matrix of species concentrations by altitude from an HDF5
@@ -1131,6 +1172,33 @@ function n_tot(ncur, z)
     =#
     thisaltindex = n_alt_index[z]
     return sum( [ncur[s][thisaltindex] for s in specieslist] )
+end
+
+function unflatten_atm(n_vec, splist)
+    #=
+    Accepts a flattened density vector of N total species of the form 
+    [n_sp1(z=0), n_sp2(z=0)...n_sp1(z=250)...n_spN(z=250)] and transforms it back into a 
+    user-readable dictionary where the keys are species names and the values are the density
+    arrays by altitude.
+
+    splist: either 'fullspecieslist' or 'activespecies'
+
+    This function is the reverse of flatten_atm.
+    =#
+
+    n_dict = Dict{Symbol,Array{Float64,1}}()
+    for s in splist
+        n_dict[s] = 1 * similar(non_bdy_layers)
+    end
+    n_matrix = reshape(n_vec, (length(splist), num_layers))
+
+    for s in 1:length(splist)
+        for ia in 1:num_layers
+            tn = n_matrix[s, ia]
+            n_dict[splist[s]][ia] = tn > 0. ? tn : 0.  # prevents negative concentrations
+        end
+    end
+    return n_dict
 end
 
 function write_ncurrent(ncur, filename::String)
@@ -1284,7 +1352,7 @@ These coefficients then describe the diffusion velocity at the top
 and bottom of the atmosphere.
 =#
 
-function Dcoef(T, ntot, species::Symbol)
+function Dcoef(Tp, species::Symbol, ncur, z)#(T, ntot, species::Symbol)
     #=
     Calculates the molecular diffusion coefficient for an atmospheric layer.
     D = AT^s/n, from Banks and Kockarts Aeronomy, part B, pg 41, eqn 15.30 and table 15.2 footnote.
@@ -1298,8 +1366,11 @@ function Dcoef(T, ntot, species::Symbol)
     nlist: the neutrallist as defined in PARAMETERS.jl, 
     =#
 
-    dparms = diffparams(species)
-    return dparms[1]*1e17*T^(dparms[2])/ntot
+    Ddict = Dict("neutral"=>(diffparams(species)[1]*1e17*T^(diffparams(species)[2]))/n_tot(ncur, z), 
+         "ion"=>(kB * Tp) / (speciesmolmasslist[species] * mH * (sum([2*pi*(((species_polarizability[n]*q^2)/((1/(speciesmolmasslist[species] * mH) + 1/(speciesmolmasslist[n] * mH))^(-1)))^0.5)*ncur[n][n_alt_index[z]]] for n in neutrallist)[1])))
+    #dparms = diffparams(species)
+    #return dparms[1]*1e17*T^(dparms[2])/ntot
+    return Ddict[charge_type[species]]
 end
 
 function Da_coef(Tp, species::Symbol, ncur, z)
@@ -1797,7 +1868,7 @@ end
 
 # chemistry functions ==========================================================
 
-function chemical_jacobian(chemnetwork, transportnetwork, specieslist, dspecieslist)
+function chemical_jacobian(chemnetwork, transportnetwork, specieslist, dspecieslist; chem_on=true, trans_on=true)
     #= 
     Compute the symbolic chemical jacobian of a supplied chemnetwork and transportnetwork
     for the specified specieslist. Returns three arrays suitable for
@@ -1864,7 +1935,7 @@ function chemical_jacobian(chemnetwork, transportnetwork, specieslist, dspeciesl
     return (ivec, jvec, tvec) # Expr(:vcat, tvec...))  # 
 end
 
-function getrate(chemnet, transportnet, species::Symbol)
+function getrate(chemnet, transportnet, species::Symbol; chem_on=true, trans_on=true)
     #=
     Creates a symbolic expression for the rate at which a given species is
     either produced or lost. Production is from chemical reaction yields or
@@ -1872,15 +1943,28 @@ function getrate(chemnet, transportnet, species::Symbol)
     or migration to other layers.
     =#
     rate = :(0.0)
+    
+    chem_prod = Dict(0=>0, 
+                     1=>production_rate(chemnet, species))
+
+    chem_loss = Dict(0=>0,
+                     1=>loss_rate(chemnet, species))
+
+    trans_prod = Dict(0=>0, 
+                     1=>production_rate(transportnet, species))
+
+    trans_loss = Dict(0=>0,
+                     1=>loss_rate(transportnet, species))
+
     if issubset([species],chemspecies)
-        rate = :($rate
-               + $(production_rate(chemnet, species))
-               - $(      loss_rate(chemnet, species)))
+        rate = :($rate 
+                 + $(chem_prod[chem_on]) 
+                 - $(chem_loss[chem_on]))
     end
     if issubset([species],transportspecies)
-        rate = :($rate
-               + $(production_rate(transportnet, species))
-               - $(      loss_rate(transportnet, species)))
+        rate = :($rate 
+                 + $(trans_prod[trans_on]) 
+                 - $(trans_loss[trans_on]))
     end
 
     return rate
@@ -2668,9 +2752,9 @@ function T_all(z::Float64, Tsurf::Float64, Ttropo::Float64, Texo::Float64, sptyp
         end
     elseif ztropo < z <= 130e5   # upper atmosphere until neutrals, ions, electrons diverge
         return Texo - (Texo - Ttropo)*exp(-((z-ztropo)^2)/(8e10*Texo))
-    elseif ztropo - ztropowidth < z <= ztropo  # tropopause
+    elseif (ztropo - ztropowidth) < z <= ztropo  # tropopause
         return Ttropo
-    elseif z < ztropo-ztropowidth  # lower atmosphere
+    elseif z <= ztropo-ztropowidth  # lower atmosphere; <= makes it work for isothermal atm
         return Tsurf + lapserate*z
     end
 end

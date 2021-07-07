@@ -23,8 +23,7 @@ const mH = 1.67e-24;            # g
 const marsM = 0.1075*5.972e27;  # g 
 const radiusM = 3396e5;         # cm
 const q = 4.8032e-10            # statcoulomb (cm^1.5 g^0.5 s^-1)
-DH = 5.5 * 1.6e-4               # SMOW value from Yung 1988
-PN = 1                          # a number to append to some plot filenames. so ugly but it's the easiest way
+const DH = 5.5 * 1.6e-4               # SMOW value from Yung 1988
 
 # Altitude grid discretization =================================================
 const alt = convert(Array, (0:2e5:250e5)) # TODO: Figure out how to get this without being hard-coded
@@ -39,62 +38,62 @@ const upper_lower_bdy_i = Int64(upper_lower_bdy / 2e5) # the uppermost layer at 
 const zmin = alt[1]
 const zmax = alt[end];
 const dz = alt[2]-alt[1];
-n_alt_index=Dict([z=>clamp((i-1),1, num_layers) for (i, z) in enumerate(alt)])
+const n_alt_index=Dict([z=>clamp((i-1),1, num_layers) for (i, z) in enumerate(alt)])
 
-hygropause_alt = 40e5
+const hygropause_alt = 40e5
 
 # Temperatures and water stuff =================================================
-global meanTs = 216.0
-global meanTt = 130.0
-global meanTe = 205.0
-global meantemps = [meanTs, meanTt, meanTe]
+const meanTs = 216.0
+const meanTt = 130.0
+const meanTe = 205.0
+const meantemps = [meanTs, meanTt, meanTe]
 
-global meanTsint = 216
-global meanTtint = 130
-global meanTeint = 205
+const meanTsint = 216
+const meanTtint = 130
+const meanTeint = 205
 
 # These are the low and high values for the "standard atmosphere and reasonable 
 # climate variations" cases. NOT the full range of temperatures used to make the
 # detailed cases stuff, because those include temps up to 350 K.
-global lowTs = 160.0
-global hiTs = 270.0
-global lowTt = 100.0
-global hiTt = 160.0
-global lowTe = 150.0
-global hiTe = 250.0
+const lowTs = 160.0
+const hiTs = 270.0
+const lowTt = 100.0
+const hiTt = 160.0
+const lowTe = 150.0
+const hiTe = 250.0
 
-global highestTe = 350.0  # This is the highest exobase temperature considered.
+const highestTe = 350.0  # This is the highest exobase temperature considered.
                           # AFAIK this parameter is only used in making the 3-panel
                           # temperature profile plot.
 
-MR_mean_water = 1.38e-4
+const MR_mean_water = 1.38e-4
 
-# Timesteps and iterations =====================================================
-dt_min_and_max = Dict("neutrals"=>[-3, 14], "ions"=>[-4, 6], "both"=>[-4, 14])
-numiters = 15 # number of iterations per timestep. you can increase if having trouble converging
+# Timesteps and general simulation parameters =================================
+const dt_min_and_max = Dict("neutrals"=>[-4, 14], "ions"=>[-4, 6], "both"=>[-4, 14])
+const rel_tol = 1e-3
 
 # Species, Jrates, and which are active ========================================
 
 # !----------------- You may modify per simulation starting here -------------------!
-conv_neutrals = [:Ar, :CO, :CO2, :H, :H2, :H2O, :H2O2, :HO2, :HOCO, :N2, 
-                 :O, :O1D, :O2, :O3, :OH,
-                 :D, :DO2, :DOCO, :HD, :HDO, :HDO2, :OD,];
-N_species = [:N2O, :NO2, :CN, :HCN, :HNO, :N, :NH, :NH2, :NO];
-new_neutrals = [# neutrals which are new but successfully incorporated
-                 :C, :CH, :HCO, #:N2O, :NO2, :CN, :HCN, :HNO, :N, :NH, :NH2, :NO
-                 ];
-conv_ions = [:CO2pl, :HCO2pl, :Opl, :O2pl, # Nair minimal ionosphere 
-            ];# should have but don't: HDO+, DO2+ 
-new_ions = [
-             # :Arpl, :ArHpl, :Cpl, :CHpl, :CNpl, :COpl, 
-             # :Hpl, :H2pl, :H2Opl, :H3pl, :H3Opl,
-             # :HCNpl, :HCNHpl, :HCOpl, 
-             # :HNOpl, :HN2Opl, :HOCpl, :HO2pl, 
-             # :Npl,  :NHpl, :NH2pl, :NH3pl, :N2pl, :N2Hpl, :N2Opl, :NOpl, :NO2pl,
-             # :OHpl,
-             # # Deuterated ions
-             # :ArDpl, :Dpl, :DCOpl, :HDpl, :HD2pl, :H2Dpl, :N2Dpl
-            ];
+const conv_neutrals = [:Ar, :CO, :CO2, :H, :H2, :H2O, :H2O2, :HO2, :HOCO, :N2, 
+                       :O, :O1D, :O2, :O3, :OH,
+                       :D, :DO2, :DOCO, :HD, :HDO, :HDO2, :OD,];
+const N_species = [:N2O, :NO2, :CN, :HCN, :HNO, :N, :NH, :NH2, :NO];
+const new_neutrals = [# neutrals which are new but successfully incorporated
+                      :C, :CH, :HCO, #:N2O, :NO2, :CN, :HCN, :HNO, :N, :NH, :NH2, :NO
+                     ];
+const conv_ions = [:CO2pl, :HCO2pl, :Opl, :O2pl, # Nair minimal ionosphere 
+                  ];# should have but don't: HDO+, DO2+ 
+const new_ions = [
+                 # :Arpl, :ArHpl, :Cpl, :CHpl, :CNpl, :COpl, 
+                 # :Hpl, :H2pl, :H2Opl, :H3pl, :H3Opl,
+                 # :HCNpl, :HCNHpl, :HCOpl, 
+                 # :HNOpl, :HN2Opl, :HOCpl, :HO2pl, 
+                 # :Npl,  :NHpl, :NH2pl, :NH3pl, :N2pl, :N2Hpl, :N2Opl, :NOpl, :NO2pl,
+                 # :OHpl,
+                 # # Deuterated ions
+                 # :ArDpl, :Dpl, :DCOpl, :HDpl, :HD2pl, :H2Dpl, :N2Dpl
+                ];
 
 # To converge neutrals: add conv_ions to nochemspecies and notransportspecies.
 # To converge ions: add setdiff(conv_neutrals, N_species) to nochemspecies and notransportspecies.
@@ -153,9 +152,9 @@ append!(fullspecieslist, conv_neutrals)
 append!(fullspecieslist, new_neutrals)
 append!(fullspecieslist, ionlist)
 
-neutrallist = setdiff(fullspecieslist, ionlist)
+const neutrallist = setdiff(fullspecieslist, ionlist)
 
-specieslist=fullspecieslist;  
+const specieslist=fullspecieslist;  
 
 const chemspecies = setdiff(specieslist, nochemspecies);
 const transportspecies = setdiff(specieslist, notransportspecies);
@@ -165,8 +164,8 @@ const inactivespecies = intersect(nochemspecies, notransportspecies)
 # NEW - for handling different water behavior in upper/lower atmo
 # Get the position of H2O and HDO symbols within active species. This is used so that we can control its behavior differently
 # in different parts of the atmosphere.
-H2Oi = findfirst(x->x==:H2O, activespecies)
-HDOi = findfirst(x->x==:HDO, activespecies)
+const H2Oi = findfirst(x->x==:H2O, activespecies)
+const HDOi = findfirst(x->x==:HDO, activespecies)
 
 #  Useful dictionaries ==========================================================
 # List of D bearing species and their H analogues. INCOMPLETE, only has ions right now because we don't need the neutral analogue list.
@@ -297,7 +296,7 @@ const absorber = Dict(:JCO2ion =>:CO2,
 
 # Common plot specifications =======================================================
 
-global speciescolor = Dict( # H group
+const speciescolor = Dict( # H group
                 :H => "#ff0000", :D => "#ff0000", # red
                 :H2 => "#e526d7", :HD =>  "#e526d7", # dark pink/magenta
 
@@ -342,29 +341,29 @@ global speciescolor = Dict( # H group
                 );
 
 # D group will have dashed lines; neutrals, solid (default)
-global speciesstyle = Dict(:D => "--", :HD => "--", :OD => "--", :HDO => "--", :HDO2 => "--", :DO2 => "--", :DOCO => "--", 
+const speciesstyle = Dict(:D => "--", :HD => "--", :OD => "--", :HDO => "--", :HDO2 => "--", :DO2 => "--", :DOCO => "--", 
                            :ArDpl=>"--", :Dpl=>"--", :DCOpl=>"--", :HDpl=>"--", :HD2pl=>"--", :H2Dpl=>"-.", :N2Dpl=>"--");
                 
-medgray = "#444444"
+const medgray = "#444444"
 
 # Crosssection filenames ======================================================
-co2file = "CO2.dat"
-co2exfile = "binnedCO2e.csv" # added to shield short λ of sunlight in upper atmo
-h2ofile = "h2oavgtbl.dat"
-hdofile = "HDO.dat"#"HDO_250K.dat"#
-h2o2file = "H2O2.dat"
-hdo2file = "H2O2.dat" #TODO: do HDO2 xsects exist?
-o3file = "O3.dat"
-o3chapfile = "O3Chap.dat"
-o2file = "O2.dat"
-o2_130_190 = "130-190.cf4"
-o2_190_280 = "190-280.cf4"
-o2_280_500 = "280-500.cf4"
-h2file = "binnedH2.csv"
-hdfile = "binnedH2.csv" # TODO: change this to HD file if xsects ever exist
-ohfile = "binnedOH.csv"
-oho1dfile = "binnedOHo1D.csv"
-odfile = "OD.csv"
+const co2file = "CO2.dat"
+const co2exfile = "binnedCO2e.csv" # added to shield short λ of sunlight in upper atmo
+const h2ofile = "h2oavgtbl.dat"
+const hdofile = "HDO.dat"#"HDO_250K.dat"#
+const h2o2file = "H2O2.dat"
+const hdo2file = "H2O2.dat" #TODO: do HDO2 xsects exist?
+const o3file = "O3.dat"
+const o3chapfile = "O3Chap.dat"
+const o2file = "O2.dat"
+const o2_130_190 = "130-190.cf4"
+const o2_190_280 = "190-280.cf4"
+const o2_280_500 = "280-500.cf4"
+const h2file = "binnedH2.csv"
+const hdfile = "binnedH2.csv" # TODO: change this to HD file if xsects ever exist
+const ohfile = "binnedOH.csv"
+const oho1dfile = "binnedOHo1D.csv"
+const odfile = "OD.csv"
 
 # Chemistry ====================================================================
 # function to replace three body rates with the recommended expression
@@ -381,7 +380,7 @@ threebodyca(k0, kinf) = :($k0 ./ (1 .+ $k0 ./ ($kinf ./ M)).*0.6 .^ ((1 .+ (log1
 # reactions and multipliers on base rates for deuterium reactions from Yung
 # 1988; base rates from this work or Chaffin+ 2017. Note: below, H-ana means 
 # the same reaction but with only H-bearing species.
-reactionnet = [   #Photodissociation
+const reactionnet = [   #Photodissociation
              [[:CO2], [:CO, :O], :JCO2toCOpO],
              [[:CO2], [:CO, :O1D], :JCO2toCOpO1D],
              [[:O2], [:O, :O], :JO2toOpO],
@@ -1374,53 +1373,53 @@ reactionnet = [   #Photodissociation
              # [[:Opl, :E], [:O], :(2 .* 1.4e-10 .* (Te .^ -0.66))],
 
              # D IONS!
-             # [[:Arpl, :HD], [:HDpl, :Ar], :(0.06*8.0e-10)],
-             # [[:Arpl, :HD], [:ArHpl, :D], :(0.46*8.0e-10)],
-             # [[:Arpl, :HD], [:ArDpl, :H], :(0.48*8.0e-10)],
+             # [[:Arpl, :HD], [:HDpl, :Ar], :(0.06 .* 8.0e-10)],
+             # [[:Arpl, :HD], [:ArHpl, :D], :(0.46 .* 8.0e-10)],
+             # [[:Arpl, :HD], [:ArDpl, :H], :(0.48 .* 8.0e-10)],
              # [[:ArHpl, :HD], [:H2Dpl, :Ar], :(8.6e-10)],
              # [[:ArDpl, :H2], [:H2Dpl, :Ar], :(8.8e-10)],
              # [[:ArDpl, :H2], [:ArHpl, :HD], :(4.5e-10)],
              # [[:ArDpl, :N2], [:N2Dpl, :Ar], :(6e-10)],
              # [[:ArDpl, :CO], [:DCOpl, :Ar], :(1.25e-9)],
              # [[:ArDpl, :CO2], [:OCODpl, :Ar], :(1.1e-9)],
-             # [[:Cpl, :HD], [:CHpl, :D], :(0.17*1.2e-16)],
-             # [[:Cpl, :HD], [:CDpl, :H], :(0.83*1.2e-16)],
+             # [[:Cpl, :HD], [:CHpl, :D], :(0.17 .* 1.2e-16)],
+             # [[:Cpl, :HD], [:CDpl, :H], :(0.83 .* 1.2e-16)],
              # [[:COpl, :D], [:Dpl, :CO], :(9e-11)],
-             # [[:CO2pl, :D], [:DCOpl, :O], :(0.76*8.4e-11)],
-             # [[:CO2pl, :D], [:Dpl, :CO2], :(0.24*8.4e-11)],
+             # [[:CO2pl, :D], [:DCOpl, :O], :(0.76 .* 8.4e-11)],
+             # [[:CO2pl, :D], [:Dpl, :CO2], :(0.24 .* 8.4e-11)],
              # [[:Dpl, :H2], [:Hpl, :HD], :(2.2e-9)],
              # [[:Dpl, :O], [:Opl, :D], :(2.8e-10)],
              # [[:Dpl, :H2O], [:H2Opl, :D], :(5.2e-9)],
              # [[:Dpl, :O2], [:O2pl, :D], :(1.6e-9)],
              # [[:Dpl, :CO2], [:DCOpl, :O], :(2.6e-9)],
              # [[:Dpl, :CO2], [:CO2pl, :D], :(2.6e-9)],
-             # [[:Dpl, :N2O], [:N2Opl, :D], :(0.85 * 1.7e-9)],
-             # [[:Dpl, :N2O], [:N2Dpl, :O], :(0.15 * 1.7e-9)],
+             # [[:Dpl, :N2O], [:N2Opl, :D], :(0.85 .* 1.7e-9)],
+             # [[:Dpl, :N2O], [:N2Dpl, :O], :(0.15 .* 1.7e-9)],
              # [[:Dpl, :NO], [:NOpl, :D], :(1.8e-9)],
-             # [[:Dpl, :NO2], [:NOpl, :OD], :(0.95*1.6e-9)],
-             # [[:Dpl, :NO2], [:NO2pl, :D], :(0.05*1.6e-9)],
+             # [[:Dpl, :NO2], [:NOpl, :OD], :(0.95 .* 1.6e-9)],
+             # [[:Dpl, :NO2], [:NO2pl, :D], :(0.05 .* 1.6e-9)],
              # [[:DCOpl, :H], [:HCOpl, :D], :(1.5e-11)],
              # # [[:DOCpl, :H2], [:HCOpl, :HD], :(0.43*6.2e-10)], # removed for now as no production mechanism that doesn't involve a species we're not using
              # [[:Hpl, :HD], [:Dpl, :H2], :(1.1e-10)],
              # [[:HCNpl, :D], [:Dpl, :HCN], :(3.7e-11)],
              # [[:HCOpl, :D], [:DCOpl, :H], :(4.25e-11)],
              # [[:H2Dpl, :H2], [:H3pl, :HD], :(5.3e-10)],
-             # [[:H2Dpl, :HD], [:H3pl, :D2], :(0.1*5.0e-10)],
-             # [[:H2Dpl, :HD], [:HD2pl, :H2], :(0.9*5.0e-10)],
+             # [[:H2Dpl, :HD], [:H3pl, :D2], :(0.1 .* 5.0e-10)],
+             # [[:H2Dpl, :HD], [:HD2pl, :H2], :(0.9 .* 5.0e-10)],
              # # [[:H2DOpl, :H2O], [:H3Opl, :HDO], :(6.3e-10)],  # removed for now as we don't have a production mechanism that doesn't involve species like D3
-             # [[:HDpl, :HD], [:H2Dpl, :D], :(0.55*1.53e-9)],
-             # [[:HDpl, :HD], [:HD2pl, :H], :(0.45*1.53e-9)],
+             # [[:HDpl, :HD], [:H2Dpl, :D], :(0.55 .* 1.53e-9)],
+             # [[:HDpl, :HD], [:HD2pl, :H], :(0.45 .* 1.53e-9)],
              # [[:HDpl, :Ar], [:ArDpl, :H], :(1.53e-9)],
-             # [[:HD2pl, :H2], [:H3pl, :D2], :(0.25*7.6e-10)],
-             # [[:HD2pl, :H2], [:H2Dpl, :HD], :(0.75*7.6e-10)],
-             # [[:HD2pl, :HD], [:H2Dpl, :D2], :(0.25*4.5e-10)],
+             # [[:HD2pl, :H2], [:H3pl, :D2], :(0.25 .* 7.6e-10)],
+             # [[:HD2pl, :H2], [:H2Dpl, :HD], :(0.75 .* 7.6e-10)],
+             # [[:HD2pl, :HD], [:H2Dpl, :D2], :(0.25 .* 4.5e-10)],
              # [[:HD2pl, :HD], [:D3pl, :H2], :(0.75*4.5e-10)],
-             # [[:Npl, :HD], [:NHpl, :D], :(0.25*3.1e-10)],
-             # [[:Npl, :HD], [:NDpl, :H], :(0.75*3.1e-10)],
-             # [[:N2pl, :HD], [:N2Hpl, :D], :(0.49*1.34e-9)],
-             # [[:N2pl, :HD], [:N2Dpl, :H], :(0.51*1.34e-9)],
+             # [[:Npl, :HD], [:NHpl, :D], :(0.25 .* 3.1e-10)],
+             # [[:Npl, :HD], [:NDpl, :H], :(0.75 .* 3.1e-10)],
+             # [[:N2pl, :HD], [:N2Hpl, :D], :(0.49 .* 1.34e-9)],
+             # [[:N2pl, :HD], [:N2Dpl, :H], :(0.51 .* 1.34e-9)],
              # [[:N2Hpl, :D], [:N2Dpl, :H], :(8e-11)],
              # [[:N2Dpl, :H], [:N2Hpl, :D], :(2.5e-11)],
-             # [[:Opl, :HD], [:OHpl, :D], :(0.54*1.25e-9)],
-             # [[:Opl, :HD], [:ODpl, :H], :(0.46*1.25e-9)],
+             # [[:Opl, :HD], [:OHpl, :D], :(0.54 .* 1.25e-9)],
+             # [[:Opl, :HD], [:ODpl, :H], :(0.46 .* 1.25e-9)],
              ];
