@@ -70,7 +70,7 @@ const MR_mean_water = 1.38e-4
 # Timesteps and general simulation parameters =================================
 const dtmin = -3
 const dt_min_and_max = Dict("neutrals"=>[dtmin, 14], "ions"=>[-4, 6], "both"=>[-4, 14])
-const rel_tol = 1e-4
+const rel_tol = 1e-2
 
 # Species, Jrates, and which are active ========================================
 
@@ -100,8 +100,8 @@ const new_ions = [:CO2pl, :HCO2pl, :Opl, :O2pl, # Nair minimal ionosphere
 const nochemspecies = [:Ar, :N2];
 const notransportspecies = [:Ar, :N2]; 
 
-append!(nochemspecies, conv_neutrals)  # NOTE: This is what to change EVERY TIME YOU RUN until you find a better way
-append!(notransportspecies, conv_neutrals)  # NOTE: This is what to change EVERY TIME YOU RUN until you find a better way
+# append!(nochemspecies, conv_neutrals)  # NOTE: This is what to change EVERY TIME YOU RUN until you find a better way
+# append!(notransportspecies, conv_neutrals)  # NOTE: This is what to change EVERY TIME YOU RUN until you find a better way
 
 # Photolysis and Photoionization rate symbol lists
 const conv_Jrates = [# Original neutral photodissociation
@@ -342,24 +342,24 @@ const speciesstyle = Dict(:D => "--", :HD => "--", :OD => "--", :HDO => "--", :H
                 
 const medgray = "#444444"
 
-    # Crosssection filenames ======================================================
-    const co2file = "CO2.dat"
-    const co2exfile = "binnedCO2e.csv" # added to shield short λ of sunlight in upper atmo
-    const h2ofile = "h2oavgtbl.dat"
-    const hdofile = "HDO.dat"#"HDO_250K.dat"#
-    const h2o2file = "H2O2.dat"
-    const hdo2file = "H2O2.dat" #TODO: do HDO2 xsects exist?
-    const o3file = "O3.dat"
-    const o3chapfile = "O3Chap.dat"
-    const o2file = "O2.dat"
-    const o2_130_190 = "130-190.cf4"
-    const o2_190_280 = "190-280.cf4"
-    const o2_280_500 = "280-500.cf4"
-    const h2file = "binnedH2.csv"
-    const hdfile = "binnedH2.csv" # TODO: change this to HD file if xsects ever exist
-    const ohfile = "binnedOH.csv"
-    const oho1dfile = "binnedOHo1D.csv"
-    const odfile = "OD.csv"
+# Crosssection filenames ======================================================
+const co2file = "CO2.dat"
+const co2exfile = "binnedCO2e.csv" # added to shield short λ of sunlight in upper atmo
+const h2ofile = "h2oavgtbl.dat"
+const hdofile = "HDO.dat"#"HDO_250K.dat"#
+const h2o2file = "H2O2.dat"
+const hdo2file = "H2O2.dat" #TODO: do HDO2 xsects exist?
+const o3file = "O3.dat"
+const o3chapfile = "O3Chap.dat"
+const o2file = "O2.dat"
+const o2_130_190 = "130-190.cf4"
+const o2_190_280 = "190-280.cf4"
+const o2_280_500 = "280-500.cf4"
+const h2file = "binnedH2.csv"
+const hdfile = "binnedH2.csv" # TODO: change this to HD file if xsects ever exist
+const ohfile = "binnedOH.csv"
+const oho1dfile = "binnedOHo1D.csv"
+const odfile = "OD.csv"
 
 # Chemistry ====================================================================
 # function to replace three body rates with the recommended expression

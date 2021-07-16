@@ -13,7 +13,7 @@ using LinearAlgebra
 using PlotUtils
 
 export calculate_stiffness, charge_type, check_jacobian_eigenvalues, create_folder, deletefirst, find_nonfinites, format_chemistry_string,       # Basic utility functions
-            format_sec_or_min, fluxsymbol, getpos, input, next_in_loop, searchdir, search_subfolders,    
+            format_sec_or_min, fluxsymbol, getpos, input, next_in_loop, searchdir, search_subfolders, subtract_difflength,  
        get_colors, get_grad_colors, plot_atm, plot_bg, plot_extinction, plot_Jrates, plot_rxns, plot_temp_prof,                # plotting functions
             plot_water_profile,     
        get_column_rates, make_ratexdensity, rxn_chem, rxn_photo,                                                               # Reaction rate functions
@@ -42,6 +42,8 @@ println("NOTICE: Parameter file in use is /home/emc/GDrive-CU/Research-Modeling/
 # println("NOTICE: Parameter file in use is /home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-conv3.jl")
 # include("/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-convall.jl")
 # println("NOTICE: Parameter file in use is /home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-convall.jl")
+# include("/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-ionsfirst.jl")
+# println("NOTICE: Parameter file in use is /home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-ionsfirst.jl")
 
 # Files for slowly incorporating ions into a converged neutral atmosphere, but with the old solver
 # include("/home/emc/GDrive-CU/Research-Modeling/OriginalCode-WithIons/Code/PARAMETERS-conv1.jl")     
@@ -82,7 +84,11 @@ function calculate_stiffness(J)
     end
 
     r = maximum(abs.(real(eigvals(J)))) / minimum(abs.(real(eigvals(J))))
-    println(r)
+    # if r == Inf
+    #     println("Eigenvalues:")
+    #     println(eigvals(J))
+    #     throw("Error: Infinite stiffness")
+    # end
     return r
 end   
 
@@ -113,15 +119,22 @@ function check_jacobian_eigenvalues(J)
         J = Array(J)
     end
 
+    # println("Eigenvalues:")
+    # println(eigvals(J))
+
+    if any(i->isnan(i), eigvals(J)) || any(i->isinf(i), eigvals(J))
+        throw("ValueError: Jacobian eigenvalues have inf values: $(any(i->isinf(i), eigvals(J))); NaN values: $(any(i->isnan(i), eigvals(J)))")
+    end
+
     if all(i->typeof(i) != ComplexF64, eigvals(J)) # all eigenvalues are real
         if all(i->i<0, eigvals(J)) # all eigenvalues are real and negative
             return 0
         else 
-            throw("Jacobian Error: Some Jacobian eigenvalues are real and positive. Solution will grow without bound")
+            println("Warning: Some Jacobian eigenvalues are real and positive. Solution will grow without bound")
         end
 
     elseif any(i->typeof(i) == ComplexF64, eigvals(J))  # complex eigenvalues are present
-        throw("Jacobian Error: Some Jacobian eigenvalues are complex. Solution behavior is unpredictable and may oscillate (possibly forever?).")
+        println("Warning: Some Jacobian eigenvalues are complex. Solution behavior is unpredictable and may oscillate (possibly forever?).")
     end
 end
 
@@ -280,6 +293,33 @@ function search_subfolders(path, key; type="folders")
         filelist = filter(x->occursin(key, x), filelist)
         return filelist
     end
+end
+
+function subtract_difflength(a, b)
+    #=
+    A very specialized function that accepts two vectors, a and b, sorted
+    by value (largest first), of differing lengths. It will subtract b from a
+    elementwise up to the last index where they are equal, and then add any 
+    extra values in a, and subtract any extra values in b.
+
+    Used exclusively in ratefn_local. 
+
+    a must represent some production, and b some loss for the signs to make sense
+    =#
+
+    shared_size = min(size(a), size(b))[1]
+
+    extra_a = 0
+    extra_b = 0
+    if shared_size < length(a)
+        extra_a += sum(a[shared_size+1:end])
+    end
+
+    if shared_size < length(b)
+        extra_b += sum(b[shared_size+1:end])
+    end
+
+    return sum(a[1:shared_size] .- b[1:shared_size]) + extra_a - extra_b
 end
 
 # plot functions ===============================================================
@@ -1133,9 +1173,6 @@ function make_ratexdensity(ncur, controltemps::Array, speciesbclist; species=Not
 
     return rxn_dat
 end
-
-
-
 
 function rxn_chem(ncur, reactants::Array, krate, temps_n::Array, temps_i::Array, temps_e::Array)
     #=
@@ -2014,7 +2051,7 @@ function chemical_jacobian(chemnetwork, transportnetwork, specieslist, dspeciesl
     return (ivec, jvec, tvec) # Expr(:vcat, tvec...))  # 
 end
 
-function getrate(chemnet, transportnet, species::Symbol; chem_on=true, trans_on=true)
+function getrate(chemnet, transportnet, species::Symbol; chem_on=true, trans_on=true, sepvecs=false)
     #=
     Creates a symbolic expression for the rate at which a given species is
     either produced or lost. Production is from chemical reaction yields or
@@ -2024,29 +2061,45 @@ function getrate(chemnet, transportnet, species::Symbol; chem_on=true, trans_on=
     rate = :(0.0)
     
     chem_prod = Dict(0=>0, 
-                     1=>production_rate(chemnet, species))
+                     1=>production_rate(chemnet, species, sepvecs))
 
     chem_loss = Dict(0=>0,
-                     1=>loss_rate(chemnet, species))
+                     1=>loss_rate(chemnet, species, sepvecs))
 
     trans_prod = Dict(0=>0, 
-                     1=>production_rate(transportnet, species))
+                     1=>production_rate(transportnet, species, sepvecs))
 
     trans_loss = Dict(0=>0,
-                     1=>loss_rate(transportnet, species))
+                     1=>loss_rate(transportnet, species, sepvecs))
 
-    if issubset([species],chemspecies)
-        rate = :($rate 
-                 + $(chem_prod[chem_on]) 
-                 - $(chem_loss[chem_on]))
-    end
-    if issubset([species],transportspecies)
-        rate = :($rate 
-                 + $(trans_prod[trans_on]) 
-                 - $(trans_loss[trans_on]))
-    end
+    if sepvecs == false
+        if issubset([species],chemspecies)
+            rate = :($rate 
+                     + $(chem_prod[chem_on]) 
+                     - $(chem_loss[chem_on]))
+        end
+        if issubset([species],transportspecies)
+            rate = :($rate 
+                     + $(trans_prod[trans_on]) 
+                     - $(trans_loss[trans_on]))
+        end
+        return rate
+    else
+        chemprod_rate = :(0.0)
+        chemloss_rate = :(0.0)
+        transprod_rate = :(0.0)
+        transloss_rate = :(0.0)
 
-    return rate
+        if issubset([species],chemspecies)
+            chemprod_rate = chem_prod[chem_on]
+            chemloss_rate = chem_loss[chem_on]
+        end
+        if issubset([species],transportspecies)
+            transprod_rate = trans_prod[chem_on]
+            transloss_rate = trans_loss[chem_on]
+        end
+        return chemprod_rate, chemloss_rate, transprod_rate, transloss_rate
+    end
 end
 
 function loss_equations(network, species::Symbol)
@@ -2075,18 +2128,23 @@ function loss_equations(network, species::Symbol)
     # automatically finds a species where it occurs twice on the LHS
 end
 
-function loss_rate(network, species::Symbol)
+function loss_rate(network, species::Symbol, sepvecs)
     #= 
     return a symbolic expression for the loss rate of species in the
     supplied reaction network. Format is a symbolic expression containing a sum
     of reactants * rate. 
     =#
     leqn=loss_equations(network, species) # get the equations
-    lval=:(+($( # and add the products together
-               map(x->:(*($(x...))) # take the product of the
-                                    # concentrations and coefficients
-                                    # for each reaction
-                   ,leqn)...)))
+    if sepvecs
+        return map(x->:(*($(x...))), leqn)
+    else
+        lval=:(+($( # and add the products together
+                   map(x->:(*($(x...))) # take the product of the
+                                        # concentrations and coefficients
+                                        # for each reaction
+                       ,leqn)...)))
+        return lval
+    end
 end
 
 function meanmass(ncur, z)
@@ -2108,8 +2166,9 @@ function production_equations(network, species::Symbol)
     #= 
     given a network of equations in the form of reactionnet, this
     function returns the production equations and rate coefficient for all
-    reactions where the supplied species is produced, in the form of an array
-    where each entry is of the form [reactants, rate] 
+    reactions where the supplied species is produced, in the form of a vector
+    where each entry is of the form [reactants..., rate]. 
+    For example, for O(1D)+H2, the entry is [:O1D, :H2, 1.2e-10].
     =#
 
     speciespos = getpos(network, species) # list of all reactions where species is produced
@@ -2133,7 +2192,7 @@ function production_equations(network, species::Symbol)
     return prodeqns
 end
 
-function production_rate(network, species::Symbol)
+function production_rate(network, species::Symbol, sepvecs)
     #= 
     return a symbolic expression for the loss rate of species in the
     supplied reaction network.
@@ -2143,7 +2202,12 @@ function production_rate(network, species::Symbol)
     peqn = production_equations(network, species)
 
     # add up and take the product of each set of reactants and coeffecient
-    pval = :(+ ( $(map(x -> :(*($(x...))), peqn) ...) ))
+    if sepvecs
+        return map(x->:(*($(x...))), peqn)
+    else
+        pval = :(+ ( $(map(x -> :(*($(x...))), peqn) ...) ))
+        return pval
+    end
 end
 
 # photochemistry functions ========================================================

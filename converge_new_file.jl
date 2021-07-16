@@ -61,7 +61,7 @@ For additional functions, see the Photochemistry module.
 =#
 
 # Chemical Jacobian functions ==================================================
-function chemJmat(nthis, inactive, activespecies, inactivespecies, Jrates, Tn, Ti, Te, tup, tdown, tlower, tupper, dt=1.)
+function chemJmat(nthis, inactive, activespecies, inactivespecies, Jrates, Tn, Ti, Te, tup, tdown, tlower, tupper, dt=1.; check_eigen=true)
     #=
     Collects coordinate tuples of (I, J, V) [row index, column index, value] for a sparse matrix
     representing the chemical jacobian of the atmospheric system. 
@@ -162,10 +162,17 @@ function chemJmat(nthis, inactive, activespecies, inactivespecies, Jrates, Tn, T
         chemJval[remove_these] .= 0 
     end
 
-    return sparse(chemJi, chemJj, chemJval, length(nthis), length(nthis), +);
+    J = sparse(chemJi, chemJj, chemJval, length(nthis), length(nthis), +)
+
+    if check_eigen==true
+        check_jacobian_eigenvalues(J)
+        append!(stiffness, calculate_stiffness(J))
+    end
+    
+
+    return J
 end
 
-# TODO: Enter a boolean argument about calling update_Jrates
 function get_transport_and_J_rates(n, inactive, activesp, inactivesp, neutral_temps::Vector{Float64}, plasma_temps::Vector{Float64}, 
                                    D_arr::Vector{Float64}; compute_Jrates=true)
     #=
@@ -231,14 +238,14 @@ function make_jacobian(n, p, t)
     Constructs the chemical jacobian in the normal way, including stuff to calculate parameters for chemJmat.
     =#
     
-    n[n .< 0] .= 0
+    n[n .< 0] .= 1e-50
    
     # Unpack the parameters ---------------------------------------------------------------
-    inactive, inactivesp, activesp, Tn::Vector{Float64}, Ti::Vector{Float64}, Te::Vector{Float64}, Tp::Vector{Float64}, D_arr::Vector{Float64} = p
+    inactive, inactivesp, activesp, Tn::Vector{Float64}, Ti::Vector{Float64}, Te::Vector{Float64}, Tp::Vector{Float64}, D_arr::Vector{Float64}, check_eigen = p
 
     Jrates, tup, tdown, tlower, tupper = get_transport_and_J_rates(n, inactive, activesp, inactivesp, Tn, Tp, D_arr, compute_Jrates=true)
     
-    return chemJmat(n, inactive, activesp, inactivesp, Jrates, Tn, Ti, Te, tup, tdown, tlower, tupper)
+    return chemJmat(n, inactive, activesp, inactivesp, Jrates, Tn, Ti, Te, tup, tdown, tlower, tupper; check_eigen=check_eigen)
 end
 
 function jacobian_wrapper(J, n, p, t)
@@ -257,14 +264,15 @@ function PnL_eqn(dn, n, p, t)
     So, this is the function the ODE solver will solve. It is NOT in-place at this time.
     =#
 
-    #println("Time things within the function")
-    n[n .< 0] .= 0
+    n[n .< 0] .= 1e-50
 
     # Unpack the parameters needed to call ratefn 
     inactive, inactivesp, activesp, Tn::Vector{Float64}, Ti::Vector{Float64}, Te::Vector{Float64}, Tp::Vector{Float64}, D_arr::Vector{Float64} = p 
     
     Jrates, tup, tdown, tlower, tupper = get_transport_and_J_rates(n, inactive, activesp, inactivesp, Tn, Tp, D_arr, compute_Jrates=false)
 
+    println(t) # is this the time we are at? probably.
+ 
     dn .= ratefn(n, inactive, inactivesp, activesp, Jrates, Tn, Ti, Te, tup, tdown, tlower, tupper)
 end
 
@@ -309,6 +317,7 @@ function ratefn(nthis, inactive, inactivespecies, activespecies, Jrates, Tn, Ti,
                                        tdown[:,end];
                                        tupper[:,2]; 
                                        tup[:,end-1]]...)
+
 
     # NEW: Overwrite the entries for water in the lower atmosphere with 0s so that it will behave as fixed.
     # Only runs when water is in the activespecies list. If neutrals are set to inactive, it will be taken care of already.
@@ -394,61 +403,48 @@ function evolve_atmosphere(atm_init::Dict{Symbol, Array{Float64, 1}}, log_t_star
     # Next line calculates 1 ppt of the total density at each altitude for absolute error tolerance,
     # vector in same shape as nstart.
     # absfloor = 1e-3
-    abs_tol_vec = 1e-12 .* [[n_tot(atm_init, a) for sp in activespecies, a in non_bdy_layers]...]
-    # spvec = [[sp for sp in activespecies, a in non_bdy_layers]...]
-    # floorvec = absfloor .* ones(size(abs_tol_vec))
-    # abs_tol_vec[abs_tol_vec .< floorvec] .= absfloor
-    # abs_tol_vec[findall(x->x in ionlist, spvec)] .= 1e-5
-    # println(abs_tol_vec)
+    abs_tol_vec = 1e-12 .* [[n_tot(atm_init, a) for sp in activespecies, a in non_bdy_layers]...] #0.001#
+    spvec = [[sp for sp in activespecies, a in non_bdy_layers]...]
+    abs_tol_vec[spvec .== "neutral"] .= 1e-4
 
     # Set up simulation solver parameters and log them
-    odesolver = "KenCarp4"
+    odesolver = "QNDF"
     # linsolv = :KLU
-    save_evstep = false
-    abst = "1 ppt"#abs_tol_vec
+    saveall = false
+    abst = "1 ppt for ions, 1e-4 for neutrals"#abs_tol_vec
     relt = rel_tol
     sys_size = length(nstart)
     startdt = (10.0^log_t_start)
     tspan = (10.0^(log_t_start), 10.0^(log_t_end))
     # Log solver options
     f = open(results_dir*sim_folder_name*"/simulation_params_"*FNext*".txt", "a")
-    write(f, "SOLVER OPTIONS: \nsystem size: $(sys_size)\ntimespan=$(tspan)\nsolver=$(odesolver)\nsaveat=$(t_to_save)\nsave_everystep=$(save_evstep)\nabstol=$(abst)\nreltol=$(relt)\nstarting dt=$(startdt)\n")
+    write(f, "SOLVER OPTIONS: \nsystem size: $(sys_size)\ntimespan=$(tspan)\nsolver=$(odesolver)\nsaveat=$(t_to_save)\nsave_everystep=$(saveall)\nabstol=$(abst)\nreltol=$(relt)\nstarting dt=$(startdt)\n\n")
 
     Dcoef_arr_template = 0. .* similar(Tn_arr)  # For making diffusion coefficient calculation go faster 
     params = [inactive, inactivespecies, activespecies, Tn_arr::Vector{Float64}, Ti_arr::Vector{Float64}, Te_arr::Vector{Float64}, 
-              Tplasma_arr::Vector{Float64}, Dcoef_arr_template::Vector{Float64}]
+              Tplasma_arr::Vector{Float64}, Dcoef_arr_template::Vector{Float64}, true]
+    params_exjac = [inactive, inactivespecies, activespecies, Tn_arr::Vector{Float64}, Ti_arr::Vector{Float64}, Te_arr::Vector{Float64}, 
+                    Tplasma_arr::Vector{Float64}, Dcoef_arr_template::Vector{Float64}, false]
 
     # Set up an example Jacobian and its preconditioner
-    example_jacobian = make_jacobian(nstart, params, tspan[1])
-    # example_updatemat = I - (startdt .* example_jacobian)
+    example_jacobian = make_jacobian(nstart, params_exjac, tspan[1])
     find_nonfinites(example_jacobian, collec_name="example_jacobian")
-    # precLU = ilu(example_updatemat, τ=0.001)
     
     sparsity = round(length(example_jacobian.nzval)*100/(size(example_jacobian)[1] * size(example_jacobian)[2]), digits=2)
     if sparsity > 1
         println("Warning! Sparsity of the jacobian is rather high: $(sparsity)%")
     end
-    write(f, "Sparsity: $(sparsity)")
+    write(f, "Sparsity: $(sparsity)\n\n")
     close(f)
 
 
     # Now define the problem and solve it
     f = ODEFunction(PnL_eqn, jac=jacobian_wrapper, jac_prototype=example_jacobian)
     prob = ODEProblem(f, nstart, tspan, params)
-
-    # println("Time the solved function")
-    # du = similar(nstart)
-    # @time f(du, nstart, params, tspan)
-
-    # println("Time the solved function, second call")
-    # du = similar(nstart)
-    # @time f(du, nstart, params, tspan)
-    # throw("Break")
-
     
     println("Starting the solver...")
-    sol = solve(prob, KenCarp4(), saveat=t_to_save, progress=true, save_everystep=save_evstep, 
-                abstol=abs_tol_vec, reltol=relt, dt=startdt)
+    sol = solve(prob, DynamicSS(QNDF()), saveat=t_to_save, progress=true, progress_steps=1, save_everystep=saveall, reltol=relt, abstol=1e-4,#abs_tol_vec, 
+                dt=startdt)#, isoutofdomain=(u,p,t)->any(x->x<0,u))
 end
 
 ################################################################################
@@ -849,6 +845,13 @@ const chemJ_local = chemical_jacobian(reactionnet, transportnet, activespecies, 
 const chemJ_above = chemical_jacobian(reactionnet, transportnet, activespecies, active_above);
 const chemJ_below = chemical_jacobian(reactionnet, transportnet, activespecies, active_below);
 
+# define a replacement for rates_local
+prod_loss_array = Array{Array{Expr}}(undef, length(activespecies), 4)
+for (i, asp) in enumerate(activespecies)
+    prod_loss_array[i, :] .= getrate(reactionnet, transportnet, asp, sepvecs=true)
+end
+
+
 # TODO: Turn these notes into a test that looks for "+()" in rates_local instead of debugging lines. 
 # -----------------------------------------------------------------------------------------------
 # These lines are useful for troubleshooting if you're getting weird errors with ratefn.
@@ -871,6 +874,20 @@ const Eexpr = Expr(:call, :+, ionlist...)
 
 # NOTE: These functions within @eval cannot be moved. Do not move them.
 @eval begin
+    function ratefn_local_old($(arglist_local_typed...))
+
+        # M and E are calculated here to ensure that the right number of ions/electrons
+        # is used. It is for only the altitude at which this function was called 
+        # (i.e. all the arguments to the function, when it's called, are for only one altitude)
+        M = $Mexpr
+        E = $Eexpr
+
+        $rates_local # evaluates the rates_local expression
+    end
+end
+
+
+@eval begin
     function ratefn_local($(arglist_local_typed...))
 
         # M and E are calculated here to ensure that the right number of ions/electrons
@@ -878,7 +895,31 @@ const Eexpr = Expr(:call, :+, ionlist...)
         # (i.e. all the arguments to the function, when it's called, are for only one altitude)
         M = $Mexpr
         E = $Eexpr
-        $rates_local # evaluates the rates_local expression
+
+        # stack overflow - answer (Cite)
+        result = map(_ -> Float64[], $prod_loss_array) 
+        
+        $( (quote
+            # i = row, j = vector, k = specific expression
+                push!(result[$i], $(expr))
+            end 
+            for (i, expr_list) in enumerate(prod_loss_array)                                                                                                                 
+                for expr in expr_list
+            )...  
+
+         )
+        
+        # these track the changes for each species
+        net_chem_change = zeros(size(result, 1))
+        net_trans_change = zeros(size(result, 1))
+        
+        for r in 1:size(result,1)
+            net_chem_change[r] = subtract_difflength(sort(result[r, :][1], rev=true), sort(result[r, :][2], rev=true))
+            net_trans_change[r] = subtract_difflength(sort(result[r, :][3], rev=true), sort(result[r, :][4], rev=true))
+        end
+
+        return net_chem_change .+ net_trans_change
+
     end
 end
 
@@ -1045,7 +1086,6 @@ write(f, "\n")
 
 # timestep etc
 write(f, "Initial atmosphere state: $(readfile)\n\n")
-close(f)
 
 ################################################################################
 #                             CONVERGENCE CODE                                 #
@@ -1064,9 +1104,14 @@ plot_water_profile(H2Oinitfrac, HDOinitfrac, n_current[:H2O], n_current[:HDO], r
 println("Plotting the initial condition")
 plot_atm(n_current, [neutrallist, ionlist], results_dir*sim_folder_name*"/initial_atmosphere.png")
 
+# Create a list to keep track of stiffness ratio ===============================
+const stiffness = []
+
 # Record setup time
 t6 = time()
+
 write(f, "Setup time $(format_sec_or_min(t6-t5))\n")
+close(f)
 
 # do the convergence ===========================================================
 println("Beginning Convergence")
@@ -1076,6 +1121,7 @@ times_to_save = [10.0^t for t in mindt:maxdt]
 atm_soln = evolve_atmosphere(n_current, mindt, maxdt)#, t_to_save=times_to_save) # dz, transportspecies, alt, fullspecieslist, num_layers, Jratelist, non_bdy_layers, 
 tf = time() 
 
+f = open(results_dir*sim_folder_name*"/simulation_params_"*FNext*".txt", "a")
 write(f, "Simulation (active convergence) runtime $(format_sec_or_min(tf-ti))\n")
 
 println("Finished convergence in $((tf-ti)/60) minutes")
@@ -1114,8 +1160,13 @@ println("Wrote all states to files")
 
 t9 = time()
 
-println("Total runtime $(format_sec_or_min(t9-t1))\n")
-
+write(f, "Stiffness ratio evolution:\n")
+write(f, "$(stiffness)")
+write(f, "\n\n")
 write(f, "Total runtime $(format_sec_or_min(t9-t1))\n")
 
 close(f)
+
+
+
+println("Total runtime $(format_sec_or_min(t9-t1))")
