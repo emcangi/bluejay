@@ -10,7 +10,7 @@
 # Last edited: 7 April 2021
 # Currently tested for Julia: 1.5.3
 ################################################################################
-
+const extra_plots_dir = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Auxiliary plots/"
 const research_dir = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/"
 const results_dir = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Results/"
 const xsecfolder = research_dir * "uvxsect/";
@@ -70,18 +70,18 @@ const MR_mean_water = 1.38e-4
 
 # Timesteps and general simulation parameters =================================
 const dt_min_and_max = Dict("neutrals"=>[-4, 14], "ions"=>[-4, 6], "both"=>[-4, 14])
-const rel_tol = 1e-3
+const rel_tol = 1e-4
 
 # Species, Jrates, and which are active ========================================
 
 # !----------------- You may modify per simulation starting here -------------------!
-const conv_neutrals = [:Ar, :CO, :CO2, :H, :H2, :H2O, :H2O2, :HO2, :HOCO, :N2, 
+const conv_neutrals = [:Ar, :CO, :CO2, :H, :H2, :H2O, :H2O2, :HO2, :HOCO, 
                        :O, :O1D, :O2, :O3, :OH,
-                       :D, :DO2, :DOCO, :HD, :HDO, :HDO2, :OD,
+                       :D, :DO2, :DOCO, :HD, :HDO, :HDO2, :N2, :OD,
 
                         # new neutrals that are incorporated
                        :C, :CH, :HCO,];
-const N_species = [:N2O, :NO2, :CN, :HCN, :HNO, :N, :NH, :NH2, :NO];
+const N_species = [:N2, :N2O, :NO2, :CN, :HCN, :HNO, :N, :NH, :NH2, :NO];
 const new_neutrals = [# neutrals which are new 
                        :N2O, :NO2, :CN, :HCN, :HNO, :N, :NH, :NH2, :NO
                      ];
@@ -958,7 +958,6 @@ const reactionnet = [   #Photodissociation
              [[:H2pl, :HCN], [:HCNpl, :H2], :(2 .* 4.68e-8 .* (Ti .^ -0.5))],
              [[:H2pl, :HCO], [:H3pl, :CO], :(2 .* 1.73e-8 .* (Ti .^ -0.5))],
              [[:H2pl, :HCO], [:HCOpl, :H2], :(2 .* 1.73e-8 .* (Ti .^ -0.5))],
-             # UNUSED # [[:H2pl, :He], [:HeHpl, :H], :(2 .* 1.35e-10)],
              [[:H2pl, :N], [:NHpl, :H], :(2 .* 1.9e-9)],
              [[:H2pl, :N2], [:N2Hpl, :H], :(2 .* 2.0e-9)],
              [[:H2pl, :N2O], [:HN2Opl, :H], :(2 .* 1.32e-9)],
@@ -1035,46 +1034,6 @@ const reactionnet = [   #Photodissociation
              [[:HCOpl, :NH2], [:NH3pl, :CO], :(2 .* 1.54e-8 .* (Ti .^ -0.5))],
              [[:HCOpl, :OH], [:H2Opl, :CO], :(2 .* 1.07e-8 .* (Ti .^ -0.5))],
              [[:HCOpl, :OH], [:HCO2pl, :H], :(2 .* 1.73e-8 .* (Ti .^ -0.5))],
-             # UNUSED # [[:Hepl, :C], [:Cpl, :He], :(2 .* 8.74e-17 .* (Ti .^ 0.75))],
-             # UNUSED # [[:Hepl, :CH], [:CHpl, :He], :(2 .* 8.66e-9 .* (Ti .^ -0.5))],
-             # UNUSED # [[:Hepl, :CH], [:Cpl, :He, :H], :(2 .* 1.91e-8 .* (Ti .^ -0.5))],
-             # UNUSED # [[:Hepl, :CN], [:Cpl, :N, :He], :(2 .* 1.52e-8 .* (Ti .^ -0.5))],
-             # UNUSED # [[:Hepl, :CN], [:Npl, :C, :He], :(2 .* 1.52e-8 .* (Ti .^ -0.5))],
-             # UNUSED # [[:Hepl, :CO], [:Cpl, :O, :He], :(2 .* 1.6e-9)],
-             # UNUSED # [[:Hepl, :CO2], [:CO2pl, :He], :(2 .* 5.0e-11)],
-             # UNUSED # [[:Hepl, :CO2], [:COpl, :O, :He], :(2 .* 7.8e-10)],
-             # UNUSED # [[:Hepl, :CO2], [:Cpl, :O2, :He], :(2 .* 2.0e-11)],
-             # UNUSED # [[:Hepl, :CO2], [:O2pl, :C, :He], :(2 .* 1.1e-11)],
-             # UNUSED # [[:Hepl, :CO2], [:Opl, :CO, :He], :(2 .* 1.4e-10)],
-             # UNUSED # [[:Hepl, :H], [:HeHpl], :(2 .* 3.43e-15 .* (Ti .^ -0.37))],
-             # UNUSED # [[:Hepl, :H], [:Hpl, :He], :(2 .* 2.88e-16 .* (Ti .^ 0.25))],
-             # UNUSED # [[:Hepl, :H2], [:H2pl, :He], :(2 .* 1.7e-14)],
-             # UNUSED # [[:Hepl, :H2], [:Hpl, :He, :H], :(2 .* 8.3e-14)],
-             # UNUSED # [[:Hepl, :H2O], [:H2Opl, :He], :(2 .* 5.5e-11 .* (Ti .^ -0.5))],
-             # UNUSED # [[:Hepl, :H2O], [:Hpl, :OH, :He], :(2 .* 1.85e-10)],
-             # UNUSED # [[:Hepl, :H2O], [:OHpl, :He, :H], :(2 .* 2.6e-10 .* (Ti .^ -0.5))],
-             # UNUSED # [[:Hepl, :HCN], [:CHpl, :N, :He], :(2 .* 6.93e-10)],
-             # UNUSED # [[:Hepl, :HCN], [:CNpl, :He, :H], :(2 .* 1.55e-9)],
-             # UNUSED # [[:Hepl, :HCN], [:Cpl, :NH, :He], :(2 .* 8.25e-10)],
-             # UNUSED # [[:Hepl, :HCN], [:Npl, :CH, :He], :(2 .* 2.31e-10)],
-             # UNUSED # [[:Hepl, :HCO], [:CHpl, :O, :He], :(2 .* 8.49e-9 .* (Ti .^ -0.5))],
-             # UNUSED # [[:Hepl, :HCO], [:COpl, :He, :H], :(2 .* 8.49e-9 .* (Ti .^ -0.5))],
-             # UNUSED # [[:Hepl, :HCO], [:HeHpl, :CO], :(2 .* 5.2e-9 .* (Ti .^ -0.5))],
-             # UNUSED # [[:Hepl, :HNO], [:Hpl, :NO, :He], :(2 .* 1.73e-8 .* (Ti .^ -0.5))],
-             # UNUSED # [[:Hepl, :HNO], [:NOpl, :He, :H], :(2 .* 1.73e-8 .* (Ti .^ -0.5))],
-             # UNUSED # [[:Hepl, :N2], [:N2pl, :He], :(2 .* 5.2e-10)],
-             # UNUSED # [[:Hepl, :N2], [:Npl, :N, :He], :(2 .* 7.8e-10)],
-             # UNUSED # [[:Hepl, :N2O], [:N2pl, :O, :He], :(2 .* 1.24e-9)],
-             # UNUSED # [[:Hepl, :N2O], [:NOpl, :N, :He], :(2 .* 4.83e-10)],
-             # UNUSED # [[:Hepl, :N2O], [:Npl, :NO, :He], :(2 .* 2.99e-10)],
-             # UNUSED # [[:Hepl, :N2O], [:Opl, :N2, :He], :(2 .* 2.76e-10)],
-             # UNUSED # [[:Hepl, :NH], [:Npl, :He, :H], :(2 .* 1.91e-8 .* (Ti .^ -0.5))],
-             # UNUSED # [[:Hepl, :NH2], [:NHpl, :He, :H], :(2 .* 1.39e-8 .* (Ti .^ -0.5))],
-             # UNUSED # [[:Hepl, :NO], [:Npl, :O, :He], :(2 .* 1.35e-9)],
-             # UNUSED # [[:Hepl, :NO], [:Opl, :N, :He], :(2 .* 1.02e-10)],
-             # UNUSED # [[:Hepl, :O2], [:O2pl, :He], :(2 .* 3.0e-11)],
-             # UNUSED # [[:Hepl, :O2], [:Opl, :O, :He], :(2 .* 9.7e-10)],
-             # UNUSED # [[:Hepl, :OH], [:Opl, :He, :H], :(2 .* 1.91e-8 .* (Ti .^ -0.5))],
              [[:HN2Opl, :CO], [:HCOpl, :N2O], :(2 .* 5.3e-10)],
              [[:HN2Opl, :H2O], [:H3Opl, :N2O], :(2 .* 2.83e-9)],
              [[:HNOpl, :C], [:CHpl, :NO], :(2 .* 1.0e-9)],
@@ -1123,7 +1082,6 @@ const reactionnet = [   #Photodissociation
              [[:Hpl, :HCO], [:COpl, :H2], :(2 .* 1.63e-8 .* (Ti .^ -0.5))],
              [[:Hpl, :HCO], [:H2pl, :CO], :(2 .* 1.63e-8 .* (Ti .^ -0.5))],
              [[:Hpl, :HCO], [:HCOpl, :H], :(2 .* 1.63e-8 .* (Ti .^ -0.5))],
-             # UNUSED # [[:Hpl, :He], [:HeHpl], :(2 .* 3.14e-19 .* (Ti .^ -0.24))],
              [[:Hpl, :HNO], [:NOpl, :H2], :(2 .* 6.93e-8 .* (Ti .^ -0.5))],
              [[:Hpl, :N2O], [:N2Hpl, :O], :(2 .* 3.52e-10)],
              [[:Hpl, :N2O], [:N2Opl, :H], :(2 .* 1.85e-9)],
@@ -1256,10 +1214,6 @@ const reactionnet = [   #Photodissociation
              [[:Npl, :O2], [:NOpl, :O], :(2 .* 2.32e-10)],
              [[:Npl, :O2], [:O2pl, :N], :(2 .* 3.07e-10)],
              [[:Npl, :O2], [:Opl, :NO], :(2 .* 4.64e-11)],
-             [[:Npl, :OH], [:OHpl, :N], :(2 .* 6.41e-9 .* (Ti .^ -0.5))],
-             # UNUSED # [[:O2Dpl, :H2], [:H2pl, :O], :(2 .* 4.4e-8 .* (Ti .^ -0.98) .* exp.(-302.4 ./ Ti))],
-             # UNUSED # [[:O2Dpl, :H2], [:Hpl, :OH], :(2 .* 1.62e-8 .* (Ti .^ -0.95) .* exp.(-335.1 ./ Ti))],
-             # UNUSED # [[:O2Dpl, :H2], [:OHpl, :H], :(2 .* 1.5e-9)],
              [[:O2pl, :C], [:COpl, :O], :(2 .* 5.2e-11)],
              [[:O2pl, :C], [:Cpl, :O2], :(2 .* 5.2e-11)],
              [[:O2pl, :CH], [:CHpl, :O2], :(2 .* 5.37e-9 .* (Ti .^ -0.5))],
@@ -1347,7 +1301,6 @@ const reactionnet = [   #Photodissociation
              [[:HCOpl, :E], [:CH, :O], :(2 .* 1.15e-7 .* (Te .^ -0.64))],
              [[:HCOpl, :E], [:CO, :H], :(2 .* 1.06e-5 .* (Te .^ -0.64))],
              [[:HCOpl, :E], [:OH, :C], :(2 .* 8.08e-7 .* (Te .^ -0.64))],
-             # UNUSED # [[:Hepl, :E], [:He], :(2 .* 9.28e-11 .* (Te .^ -0.5))],
              [[:HN2Opl, :E], [:N2, :O, :H], :(2 .* 3.81e-5 .* (Te .^ -0.74))],
              [[:HN2Opl, :E], [:N2, :OH], :(2 .* 4.38e-5 .* (Te .^ -0.74))],
              [[:HNOpl, :E], [:NO, :H], :(2 .* 5.2e-6 .* (Te .^ -0.5))],
@@ -1403,14 +1356,12 @@ const reactionnet = [   #Photodissociation
              [[:Dpl, :NO2], [:NOpl, :OD], :(0.95 .* 1.6e-9)],
              [[:Dpl, :NO2], [:NO2pl, :D], :(0.05 .* 1.6e-9)],
              [[:DCOpl, :H], [:HCOpl, :D], :(1.5e-11)],
-             # [[:DOCpl, :H2], [:HCOpl, :HD], :(0.43*6.2e-10)], # removed for now as no production mechanism that doesn't involve a species we're not using
              [[:Hpl, :HD], [:Dpl, :H2], :(1.1e-10)],
              [[:HCNpl, :D], [:Dpl, :HCN], :(3.7e-11)],
              [[:HCOpl, :D], [:DCOpl, :H], :(4.25e-11)],
              [[:H2Dpl, :H2], [:H3pl, :HD], :(5.3e-10)],
              [[:H2Dpl, :HD], [:H3pl, :D2], :(0.1 .* 5.0e-10)],
              [[:H2Dpl, :HD], [:HD2pl, :H2], :(0.9 .* 5.0e-10)],
-             # [[:H2DOpl, :H2O], [:H3Opl, :HDO], :(6.3e-10)],  # removed for now as we don't have a production mechanism that doesn't involve species like D3
              [[:HDpl, :HD], [:H2Dpl, :D], :(0.55 .* 1.53e-9)],
              [[:HDpl, :HD], [:HD2pl, :H], :(0.45 .* 1.53e-9)],
              [[:HDpl, :Ar], [:ArDpl, :H], :(1.53e-9)],

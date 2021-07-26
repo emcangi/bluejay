@@ -165,7 +165,7 @@ function chemJmat(nthis, inactive, activespecies, inactivespecies, Jrates, Tn, T
     J = sparse(chemJi, chemJj, chemJval, length(nthis), length(nthis), +)
 
     if check_eigen==true
-        check_jacobian_eigenvalues(J)
+        check_jacobian_eigenvalues(J, results_dir*sim_folder_name)
         append!(stiffness, calculate_stiffness(J))
     end
     
@@ -238,7 +238,7 @@ function make_jacobian(n, p, t)
     Constructs the chemical jacobian in the normal way, including stuff to calculate parameters for chemJmat.
     =#
     
-    n[n .< 0] .= 1e-50
+    # n[n .< 0] .= 1e-50
    
     # Unpack the parameters ---------------------------------------------------------------
     inactive, inactivesp, activesp, Tn::Vector{Float64}, Ti::Vector{Float64}, Te::Vector{Float64}, Tp::Vector{Float64}, D_arr::Vector{Float64}, check_eigen = p
@@ -254,7 +254,6 @@ function jacobian_wrapper(J, n, p, t)
     =#
 
     J .= make_jacobian(n, p, t)
-    nothing
 end
 
 # Production and loss equation functions =======================================
@@ -264,7 +263,7 @@ function PnL_eqn(dn, n, p, t)
     So, this is the function the ODE solver will solve. It is NOT in-place at this time.
     =#
 
-    n[n .< 0] .= 1e-50
+    # n[n .< 0] .= 1e-50
 
     # Unpack the parameters needed to call ratefn 
     inactive, inactivesp, activesp, Tn::Vector{Float64}, Ti::Vector{Float64}, Te::Vector{Float64}, Tp::Vector{Float64}, D_arr::Vector{Float64} = p 
@@ -273,7 +272,7 @@ function PnL_eqn(dn, n, p, t)
 
     println(t) # is this the time we are at? probably.
  
-    dn .= ratefn(n, inactive, inactivesp, activesp, Jrates, Tn, Ti, Te, tup, tdown, tlower, tupper)
+    dn .= ratefn(n, inactive, inactivesp, activesp, Jrates, Tn, Ti, Te, tup, tdown, tlower, tupper)  # todo: update dn to dndt
 end
 
 function ratefn(nthis, inactive, inactivespecies, activespecies, Jrates, Tn, Ti, Te, tup, tdown, tlower, tupper)
@@ -404,18 +403,18 @@ function evolve_atmosphere(atm_init::Dict{Symbol, Array{Float64, 1}}, log_t_star
     # vector in same shape as nstart.
     # absfloor = 1e-3
     abs_tol_vec = 1e-12 .* [[n_tot(atm_init, a) for sp in activespecies, a in non_bdy_layers]...] #0.001#
-    spvec = [[sp for sp in activespecies, a in non_bdy_layers]...]
-    abs_tol_vec[spvec .== "neutral"] .= 1e-4
+    # spvec = [[sp for sp in activespecies, a in non_bdy_layers]...]
+    # abs_tol_vec[spvec .== "neutral"] .= 1e-2
 
     # Set up simulation solver parameters and log them
-    odesolver = "QNDF"
+    odesolver = "Kvaerno5"
     # linsolv = :KLU
     saveall = false
-    abst = "1 ppt for ions, 1e-4 for neutrals"#abs_tol_vec
+    abst = "1 ppt for ions"#, 1e-4 for neutrals"#abs_tol_vec
     relt = rel_tol
     sys_size = length(nstart)
-    startdt = (10.0^log_t_start)
-    tspan = (10.0^(log_t_start), 10.0^(log_t_end))
+    startdt = 10. ^ -10#(10.0^log_t_start)
+    tspan = (10.0^-10#=log_t_start)=#, 10.0^(log_t_end))
     # Log solver options
     f = open(results_dir*sim_folder_name*"/simulation_params_"*FNext*".txt", "a")
     write(f, "SOLVER OPTIONS: \nsystem size: $(sys_size)\ntimespan=$(tspan)\nsolver=$(odesolver)\nsaveat=$(t_to_save)\nsave_everystep=$(saveall)\nabstol=$(abst)\nreltol=$(relt)\nstarting dt=$(startdt)\n\n")
@@ -443,8 +442,8 @@ function evolve_atmosphere(atm_init::Dict{Symbol, Array{Float64, 1}}, log_t_star
     prob = ODEProblem(f, nstart, tspan, params)
     
     println("Starting the solver...")
-    sol = solve(prob, DynamicSS(QNDF()), saveat=t_to_save, progress=true, progress_steps=1, save_everystep=saveall, reltol=relt, abstol=1e-4,#abs_tol_vec, 
-                dt=startdt)#, isoutofdomain=(u,p,t)->any(x->x<0,u))
+    sol = solve(prob, DynamicSS(Kvaerno5(), tspan=1e14), saveat=t_to_save, progress=true, progress_steps=1, save_everystep=saveall, reltol=relt, abstol=abs_tol_vec,#  1e2,#
+                dt=startdt, isoutofdomain=(u,p,t)->any(x->x<0,u))
 end
 
 ################################################################################
@@ -525,7 +524,7 @@ while converge_which != "neutrals" && converge_which != "ions" && converge_which
     global converge_which = input("Converging ions, neutrals or both?: ")
 end
 # Whether to initialize new species as zeros or not
-use_nonzero_initial_profiles = true#false
+use_nonzero_initial_profiles = true#false 
 
 # Set up initial profiles and time steps 
 if converge_which == "neutrals"
@@ -623,6 +622,12 @@ const do_chem = true#do_chem=="on" ? true : false
 #end
 const do_trans = true#do_trans=="on" ? true : false
 #println()
+
+# PROBLEMS? TODO: Make sure this is set to what you want!
+# Use this to zero out all neutrals. Used to attempt to get things to converge all together.
+# for n in setdiff(fullspecieslist, [:CO2])
+#     n_current[n] = zeros(num_layers)
+# end
 
 # Various other needful things ===============================================================================
 
@@ -783,14 +788,14 @@ const HD_veff = effusion_velocity(Temp_n(zmax), 3.0, zmax)
 =#
 
 if args[1] == "Oflux"
-    global const Of = args[2]
+    const Of = args[2]
 else
-    global const Of = 1.2e8
+    const Of = 1.2e8
 end
 
 # This has to be defined here, because it uses as a boundary condition the H2O 
 # and HDO saturation at the surface.
-global const speciesbclist=Dict(
+const speciesbclist=Dict(
                 :CO2=>["n" 2.1e17; "f" 0.],
                 :Ar=>["n" 2.0e-2*2.1e17; "f" 0.],
                 :N2=>["n" 1.9e-2*2.1e17; "f" 0.],
@@ -840,17 +845,26 @@ const active_above = [Symbol(string(s)*"_above") for s in activespecies]
 const active_below = [Symbol(string(s)*"_below") for s in activespecies]
 
 # obtain the rates and jacobian for each altitude
+# TODO: rates_local must also be mapped over a new list which designates whether the species is in photochemical equilibrium or not, 
+# and that argument must be passed to getrate.
 const rates_local = Expr(:vcat, map(x->getrate(reactionnet, transportnet, x, chem_on=do_chem, trans_on=do_trans), activespecies)...);
 const chemJ_local = chemical_jacobian(reactionnet, transportnet, activespecies, activespecies);
 const chemJ_above = chemical_jacobian(reactionnet, transportnet, activespecies, active_above);
 const chemJ_below = chemical_jacobian(reactionnet, transportnet, activespecies, active_below);
 
+make_chemjac_key("chemjac_local_key.txt", results_dir*sim_folder_name, activespecies, activespecies)
+make_chemjac_key("chemjac_above_key.txt", results_dir*sim_folder_name, activespecies, active_above)
+make_chemjac_key("chemjac_below_key.txt", results_dir*sim_folder_name, activespecies, active_below)
+
 # define a replacement for rates_local
+# each row is for each species; each column is for chemical production, chemical loss, 
+# transport production, transport loss, in that order.
+
+# pchem_eq_by_species = Dict(:CO2pl=>true);   # TODO: this is to start. change to ionlist
 prod_loss_array = Array{Array{Expr}}(undef, length(activespecies), 4)
 for (i, asp) in enumerate(activespecies)
-    prod_loss_array[i, :] .= getrate(reactionnet, transportnet, asp, sepvecs=true)
+    prod_loss_array[i, :] .= getrate(reactionnet, transportnet, asp, sepvecs=true)#pchem_eq=get(pchem_eq_by_species, asp, false), sepvecs=false)
 end
-
 
 # TODO: Turn these notes into a test that looks for "+()" in rates_local instead of debugging lines. 
 # -----------------------------------------------------------------------------------------------
@@ -874,7 +888,56 @@ const Eexpr = Expr(:call, :+, ionlist...)
 
 # NOTE: These functions within @eval cannot be moved. Do not move them.
 @eval begin
-    function ratefn_local_old($(arglist_local_typed...))
+    function ratefn_local_eq_ok($(arglist_local_typed...))
+
+        # M and E are calculated here to ensure that the right number of ions/electrons
+        # is used. It is for only the altitude at which this function was called 
+        # (i.e. all the arguments to the function, when it's called, are for only one altitude)
+        M = $Mexpr
+        E = $Eexpr
+
+        # Here: calculate new concentrations for species in photochemical equilibrium.
+        # We can pass an argument to this function telling us whether to do photochemical equilibrium ornot.
+        # We can also identify the position in arglist_local(_typed) of whatever species we calculate for.
+
+        # first here, we need to get seaprate vectors of chemical production and loss expressions just like in the function below.
+        # the loss expression should come out ready to go for photochemical equilibrium for designated species--i.e. with n_s removed. 
+        result = map(_ -> Float64[], $prod_loss_array)   # will hold evaluated expressions.
+
+        # then we evaluate the expressions in the unrolled loop as below and sum up each so we have total chem prod and total chem loss.
+        # (and also transport)
+        $( (quote
+            # i = row, j = vector, k = specific expression
+                push!(result[$i], $(expr))
+            end 
+            for (i, expr_list) in enumerate(prod_loss_array)                                                                                                                 
+                for expr in expr_list
+            )...  
+         )
+
+        # then we take n = P/L. This is the value it should be.
+        # ----working----
+        # --- do special P+L addition
+
+        # but rates_local is basically dn/dt, so we need to subtract off the current density of the species from n here.
+        # the result is our dn/dt for that species. So we assign it to net_chem_change. 
+        net_chem_change = zeros(size(result, 1))
+        net_trans_change = zeros(size(result, 1))
+        
+        for r in 1:size(result,1)
+            net_chem_change[r] = subtract_difflength(sort(result[r, :][1], rev=true), sort(result[r, :][2], rev=true))
+            net_trans_change[r] = subtract_difflength(sort(result[r, :][3], rev=true), sort(result[r, :][4], rev=true))
+        end
+
+        # lastly, we return net_chem_change + net_trans_change.
+
+        $rates_local # evaluates the rates_local expression
+    end
+end
+
+
+@eval begin
+    function ratefn_local_original($(arglist_local_typed...))
 
         # M and E are calculated here to ensure that the right number of ions/electrons
         # is used. It is for only the altitude at which this function was called 
@@ -897,8 +960,9 @@ end
         E = $Eexpr
 
         # stack overflow - answer (Cite)
+        # create a result array for evaluating the production and loss expressions
         result = map(_ -> Float64[], $prod_loss_array) 
-        
+
         $( (quote
             # i = row, j = vector, k = specific expression
                 push!(result[$i], $(expr))
@@ -906,9 +970,8 @@ end
             for (i, expr_list) in enumerate(prod_loss_array)                                                                                                                 
                 for expr in expr_list
             )...  
-
          )
-        
+
         # these track the changes for each species
         net_chem_change = zeros(size(result, 1))
         net_trans_change = zeros(size(result, 1))
@@ -931,16 +994,6 @@ end
 
         localchemJi = $(chemJ_local[1])
         localchemJj = $(chemJ_local[2])
-
-        # section to populate localchemJval element by element,
-        # which is having problems with compiler errors when ----->
-        # localchemJval = similar($chemJ_local[3], Float64)
-        #     # unroll the loop and evaluate each expression 1 by 1 thank you 张实唯 of SE
-        #     $((quote
-        #         localchemJval[$i] = $(chemJ_local[3][i])
-        #     end for i in 1:length(chemJ_local[3]))...)
-        # localchemJval = -dt*localchemJval  # the old code that throws compiler error:*$(chemJ_local[3])  
-        # <----- end section
         localchemJval = $(Expr(:vcat, chemJ_local[3]...)) 
 
         abovechemJi = $(chemJ_above[1])
@@ -976,9 +1029,10 @@ for j in Jratelist, ialt in 1:length(alt)
     global lambdas = union(lambdas, crosssection[j][ialt][:,1])
 end
 
-if !(setdiff(solarflux[:,1],lambdas)==[])
-    throw("Need a broader range of solar flux values!")
-end
+# PROBLEMS? TODO: revert 
+# if !(setdiff(solarflux[:,1],lambdas)==[])
+#     throw("Need a broader range of solar flux values!")
+# end
 
 # pad all cross-sections to solar
 for j in Jratelist, ialt in 1:length(alt)

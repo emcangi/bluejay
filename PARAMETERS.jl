@@ -9,10 +9,10 @@
 # Last edited: 21 July 2020
 # Currently tested for Julia: 1.4.1
 ################################################################################
-
-research_dir = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/"
-results_dir = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Results/"
-xsecfolder = research_dir * "uvxsect/";
+const extra_plots_dir = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Auxiliary plots/"
+const research_dir = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/"
+const results_dir = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Results/"
+const xsecfolder = research_dir * "uvxsect/";
 
 # fundamental constants ========================================================
 const kB_MKS = 1.38e-23;        # J/K - needed for saturation vapor pressure empirical equation.
@@ -22,8 +22,8 @@ const mH = 1.67e-24;            # g
 const marsM = 0.1075*5.972e27;  # g 
 const radiusM = 3396e5;         # cm
 const q = 4.8032e-10            # statcoulomb (cm^1.5 g^0.5 s^-1)
-DH = 5.5 * 1.6e-4               # SMOW value from Yung 1988
-PN = 1                          # a number to append to some plot filenames. so ugly but it's the easiest way
+const DH = 5.5 * 1.6e-4               # SMOW value from Yung 1988
+
 
 # Altitude grid discretization =================================================
 const alt = convert(Array, (0:2e5:250e5)) # TODO: Figure out how to get this without being hard-coded
@@ -38,62 +38,62 @@ const upper_lower_bdy_i = Int64(upper_lower_bdy / 2e5) # the uppermost layer at 
 const zmin = alt[1]
 const zmax = alt[end];
 const dz = alt[2]-alt[1];
-n_alt_index=Dict([z=>clamp((i-1),1, num_layers) for (i, z) in enumerate(alt)])
+const n_alt_index=Dict([z=>clamp((i-1),1, num_layers) for (i, z) in enumerate(alt)])
 
-hygropause_alt = 40e5
+const hygropause_alt = 40e5
 
 # Temperatures and water stuff =================================================
-global meanTs = 216.0
-global meanTt = 130.0
-global meanTe = 205.0
-global meantemps = [meanTs, meanTt, meanTe]
+const meanTs = 216.0
+const meanTt = 130.0
+const meanTe = 205.0
+const meantemps = [meanTs, meanTt, meanTe]
 
-global meanTsint = 216
-global meanTtint = 130
-global meanTeint = 205
+const meanTsint = 216
+const meanTtint = 130
+const meanTeint = 205
 
 # These are the low and high values for the "standard atmosphere and reasonable 
 # climate variations" cases. NOT the full range of temperatures used to make the
 # detailed cases stuff, because those include temps up to 350 K.
-global lowTs = 160.0
-global hiTs = 270.0
-global lowTt = 100.0
-global hiTt = 160.0
-global lowTe = 150.0
-global hiTe = 250.0
+const lowTs = 160.0
+const hiTs = 270.0
+const lowTt = 100.0
+const hiTt = 160.0
+const lowTe = 150.0
+const hiTe = 250.0
 
-global highestTe = 350.0  # This is the highest exobase temperature considered.
+const highestTe = 350.0  # This is the highest exobase temperature considered.
                           # AFAIK this parameter is only used in making the 3-panel
                           # temperature profile plot.
 
-MR_mean_water = 1.38e-4
+const MR_mean_water = 1.38e-4
 
 # Timesteps and iterations =====================================================
-dt_min_and_max = Dict("neutrals"=>[-3, 14], "ions"=>[-4, 6], "both"=>[-4, 14])
-numiters = 15 # number of iterations per timestep. you can increase if having trouble converging
+const dt_min_and_max = Dict("neutrals"=>[-3, 14], "ions"=>[-4, 6], "both"=>[-4, 14])
+const rel_tol = 1e-4
 
 # Species, Jrates, and which are active ========================================
 
 # !----------------- You may modify per simulation starting here -------------------!
-conv_neutrals = [:Ar, :CO, :CO2, :H, :H2, :H2O, :H2O2, :HO2, :HOCO, :N2, 
-                 :O, :O1D, :O2, :O3, :OH,
-                 :D, :DO2, :DOCO, :HD, :HDO, :HDO2, :OD,
+const conv_neutrals = [:Ar, :CO, :CO2, :H, :H2, :H2O, :H2O2, :HO2, :HOCO, :N2, 
+                       :O, :O1D, :O2, :O3, :OH,
+                       :D, :DO2, :DOCO, :HD, :HDO, :HDO2, :OD,
 
                  # neutrals which are new but successfully incorporated
                  :C, :CH, :HCO, :N2O, :NO2, :CN, :HCN, :HNO, :N, :NH, :NH2, :NO];
-N_species = [:N2O, :NO2, :CN, :HCN, :HNO, :N, :NH, :NH2, :NO];
-new_neutrals = [];
-conv_ions = [:CO2pl, :HCO2pl, :Opl, :O2pl, # Nair minimal ionosphere 
-             :Arpl, :ArHpl, :Cpl, :CHpl, :CNpl, :COpl, 
-             :Hpl, :H2pl, :H2Opl, :H3pl, :H3Opl,
-             :HCNpl, :HCNHpl, :HCOpl, 
-             :HNOpl, :HN2Opl, :HOCpl, :HO2pl, 
-             :Npl,  :NHpl, :NH2pl, :NH3pl, :N2pl, :N2Hpl, :N2Opl, :NOpl, :NO2pl,
-             :OHpl,
-             # Deuterated ions
-             :ArDpl, :Dpl, :DCOpl, :HDpl, :HD2pl, :H2Dpl, :N2Dpl
-            ];# should have but don't: HDO+, DO2+ 
-new_ions = [ ];
+const N_species = [:N2O, :NO2, :CN, :HCN, :HNO, :N, :NH, :NH2, :NO];
+const new_neutrals = [];
+const conv_ions = [:CO2pl, :HCO2pl, :Opl, :O2pl, # Nair minimal ionosphere 
+                   :Arpl, :ArHpl, :Cpl, :CHpl, :CNpl, :COpl, 
+                   :Hpl, :H2pl, :H2Opl, :H3pl, :H3Opl,
+                   :HCNpl, :HCNHpl, :HCOpl, 
+                   :HNOpl, :HN2Opl, :HOCpl, :HO2pl, 
+                   :Npl,  :NHpl, :NH2pl, :NH3pl, :N2pl, :N2Hpl, :N2Opl, :NOpl, :NO2pl,
+                   :OHpl,
+                   # Deuterated ions
+                   :ArDpl, :Dpl, :DCOpl, :HDpl, :HD2pl, :H2Dpl, :N2Dpl
+                  ];# should have but don't: HDO+, DO2+ 
+const new_ions = [ ];
 
 # To converge neutrals: add conv_ions to nochemspecies and notransportspecies.
 # To converge ions: add setdiff(conv_neutrals, N_species) to nochemspecies and notransportspecies.
@@ -164,8 +164,8 @@ const inactivespecies = intersect(nochemspecies, notransportspecies)
 # NEW - for handling different water behavior in upper/lower atmo
 # Get the position of H2O and HDO symbols within active species. This is used so that we can control its behavior differently
 # in different parts of the atmosphere.
-H2Oi = findfirst(x->x==:H2O, activespecies)
-HDOi = findfirst(x->x==:HDO, activespecies)
+const H2Oi = findfirst(x->x==:H2O, activespecies)
+const HDOi = findfirst(x->x==:HDO, activespecies)
 
 #  Useful dictionaries ==========================================================
 # List of D bearing species and their H analogues. INCOMPLETE, only has ions right now because we don't need the neutral analogue list.
@@ -294,7 +294,7 @@ const absorber = Dict(:JCO2ion =>:CO2,
                 );
 
 # Common plot specifications =======================================================
-global speciescolor = Dict(:H => "#ff0000", :D => "#ff0000", # red
+const speciescolor = Dict(:H => "#ff0000", :D => "#ff0000", # red
                            :H2 => "#e526d7", :HD =>  "#e526d7", # dark pink/magenta
 
                            # hydroxides
@@ -338,31 +338,31 @@ global speciescolor = Dict(:H => "#ff0000", :D => "#ff0000", # red
                            );
 
 # D group will have dashed lines; neutrals, solid (default)
-global speciesstyle = Dict(:D => "--", :HD => "--", :OD => "--", :HDO => "--", :HDO2 => "--", :DO2 => "--", :DOCO => "--", 
+const speciesstyle = Dict(:D => "--", :HD => "--", :OD => "--", :HDO => "--", :HDO2 => "--", :DO2 => "--", :DOCO => "--", 
                            :ArDpl=>"--", :Dpl=>"--", :DCOpl=>"--", :HDpl=>"--", :HD2pl=>"--", :H2Dpl=>"-.", :N2Dpl=>"--");
                 
-medgray = "#444444"
+const medgray = "#444444"
 
 # Crosssection filenames ======================================================
 # There's gotta be a better way to do this. Probably a dictionary of Jrates to strings.
 
-co2file = "CO2.dat"
-co2exfile = "binnedCO2e.csv" # added to shield short λ of sunlight in upper atmo
-h2ofile = "h2oavgtbl.dat"
-hdofile = "HDO.dat"#"HDO_250K.dat"#
-h2o2file = "H2O2.dat"
-hdo2file = "H2O2.dat" #TODO: do HDO2 xsects exist?
-o3file = "O3.dat"
-o3chapfile = "O3Chap.dat"
-o2file = "O2.dat"
-o2_130_190 = "130-190.cf4"
-o2_190_280 = "190-280.cf4"
-o2_280_500 = "280-500.cf4"
-h2file = "binnedH2.csv"
-hdfile = "binnedH2.csv" # TODO: change this to HD file if xsects ever exist
-ohfile = "binnedOH.csv"
-oho1dfile = "binnedOHo1D.csv"
-odfile = "OD.csv"
+const co2file = "CO2.dat"
+const co2exfile = "binnedCO2e.csv" # added to shield short λ of sunlight in upper atmo
+const h2ofile = "h2oavgtbl.dat"
+const hdofile = "HDO.dat"#"HDO_250K.dat"#
+const h2o2file = "H2O2.dat"
+const hdo2file = "H2O2.dat" #TODO: do HDO2 xsects exist?
+const o3file = "O3.dat"
+const o3chapfile = "O3Chap.dat"
+const o2file = "O2.dat"
+const o2_130_190 = "130-190.cf4"
+const o2_190_280 = "190-280.cf4"
+const o2_280_500 = "280-500.cf4"
+const h2file = "binnedH2.csv"
+const hdfile = "binnedH2.csv" # TODO: change this to HD file if xsects ever exist
+const ohfile = "binnedOH.csv"
+const oho1dfile = "binnedOHo1D.csv"
+const odfile = "OD.csv"
 
 # Chemistry ====================================================================
 # function to replace three body rates with the recommended expression
@@ -379,7 +379,7 @@ threebodyca(k0, kinf) = :($k0 ./ (1 .+ $k0 ./ ($kinf ./ M)).*0.6 .^ ((1 .+ (log1
 # reactions and multipliers on base rates for deuterium reactions from Yung
 # 1988; base rates from this work or Chaffin+ 2017. Note: below, H-ana means 
 # the same reaction but with only H-bearing species.
-reactionnet = [   #Photodissociation
+const reactionnet = [   #Photodissociation
              [[:CO2], [:CO, :O], :JCO2toCOpO],
              [[:CO2], [:CO, :O1D], :JCO2toCOpO1D],
              [[:O2], [:O, :O], :JO2toOpO],

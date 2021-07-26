@@ -10,10 +10,10 @@
 # Last edited: 7 April 2021
 # Currently tested for Julia: 1.5.3
 ################################################################################
-
-research_dir = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/"
-results_dir = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Results/"
-xsecfolder = research_dir * "uvxsect/";
+const extra_plots_dir = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Auxiliary plots/"
+const research_dir = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/"
+const results_dir = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Results/"
+const xsecfolder = research_dir * "uvxsect/";
 
 # fundamental constants ========================================================
 const kB_MKS = 1.38e-23;        # J/K - needed for saturation vapor pressure empirical equation.

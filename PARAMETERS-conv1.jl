@@ -9,7 +9,7 @@
 # Last edited: 7 April 2021
 # Currently tested for Julia: 1.5.3
 ################################################################################
-
+const extra_plots_dir = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Auxiliary plots/"
 const research_dir = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/"
 const results_dir = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Results/"
 const xsecfolder = research_dir * "uvxsect/";
@@ -68,9 +68,8 @@ const highestTe = 350.0  # This is the highest exobase temperature considered.
 const MR_mean_water = 1.38e-4
 
 # Timesteps and general simulation parameters =================================
-const dtmin = -3
-const dt_min_and_max = Dict("neutrals"=>[dtmin, 14], "ions"=>[-4, 6], "both"=>[-4, 14])
-const rel_tol = 1e-2
+const dt_min_and_max = Dict("neutrals"=>[-3, 14], "ions"=>[-4, 6], "both"=>[-4, 14])
+const rel_tol = 1e-4
 
 # Species, Jrates, and which are active ========================================
 
@@ -100,8 +99,8 @@ const new_ions = [:CO2pl, :HCO2pl, :Opl, :O2pl, # Nair minimal ionosphere
 const nochemspecies = [:Ar, :N2];
 const notransportspecies = [:Ar, :N2]; 
 
-# append!(nochemspecies, conv_neutrals)  # NOTE: This is what to change EVERY TIME YOU RUN until you find a better way
-# append!(notransportspecies, conv_neutrals)  # NOTE: This is what to change EVERY TIME YOU RUN until you find a better way
+append!(nochemspecies, conv_neutrals)  # NOTE: This is what to change EVERY TIME YOU RUN until you find a better way
+append!(notransportspecies, conv_neutrals)  # NOTE: This is what to change EVERY TIME YOU RUN until you find a better way
 
 # Photolysis and Photoionization rate symbol lists
 const conv_Jrates = [# Original neutral photodissociation
@@ -225,70 +224,69 @@ const species_polarizability = Dict(:Ar=>1.664e-24,
                                     :DO2=>1.858e-24, :DOCO=>3.224e-24, :HD=>0.791e-24, :HDO=>1.358e-24, :HDO2=>2.143e-24, :OD=>1.020e-24)
 
 # This dictionary could probably be replaced with some simple regular expression code, but I haven't done it yet.
-const absorber = Dict(:JCO2ion =>:CO2,
-                :JCO2toCOpO =>:CO2,
-                :JCO2toCOpO1D =>:CO2,
-                :JO2toOpO =>:O2,
-                :JO2toOpO1D =>:O2,
-                :JO3toO2pO =>:O3,
-                :JO3toO2pO1D =>:O3,
-                :JO3toOpOpO =>:O3,
-                :JH2toHpH =>:H2,
-                :JHDtoHpD => :HD,
-                :JOHtoOpH =>:OH,
-                :JOHtoO1DpH =>:OH,
-                :JODtoOpD =>:OD,
-                :JODtoO1DpD => :OD,
-                :JHO2toOHpO =>:HO2,
-                :JDO2toODpO => :DO2,
-                :JH2OtoHpOH =>:H2O,
-                :JH2OtoH2pO1D =>:H2O,
-                :JH2OtoHpHpO =>:H2O,
-                :JH2O2to2OH =>:H2O2,
-                :JH2O2toHO2pH =>:H2O2,
-                :JH2O2toH2OpO1D =>:H2O2,
-                :JHDO2toHDOpO1D => :HDO2,
-                :JHDOtoHpOD=>:HDO,
-                :JHDO2toOHpOD=>:HDO2,
-                :JHDO2toDO2pH => :HDO2,
-                :JHDO2toHO2pD => :HDO2,
-                :JHDOtoDpOH=>:HDO,
-                :JHDOtoHpDpO=>:HDO,
-                :JHDOtoHDpO1D=>:HDO,
-                # NEW: reactions from Roger's model. 
-                :JH2OtoH2Opl=>:H2O,
-                :JH2OtoOplpH2=>:H2O,
-                :JCOtoCpO=>:CO,
-                :JCOtoCOpl=>:CO,
-                :JN2OtoN2pO1D =>:N2O,
-                :JH2toH2pl=>:H2,
-                :JCOtoCpOpl=>:CO,
-                :JNO2toNOpO=>:NO2,
-                :JCO2toCpO2=>:CO2,
-                :JCO2toCplplpO2=>:CO2,
-                :JNOtoNOpl=>:NO,
-                :JH2toHplpH=>:H2,
-                :JH2OtoHplpOH=>:H2O,
-                :JH2O2toH2O2pl=>:H2O2,
-                :JN2toN2pl=>:N2,
-                :JCO2toCOplpOpl=>:CO2,
-                :JCOtoOpCpl=>:CO,
-                :JCO2toOplpCplpO=>:CO2,
-                :JNOtoNpO=>:NO,
-                :JCO2toCplpO2=>:CO2,
-                :JCO2toCO2pl=>:CO2,
-                :JOtoOpl=>:O,
-                :JH2OtoOHplpH=>:H2O,
-                :JNO2toNO2pl=>:NO2,
-                :JCO2toCOplpO=>:CO2,
-                :JN2toNplpN=>:N2,
-                :JCO2toCpOpO=>:CO2,
-                :JCO2toCO2plpl=>:CO2,
-                :JCO2toOplpCO=>:CO2,
-                :JO2toO2pl=>:O2,
-                :JHtoHpl=>:H,
-                :JN2OtoN2Opl=>:N2O,
-                :JO3toO3pl=>:O3
+const absorber = Dict(:JCO2toCOpO =>:CO2,
+                      :JCO2toCOpO1D =>:CO2,
+                      :JO2toOpO =>:O2,
+                      :JO2toOpO1D =>:O2,
+                      :JO3toO2pO =>:O3,
+                      :JO3toO2pO1D =>:O3,
+                      :JO3toOpOpO =>:O3,
+                      :JH2toHpH =>:H2,
+                      :JHDtoHpD => :HD,
+                      :JOHtoOpH =>:OH,
+                      :JOHtoO1DpH =>:OH,
+                      :JODtoOpD =>:OD,
+                      :JODtoO1DpD => :OD,
+                      :JHO2toOHpO =>:HO2,
+                      :JDO2toODpO => :DO2,
+                      :JH2OtoHpOH =>:H2O,
+                      :JH2OtoH2pO1D =>:H2O,
+                      :JH2OtoHpHpO =>:H2O,
+                      :JH2O2to2OH =>:H2O2,
+                      :JH2O2toHO2pH =>:H2O2,
+                      :JH2O2toH2OpO1D =>:H2O2,
+                      :JHDO2toHDOpO1D => :HDO2,
+                      :JHDOtoHpOD=>:HDO,
+                      :JHDO2toOHpOD=>:HDO2,
+                      :JHDO2toDO2pH => :HDO2,
+                      :JHDO2toHO2pD => :HDO2,
+                      :JHDOtoDpOH=>:HDO,
+                      :JHDOtoHpDpO=>:HDO,
+                      :JHDOtoHDpO1D=>:HDO,
+                      # NEW: reactions from Roger's model. 
+                      :JH2OtoH2Opl=>:H2O,
+                      :JH2OtoOplpH2=>:H2O,
+                      :JCOtoCpO=>:CO,
+                      :JCOtoCOpl=>:CO,
+                      :JN2OtoN2pO1D =>:N2O,
+                      :JH2toH2pl=>:H2,
+                      :JCOtoCpOpl=>:CO,
+                      :JNO2toNOpO=>:NO2,
+                      :JCO2toCpO2=>:CO2,
+                      :JCO2toCplplpO2=>:CO2,
+                      :JNOtoNOpl=>:NO,
+                      :JH2toHplpH=>:H2,
+                      :JH2OtoHplpOH=>:H2O,
+                      :JH2O2toH2O2pl=>:H2O2,
+                      :JN2toN2pl=>:N2,
+                      :JCO2toCOplpOpl=>:CO2,
+                      :JCOtoOpCpl=>:CO,
+                      :JCO2toOplpCplpO=>:CO2,
+                      :JNOtoNpO=>:NO,
+                      :JCO2toCplpO2=>:CO2,
+                      :JCO2toCO2pl=>:CO2,
+                      :JOtoOpl=>:O,
+                      :JH2OtoOHplpH=>:H2O,
+                      :JNO2toNO2pl=>:NO2,
+                      :JCO2toCOplpO=>:CO2,
+                      :JN2toNplpN=>:N2,
+                      :JCO2toCpOpO=>:CO2,
+                      :JCO2toCO2plpl=>:CO2,
+                      :JCO2toOplpCO=>:CO2,
+                      :JO2toO2pl=>:O2,
+                      :JHtoHpl=>:H,
+                      :JN2OtoN2Opl=>:N2O,
+                      :JO3toO3pl=>:O3
                 );
 
 # Common plot specifications =======================================================
@@ -770,7 +768,7 @@ const reactionnet = [   #Photodissociation
                         
              # More complicated - need the minimum of the two expressions. These updated 5 Feb 2021 to match Roger's code.
              # [[:CH, :H2], [:CH2, :H], :(min.($:(8.5e-11 .* (Tn .^ 0.15)), $:(0.0 .+ (10 .^ ((log10.(0.6)) ./ (1 .+ ((log10.((4.7e-26 .* (Tn .^ -1.6) .* M) ./ (8.5e-11 .* (Tn .^ 0.15))) .- 0.4 .- 0.67 .* log10.(0.6)) ./ (0.75 .- 1.27 .* log10.(0.6) .- 0.14 .* (log10.((4.7e-26 .* (Tn .^ -1.6) .* M) ./ (8.5e-11 .* (Tn .^ 0.15))) .- 0.4 .- 0.67 .* log10.(0.6)))) .^ 2)) .* 4.7e-26 .* (Tn .^ -1.6) .* 8.5e-11 .* (Tn .^ 0.15) .* M) ./ (4.7e-26 .* (Tn .^ -1.6) .* M .+ 8.5e-11 .* (Tn .^ 0.15)))))],
-             # [[:CO, :O], [:CO2], :(min.($:(1.0 .* exp.(-1509.0 ./ Tn)), $:(0.0 .+ (10 .^ ((log10.(0.4)) ./ (1 .+ ((log10.((1.7e-33 .* exp.(-1509.0 ./ Tn) .* M) ./ (1.0 .* exp.(-1509.0 ./ Tn))) .- 0.4 .- 0.67 .* log10.(0.4)) ./ (0.75 .- 1.27 .* log10.(0.4) .- 0.14 .* (log10.((1.7e-33 .* exp.(-1509.0 ./ Tn) .* M) ./ (1.0 .* exp.(-1509.0 ./ Tn))) .- 0.4 .- 0.67 .* log10.(0.4)))) .^ 2)) .* 1.7e-33 .* exp.(-1509.0 ./ Tn) .* 1.0 .* exp.(-1509.0 ./ Tn) .* M) ./ (1.7e-33 .* exp.(-1509.0 ./ Tn) .* M .+ 1.0 .* exp.(-1509.0 ./ Tn)))))],
+             [[:CO, :O], [:CO2], :(min.($:(1.0 .* exp.(-1509.0 ./ Tn)), $:(0.0 .+ (10 .^ ((log10.(0.4)) ./ (1 .+ ((log10.((1.7e-33 .* exp.(-1509.0 ./ Tn) .* M) ./ (1.0 .* exp.(-1509.0 ./ Tn))) .- 0.4 .- 0.67 .* log10.(0.4)) ./ (0.75 .- 1.27 .* log10.(0.4) .- 0.14 .* (log10.((1.7e-33 .* exp.(-1509.0 ./ Tn) .* M) ./ (1.0 .* exp.(-1509.0 ./ Tn))) .- 0.4 .- 0.67 .* log10.(0.4)))) .^ 2)) .* 1.7e-33 .* exp.(-1509.0 ./ Tn) .* 1.0 .* exp.(-1509.0 ./ Tn) .* M) ./ (1.7e-33 .* exp.(-1509.0 ./ Tn) .* M .+ 1.0 .* exp.(-1509.0 ./ Tn)))))],
              # [[:NO, :H], [:HNO], :(min.($:(2.53e-9 .* (Tn .^ -0.41)), $:(0.0 .+ (10 .^ ((log10.(0.82)) ./ (1 .+ ((log10.((9.56e-29 .* (Tn .^ -1.17) .* exp.(-212.0 ./ Tn) .* M) ./ (2.53e-9 .* (Tn .^ -0.41))) .- 0.4 .- 0.67 .* log10.(0.82)) ./ (0.75 .- 1.27 .* log10.(0.82) .- 0.14 .* (log10.((9.56e-29 .* (Tn .^ -1.17) .* exp.(-212.0 ./ Tn) .* M) ./ (2.53e-9 .* (Tn .^ -0.41))) .- 0.4 .- 0.67 .* log10.(0.82)))) .^ 2)) .* 9.56e-29 .* (Tn .^ -1.17) .* exp.(-212.0 ./ Tn) .* 2.53e-9 .* (Tn .^ -0.41) .* M) ./ (9.56e-29 .* (Tn .^ -1.17) .* exp.(-212.0 ./ Tn) .* M .+ 2.53e-9 .* (Tn .^ -0.41)))))],
              # [[:NO, :O], [:NO2], :(min.($:(4.9e-10 .* (Tn .^ -0.4)), $:(0.0 .+ (10 .^ ((log10.(0.8)) ./ (1 .+ ((log10.((9.2e-28 .* (Tn .^ -1.6) .* M) ./ (4.9e-10 .* (Tn .^ -0.4))) .- 0.4 .- 0.67 .* log10.(0.8)) ./ (0.75 .- 1.27 .* log10.(0.8) .- 0.14 .* (log10.((9.2e-28 .* (Tn .^ -1.6) .* M) ./ (4.9e-10 .* (Tn .^ -0.4))) .- 0.4 .- 0.67 .* log10.(0.8)))) .^ 2)) .* 9.2e-28 .* (Tn .^ -1.6) .* 4.9e-10 .* (Tn .^ -0.4) .* M) ./ (9.2e-28 .* (Tn .^ -1.6) .* M .+ 4.9e-10 .* (Tn .^ -0.4)))))],
              # [[:O, :N], [:NO], :(min.($:(1.0 .* Tn .^ 0), $:(0.0 .+ (10 .^ ((log10.(0.4)) ./ (1 .+ ((log10.((5.46e-33 .* exp.(155.0 ./ Tn) .* M) ./ (1.0)) .- 0.4 .- 0.67 .* log10.(0.4)) ./ (0.75 .- 1.27 .* log10.(0.4) .- 0.14 .* (log10.((5.46e-33 .* exp.(155.0 ./ Tn) .* M) ./ (1.0)) .- 0.4 .- 0.67 .* log10.(0.4)))) .^ 2)) .* 5.46e-33 .* exp.(155.0 ./ Tn) .* 1.0 .* M) ./ (5.46e-33 .* exp.(155.0 ./ Tn) .* M .+ 1.0))))],
@@ -950,7 +948,6 @@ const reactionnet = [   #Photodissociation
              # [[:H2pl, :HCN], [:HCNpl, :H2], :(2 .* 4.68e-8 .* (Ti .^ -0.5))],
              # [[:H2pl, :HCO], [:H3pl, :CO], :(2 .* 1.73e-8 .* (Ti .^ -0.5))],
              # [[:H2pl, :HCO], [:HCOpl, :H2], :(2 .* 1.73e-8 .* (Ti .^ -0.5))],
-             # UNUSED # [[:H2pl, :He], [:HeHpl, :H], :(2 .* 1.35e-10)],
              # [[:H2pl, :N], [:NHpl, :H], :(2 .* 1.9e-9)],
              # [[:H2pl, :N2], [:N2Hpl, :H], :(2 .* 2.0e-9)],
              # [[:H2pl, :N2O], [:HN2Opl, :H], :(2 .* 1.32e-9)],
@@ -1027,46 +1024,6 @@ const reactionnet = [   #Photodissociation
              # [[:HCOpl, :NH2], [:NH3pl, :CO], :(2 .* 1.54e-8 .* (Ti .^ -0.5))],
              # [[:HCOpl, :OH], [:H2Opl, :CO], :(2 .* 1.07e-8 .* (Ti .^ -0.5))],
              # [[:HCOpl, :OH], [:HCO2pl, :H], :(2 .* 1.73e-8 .* (Ti .^ -0.5))],
-             # # UNUSED # [[:Hepl, :C], [:Cpl, :He], :(2 .* 8.74e-17 .* (Ti .^ 0.75))],
-             # # UNUSED # [[:Hepl, :CH], [:CHpl, :He], :(2 .* 8.66e-9 .* (Ti .^ -0.5))],
-             # # UNUSED # [[:Hepl, :CH], [:Cpl, :He, :H], :(2 .* 1.91e-8 .* (Ti .^ -0.5))],
-             # # UNUSED # [[:Hepl, :CN], [:Cpl, :N, :He], :(2 .* 1.52e-8 .* (Ti .^ -0.5))],
-             # # UNUSED # [[:Hepl, :CN], [:Npl, :C, :He], :(2 .* 1.52e-8 .* (Ti .^ -0.5))],
-             # # UNUSED # [[:Hepl, :CO], [:Cpl, :O, :He], :(2 .* 1.6e-9)],
-             # # UNUSED # [[:Hepl, :CO2], [:CO2pl, :He], :(2 .* 5.0e-11)],
-             # # UNUSED # [[:Hepl, :CO2], [:COpl, :O, :He], :(2 .* 7.8e-10)],
-             # # UNUSED # [[:Hepl, :CO2], [:Cpl, :O2, :He], :(2 .* 2.0e-11)],
-             # # UNUSED # [[:Hepl, :CO2], [:O2pl, :C, :He], :(2 .* 1.1e-11)],
-             # # UNUSED # [[:Hepl, :CO2], [:Opl, :CO, :He], :(2 .* 1.4e-10)],
-             # # UNUSED # [[:Hepl, :H], [:HeHpl], :(2 .* 3.43e-15 .* (Ti .^ -0.37))],
-             # # UNUSED # [[:Hepl, :H], [:Hpl, :He], :(2 .* 2.88e-16 .* (Ti .^ 0.25))],
-             # # UNUSED # [[:Hepl, :H2], [:H2pl, :He], :(2 .* 1.7e-14)],
-             # # UNUSED # [[:Hepl, :H2], [:Hpl, :He, :H], :(2 .* 8.3e-14)],
-             # # UNUSED # [[:Hepl, :H2O], [:H2Opl, :He], :(2 .* 5.5e-11 .* (Ti .^ -0.5))],
-             # # UNUSED # [[:Hepl, :H2O], [:Hpl, :OH, :He], :(2 .* 1.85e-10)],
-             # # UNUSED # [[:Hepl, :H2O], [:OHpl, :He, :H], :(2 .* 2.6e-10 .* (Ti .^ -0.5))],
-             # # UNUSED # [[:Hepl, :HCN], [:CHpl, :N, :He], :(2 .* 6.93e-10)],
-             # # UNUSED # [[:Hepl, :HCN], [:CNpl, :He, :H], :(2 .* 1.55e-9)],
-             # # UNUSED # [[:Hepl, :HCN], [:Cpl, :NH, :He], :(2 .* 8.25e-10)],
-             # # UNUSED # [[:Hepl, :HCN], [:Npl, :CH, :He], :(2 .* 2.31e-10)],
-             # # UNUSED # [[:Hepl, :HCO], [:CHpl, :O, :He], :(2 .* 8.49e-9 .* (Ti .^ -0.5))],
-             # # UNUSED # [[:Hepl, :HCO], [:COpl, :He, :H], :(2 .* 8.49e-9 .* (Ti .^ -0.5))],
-             # # UNUSED # [[:Hepl, :HCO], [:HeHpl, :CO], :(2 .* 5.2e-9 .* (Ti .^ -0.5))],
-             # # UNUSED # [[:Hepl, :HNO], [:Hpl, :NO, :He], :(2 .* 1.73e-8 .* (Ti .^ -0.5))],
-             # # UNUSED # [[:Hepl, :HNO], [:NOpl, :He, :H], :(2 .* 1.73e-8 .* (Ti .^ -0.5))],
-             # # UNUSED # [[:Hepl, :N2], [:N2pl, :He], :(2 .* 5.2e-10)],
-             # # UNUSED # [[:Hepl, :N2], [:Npl, :N, :He], :(2 .* 7.8e-10)],
-             # # UNUSED # [[:Hepl, :N2O], [:N2pl, :O, :He], :(2 .* 1.24e-9)],
-             # # UNUSED # [[:Hepl, :N2O], [:NOpl, :N, :He], :(2 .* 4.83e-10)],
-             # # UNUSED # [[:Hepl, :N2O], [:Npl, :NO, :He], :(2 .* 2.99e-10)],
-             # # UNUSED # [[:Hepl, :N2O], [:Opl, :N2, :He], :(2 .* 2.76e-10)],
-             # # UNUSED # [[:Hepl, :NH], [:Npl, :He, :H], :(2 .* 1.91e-8 .* (Ti .^ -0.5))],
-             # # UNUSED # [[:Hepl, :NH2], [:NHpl, :He, :H], :(2 .* 1.39e-8 .* (Ti .^ -0.5))],
-             # # UNUSED # [[:Hepl, :NO], [:Npl, :O, :He], :(2 .* 1.35e-9)],
-             # # UNUSED # [[:Hepl, :NO], [:Opl, :N, :He], :(2 .* 1.02e-10)],
-             # # UNUSED # [[:Hepl, :O2], [:O2pl, :He], :(2 .* 3.0e-11)],
-             # # UNUSED # [[:Hepl, :O2], [:Opl, :O, :He], :(2 .* 9.7e-10)],
-             # # UNUSED # [[:Hepl, :OH], [:Opl, :He, :H], :(2 .* 1.91e-8 .* (Ti .^ -0.5))],
              # [[:HN2Opl, :CO], [:HCOpl, :N2O], :(2 .* 5.3e-10)],
              # [[:HN2Opl, :H2O], [:H3Opl, :N2O], :(2 .* 2.83e-9)],
              # [[:HNOpl, :C], [:CHpl, :NO], :(2 .* 1.0e-9)],
@@ -1115,7 +1072,6 @@ const reactionnet = [   #Photodissociation
              # [[:Hpl, :HCO], [:COpl, :H2], :(2 .* 1.63e-8 .* (Ti .^ -0.5))],
              # [[:Hpl, :HCO], [:H2pl, :CO], :(2 .* 1.63e-8 .* (Ti .^ -0.5))],
              # [[:Hpl, :HCO], [:HCOpl, :H], :(2 .* 1.63e-8 .* (Ti .^ -0.5))],
-             # # UNUSED # [[:Hpl, :He], [:HeHpl], :(2 .* 3.14e-19 .* (Ti .^ -0.24))],
              # [[:Hpl, :HNO], [:NOpl, :H2], :(2 .* 6.93e-8 .* (Ti .^ -0.5))],
              # [[:Hpl, :N2O], [:N2Hpl, :O], :(2 .* 3.52e-10)],
              # [[:Hpl, :N2O], [:N2Opl, :H], :(2 .* 1.85e-9)],
@@ -1249,9 +1205,6 @@ const reactionnet = [   #Photodissociation
              # [[:Npl, :O2], [:O2pl, :N], :(2 .* 3.07e-10)],
              # [[:Npl, :O2], [:Opl, :NO], :(2 .* 4.64e-11)],
              # [[:Npl, :OH], [:OHpl, :N], :(2 .* 6.41e-9 .* (Ti .^ -0.5))],
-             # # UNUSED # [[:O2Dpl, :H2], [:H2pl, :O], :(2 .* 4.4e-8 .* (Ti .^ -0.98) .* exp.(-302.4 ./ Ti))],
-             # # UNUSED # [[:O2Dpl, :H2], [:Hpl, :OH], :(2 .* 1.62e-8 .* (Ti .^ -0.95) .* exp.(-335.1 ./ Ti))],
-             # # UNUSED # [[:O2Dpl, :H2], [:OHpl, :H], :(2 .* 1.5e-9)],
              # [[:O2pl, :C], [:COpl, :O], :(2 .* 5.2e-11)],
              # [[:O2pl, :C], [:Cpl, :O2], :(2 .* 5.2e-11)],
              # [[:O2pl, :CH], [:CHpl, :O2], :(2 .* 5.37e-9 .* (Ti .^ -0.5))],
