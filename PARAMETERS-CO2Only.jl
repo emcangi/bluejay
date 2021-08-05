@@ -1,13 +1,47 @@
 ################################################################################
 # PARAMETERS.jl
 # TYPE: (1) Model files - required
-# DESCRIPTION: Just some standard global constants that need to get used 
-# EVERYWHERE. Also the chemical reaction network.
+# DESCRIPTION: Global constants, simulation parameters, reaction networks. 
 # 
 # Eryn Cangi
 # Created December 2019
-# Last edited: 14 May 2021
-# Currently tested for Julia: 1.4.1
+# Last edited: August 2021
+# Currently tested for Julia: 1.6.1
+################################################################################
+
+################################################################################
+###################### begin modifiable value zone #############################
+################################################################################
+
+const max_alt = 250e5
+const upper_lower_bdy = 80e5 # the uppermost layer at which water will be fixed, in cm
+const hygropause_alt = 40e5
+const MR_mean_water = 1.38e-4
+
+# Timesteps and iterations =====================================================
+const dt_min_and_max = Dict("neutrals"=>[-3, 14], "ions"=>[-4, 6], "both"=>[-4, 14])
+const rel_tol = 1e-4
+
+# General species name lists for converged and newly introduced species =======
+const conv_neutrals = [:CO2, :CO, :O];
+const conv_ions = [];
+
+const new_neutrals = []; # should remain empty but has to be here for code to work
+const new_ions = [:CO2pl]; # should remain empty but has to be here for code to work
+
+const nochemspecies = [];
+const notransportspecies = [];
+
+# Photolysis and Photoionization rate symbol lists
+const newJrates = [];
+const conv_Jrates = [];
+const Jratelist = [:JCO2toCO2pl, :JCO2toCOpO];
+
+append!(Jratelist, conv_Jrates)
+append!(Jratelist, newJrates)
+
+################################################################################
+############################ end modification zone #############################
 ################################################################################
 
 research_dir = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/"
@@ -24,22 +58,19 @@ const radiusM = 3396e5;         # cm
 const q = 4.8032e-10            # statcoulomb (cm^1.5 g^0.5 s^-1)
 DH = 5.5 * 1.6e-4               # SMOW value from Yung 1988
 
-# Altitude grid discretization =================================================
-const alt = convert(Array, (0:2e5:250e5)) # TODO: Figure out how to get this without being hard-coded
+# Altitude grid specifications =================================================
+const alt = convert(Array, (0:2e5:max_alt)) # TODO: Figure out how to get this without being hard-coded
 const intaltgrid = round.(Int64, alt/1e5)[2:end-1]; # the altitude grid CELLS but in integers.
 const non_bdy_layers = alt[2:end-1]  # all layers, centered on 2 km, 4...248. Excludes the boundary layers which are [-1, 1] and [249, 251].
 const num_layers = length(alt) - 2 # there are 124 non-boundary layers.
 const plot_grid = non_bdy_layers ./ 1e5;  # for plotting. Points located at atmospheric layer cell centers and in units of km.
-const plot_grid_bdys = collect(1:2:249)  # the boundaries; includes the boundary layers at top and bottom.
-const upper_lower_bdy = 80e5 # the uppermost layer at which water will be fixed, in cm
+const plot_grid_bdys = collect(1:2:((max_alt / 1e5)-1))  # the boundaries; includes the boundary layers at top and bottom.
 const upper_lower_bdy_i = Int64(upper_lower_bdy / 2e5) # the uppermost layer at which water will be fixed, in cm
 
 const zmin = alt[1]
 const zmax = alt[end];
 const dz = alt[2]-alt[1];
 const n_alt_index=Dict([z=>clamp((i-1),1, num_layers) for (i, z) in enumerate(alt)])
-
-const hygropause_alt = 40e5
 
 # Temperatures and water stuff =================================================
 const meanTs = 216.0
@@ -65,37 +96,7 @@ const highestTe = 350.0  # This is the highest exobase temperature considered.
                   # AFAIK this parameter is only used in making the 3-panel
                   # temperature profile plot.
 
-const MR_mean_water = 1.38e-4
-
-# Timesteps and iterations =====================================================
-const dt_min_and_max = Dict("neutrals"=>[-3, 14], "ions"=>[-4, 6], "both"=>[-4, 14])
-const rel_tol = 1e-4
-
-# Species, Jrates, and which are active ========================================
-
-# !----------------- You may modify per simulation starting here -------------------!
-const conv_neutrals = [:CO2, :CO, :O];
-const conv_ions = [];
-
-const new_neutrals = []; # should remain empty but has to be here for code to work
-const new_ions = [:CO2pl]; # should remain empty but has to be here for code to work
-
-# To converge neutrals: add conv_ions to nochemspecies and notransportspecies.
-# To converge ions: add setdiff(conv_neutrals, N_species) to nochemspecies and notransportspecies.
-# This is because the N chemistry is intimiately tied up with the ions.
-const nochemspecies = [];
-const notransportspecies = [];
-
-# Photolysis and Photoionization rate symbol lists
-const newJrates = [];
-const conv_Jrates = [];
-const Jratelist = [:JCO2toCO2pl, :JCO2toCOpO];
-
-append!(Jratelist, conv_Jrates)
-append!(Jratelist, newJrates)
-
-# !-------------------------- End modification zone ----------------------------!
-
+# Set up the master lists of species ==========================================
 const ionlist = [];
 append!(ionlist, conv_ions)
 append!(ionlist, new_ions)
@@ -106,18 +107,16 @@ append!(fullspecieslist, ionlist)
 
 const neutrallist = setdiff(fullspecieslist, ionlist)
 
-const specieslist=fullspecieslist;  
+const fullspecieslist=fullspecieslist;  
 
-const chemspecies = setdiff(specieslist, nochemspecies);
-const transportspecies = setdiff(specieslist, notransportspecies);
+const chemspecies = setdiff(fullspecieslist, nochemspecies);
+const transportspecies = setdiff(fullspecieslist, notransportspecies);
 const activespecies = union(chemspecies, transportspecies)
 const inactivespecies = intersect(nochemspecies, notransportspecies)
 
-# NEW - for handling different water behavior in upper/lower atmo
-
-# this gives the indices of inactivespecies within specieslist. Used for 
+# this gives the indices of inactivespecies within fullspecieslist. Used for 
 # constructing tup and tdown in a more efficient way.
-const notransport_inds = [findfirst(x->x==ias, specieslist) for ias in inactivespecies]
+const notransport_inds = [findfirst(x->x==ias, fullspecieslist) for ias in inactivespecies]
 
 #  Useful dictionaries ==========================================================
 # List of D bearing species and their H analogues. INCOMPLETE, only has ions right now because we don't need the neutral analogue list.

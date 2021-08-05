@@ -9,6 +9,55 @@
 # Last edited: 14 May 2021
 # Currently tested for Julia: 1.4.1
 ################################################################################
+
+################################################################################
+###################### begin modifiable value zone #############################
+################################################################################
+
+const max_alt = 250e5
+const upper_lower_bdy = 80e5 # the uppermost layer at which water will be fixed, in cm
+const hygropause_alt = 40e5
+const MR_mean_water = 1.38e-4
+
+# Timesteps and iterations =====================================================
+const dt_min_and_max = Dict("neutrals"=>[-3, 14], "ions"=>[-4, 6], "both"=>[-4, 14])
+const rel_tol = 1e-4
+
+# General species name lists for converged and newly introduced species =======
+const conv_neutrals = [:Ar, :CO, :CO2, :H, :H2, :H2O, :H2O2, :HO2, :HOCO, :N2, 
+                       :O, :O1D, :O2, :O3, :OH,
+                       :D, :DO2, :DOCO, :HD, :HDO, :HDO2, :OD
+                      ];
+const conv_ions = [:CO2pl];
+
+const new_neutrals = []; # should remain empty but has to be here for code to work
+const new_ions = []; # should remain empty but has to be here for code to work
+
+# Photolysis and Photoionization rate symbol lists
+const conv_Jrates = [# Original neutral photodissociation
+                    :JCO2toCOpO,:JCO2toCOpO1D,:JO2toOpO,:JO2toOpO1D,
+                    :JO3toO2pO,:JO3toO2pO1D,:JO3toOpOpO,:JH2toHpH,:JOHtoOpH,
+                    :JOHtoO1DpH,:JHO2toOHpO,:JH2OtoHpOH,:JH2OtoH2pO1D,:JH2OtoHpHpO,
+                    :JH2O2to2OH,:JH2O2toHO2pH,:JH2O2toH2OpO1D,
+
+                    # Original deuterated neutral photodissociation
+                    :JHDOtoHpOD, :JHDOtoDpOH, :JHDO2toOHpOD,
+                    :JHDOtoHDpO1D, :JHDOtoHpDpO, :JODtoOpD, :JHDtoHpD, :JDO2toODpO,
+                    :JHDO2toDO2pH, :JHDO2toHO2pD, :JHDO2toHDOpO1D, :JODtoO1DpD,
+
+                    # New neutral photodissociation (from Roger)
+                    # :JCO2toCpOpO, :JCO2toCpO2, :JCOtoCpO, # TODO: Incorporate these to the neutral model.
+                  ];
+const newJrates = [];
+
+const nochemspecies = [:Ar, :N2, :CO2pl];
+const notransportspecies = [:Ar, :N2, :CO2pl];
+
+################################################################################
+############################ end modification zone #############################
+################################################################################
+
+
 const extra_plots_dir = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Auxiliary plots/"
 const research_dir = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/"
 const results_dir = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Results/"
@@ -24,22 +73,19 @@ const radiusM = 3396e5;         # cm
 const q = 4.8032e-10            # statcoulomb (cm^1.5 g^0.5 s^-1)
 const DH = 5.5 * 1.6e-4               # SMOW value from Yung 1988                       # a number to append to some plot filenames. so ugly but it's the easiest way
 
-# Altitude grid discretization =================================================
-const alt = convert(Array, (0:2e5:250e5)) # TODO: Figure out how to get this without being hard-coded
+# Altitude grid specifications =================================================
+const alt = convert(Array, (0:2e5:max_alt)) # TODO: Figure out how to get this without being hard-coded
 const intaltgrid = round.(Int64, alt/1e5)[2:end-1]; # the altitude grid CELLS but in integers.
 const non_bdy_layers = alt[2:end-1]  # all layers, centered on 2 km, 4...248. Excludes the boundary layers which are [-1, 1] and [249, 251].
 const num_layers = length(alt) - 2 # there are 124 non-boundary layers.
 const plot_grid = non_bdy_layers ./ 1e5;  # for plotting. Points located at atmospheric layer cell centers and in units of km.
-const plot_grid_bdys = collect(1:2:249)  # the boundaries; includes the boundary layers at top and bottom.
-const upper_lower_bdy = 80e5 # the uppermost layer at which water will be fixed, in cm
+const plot_grid_bdys = collect(1:2:((max_alt / 1e5)-1))  # the boundaries; includes the boundary layers at top and bottom.
 const upper_lower_bdy_i = Int64(upper_lower_bdy / 2e5) # the uppermost layer at which water will be fixed, in cm
 
 const zmin = alt[1]
 const zmax = alt[end];
 const dz = alt[2]-alt[1];
 const n_alt_index=Dict([z=>clamp((i-1),1, num_layers) for (i, z) in enumerate(alt)])
-
-const hygropause_alt = 40e5
 
 # Temperatures and water stuff =================================================
 const meanTs = 216.0
@@ -65,54 +111,10 @@ highestTe = 350.0  # This is the highest exobase temperature considered.
                           # AFAIK this parameter is only used in making the 3-panel
                           # temperature profile plot.
 
-const MR_mean_water = 1.38e-4
-
-# Timesteps and general simulation parameters =================================
-const dtmin = -3
-const dt_min_and_max = Dict("neutrals"=>[dtmin, 14], "ions"=>[dtmin, 6], "both"=>[dtmin, 14])
-const rel_tol = 1e-3
-
-# Species, Jrates, and which are active ========================================
-
-# !----------------- You may modify per simulation starting here -------------------!
-const conv_neutrals = [:Ar, :CO, :CO2, :H, :H2, :H2O, :H2O2, :HO2, :HOCO, :N2, 
-                       :O, :O1D, :O2, :O3, :OH,
-                       :D, :DO2, :DOCO, :HD, :HDO, :HDO2, :OD
-                      ];
-const conv_ions = [:CO2pl];
-
-const new_neutrals = []; # should remain empty but has to be here for code to work
-const new_ions = []; # should remain empty but has to be here for code to work
-
-# To converge neutrals: add conv_ions to nochemspecies and notransportspecies.
-# To converge ions: add setdiff(conv_neutrals, N_species) to nochemspecies and notransportspecies.
-# This is because the N chemistry is intimiately tied up with the ions.
-const nochemspecies = [:Ar, :N2, :CO2pl];
-const notransportspecies = [:Ar, :N2, :CO2pl];
-
-# Photolysis and Photoionization rate symbol lists
-const newJrates = [#:JCO2toCO2pl# New photoionization/ion-involved photodissociation  (from Roger)
-                  ];
-const conv_Jrates = [# Original neutral photodissociation
-                    :JCO2toCOpO,:JCO2toCOpO1D,:JO2toOpO,:JO2toOpO1D,
-                    :JO3toO2pO,:JO3toO2pO1D,:JO3toOpOpO,:JH2toHpH,:JOHtoOpH,
-                    :JOHtoO1DpH,:JHO2toOHpO,:JH2OtoHpOH,:JH2OtoH2pO1D,:JH2OtoHpHpO,
-                    :JH2O2to2OH,:JH2O2toHO2pH,:JH2O2toH2OpO1D,
-
-                    # Original deuterated neutral photodissociation
-                    :JHDOtoHpOD, :JHDOtoDpOH, :JHDO2toOHpOD,
-                    :JHDOtoHDpO1D, :JHDOtoHpDpO, :JODtoOpD, :JHDtoHpD, :JDO2toODpO,
-                    :JHDO2toDO2pH, :JHDO2toHO2pD, :JHDO2toHDOpO1D, :JODtoO1DpD,
-
-                    # New neutral photodissociation (from Roger)
-                    # :JCO2toCpOpO, :JCO2toCpO2, :JCOtoCpO, # TODO: Incorporate these to the neutral model.
-                  ];
+# Set up the master lists of species ==========================================
 const Jratelist = [];
-
 append!(Jratelist, conv_Jrates)
 append!(Jratelist, newJrates)
-
-# !-------------------------- End modification zone ----------------------------!
 
 const ionlist = [];
 append!(ionlist, conv_ions)
@@ -123,10 +125,8 @@ append!(fullspecieslist, ionlist)
 
 const neutrallist = setdiff(fullspecieslist, ionlist)
 
-const specieslist=fullspecieslist;  
-
-const chemspecies = setdiff(specieslist, nochemspecies);
-const transportspecies = setdiff(specieslist, notransportspecies);
+const chemspecies = setdiff(fullspecieslist, nochemspecies);
+const transportspecies = setdiff(fullspecieslist, notransportspecies);
 const activespecies = union(chemspecies, transportspecies)
 const inactivespecies = intersect(nochemspecies, notransportspecies)
 
@@ -136,9 +136,9 @@ const inactivespecies = intersect(nochemspecies, notransportspecies)
 const H2Oi = findfirst(x->x==:H2O, activespecies)
 const HDOi = findfirst(x->x==:HDO, activespecies)
 
-# this gives the indices of inactivespecies within specieslist. Used for 
+# this gives the indices of inactivespecies within fullspecieslist. Used for 
 # constructing tup and tdown in a more efficient way.
-const notransport_inds = [findfirst(x->x==ias, specieslist) for ias in inactivespecies]
+const notransport_inds = [findfirst(x->x==ias, fullspecieslist) for ias in inactivespecies]
 
 #  Useful dictionaries ==========================================================
 # List of D bearing species and their H analogues. INCOMPLETE, only has ions right now because we don't need the neutral analogue list.

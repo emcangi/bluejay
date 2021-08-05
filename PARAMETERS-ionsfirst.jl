@@ -69,8 +69,7 @@ const MR_mean_water = 1.38e-4
 
 # Timesteps and general simulation parameters =================================
 const dt_min_and_max = Dict("neutrals"=>[-4, 14], "ions"=>[-4, 6], "both"=>[-4, 14])
-const rel_tol = 1e-3
-
+const rel_tol = 1e-4
 
 # Species, Jrates, and which are active ========================================
 
@@ -78,7 +77,7 @@ const rel_tol = 1e-3
 const conv_neutrals = [:Ar, :CO, :CO2, :H, :H2, :H2O, :H2O2, :HO2, :HOCO, :N2, 
                        :O, :O1D, :O2, :O3, :OH,
                        :D, :DO2, :DOCO, :HD, :HDO, :HDO2, :OD,];
-const N_species = [:N2O, :NO2, :CN, :HCN, :HNO, :N, :NH, :NH2, :NO];
+const N_species = [:N2, :N2O, :NO2, :CN, :HCN, :HNO, :N, :NH, :NH2, :NO];
 const new_neutrals = [:N2O, :NO2, :CN, :HCN, :HNO, :N, :NH, :NH2, :NO]; #:C, :CH, :HCO, 
 const conv_ions = [];
 const new_ions = [:CO2pl, :HCO2pl, :Opl, :O2pl, # Nair minimal ionosphere 
@@ -95,11 +94,11 @@ const new_ions = [:CO2pl, :HCO2pl, :Opl, :O2pl, # Nair minimal ionosphere
 # To converge neutrals: add conv_ions to nochemspecies and notransportspecies.
 # To converge ions: add setdiff(conv_neutrals, N_species) to nochemspecies and notransportspecies.
 # This is because the N chemistry is intimiately tied up with the ions.
-const nochemspecies = [];#:Ar, :N2];
-const notransportspecies = [];#:Ar, :N2]; 
+const nochemspecies = [:Ar];# :N2];
+const notransportspecies = [:Ar];#, :N2]; 
 
-append!(nochemspecies, conv_neutrals)  # NOTE: This is what to change EVERY TIME YOU RUN until you find a better way
-append!(notransportspecies, conv_neutrals)  # NOTE: This is what to change EVERY TIME YOU RUN until you find a better way
+append!(nochemspecies, setdiff(conv_neutrals, N_species))  # NOTE: This is what to change EVERY TIME YOU RUN until you find a better way
+append!(notransportspecies, setdiff(conv_neutrals, N_species))  # NOTE: This is what to change EVERY TIME YOU RUN until you find a better way
 
 # Photolysis and Photoionization rate symbol lists
 const conv_Jrates = [# Original neutral photodissociation
@@ -358,6 +357,26 @@ const hdfile = "binnedH2.csv" # TODO: change this to HD file if xsects ever exis
 const ohfile = "binnedOH.csv"
 const oho1dfile = "binnedOHo1D.csv"
 const odfile = "OD.csv"
+
+# Transport network ============================================================
+const upeqns = [Any[Any[[s], [Symbol(string(s)*"_above")],Symbol("t"*string(s)*"_up")],
+                    Any[[Symbol(string(s)*"_above")],[s],Symbol("t"*string(s)*"_above_down")]]
+                    for s in specieslist]
+
+const downeqns = [Any[Any[[s], [Symbol(string(s)*"_below")],Symbol("t"*string(s)*"_down")],
+                      Any[[Symbol(string(s)*"_below")],[s],Symbol("t"*string(s)*"_below_up")]]
+                      for s in specieslist]
+
+const local_transport_rates = [[[Symbol("t"*string(s)*"_up") for s in specieslist]
+                                [Symbol("t"*string(s)*"_down") for s in specieslist]
+                                [Symbol("t"*string(s)*"_above_down") for s in specieslist]
+                                [Symbol("t"*string(s)*"_below_up") for s in specieslist]]...;]
+
+const transportnet = [[upeqns...;]; [downeqns...;]]
+
+# define names for all the species active in the coupled rates:
+const active_above = [Symbol(string(s)*"_above") for s in activespecies]
+const active_below = [Symbol(string(s)*"_below") for s in activespecies]
 
 # Chemistry ====================================================================
 # function to replace three body rates with the recommended expression
@@ -730,13 +749,10 @@ const reactionnet = [   #Photodissociation
                  [[:O2, :N], [:NO, :O], :(1.5e-11 .* exp.(-3600.0 ./ Tn))],
                  [[:O2, :NH], [:HNO, :O], :(4.0e-11 .* exp.(-6970.0 ./ Tn))],
                  [[:O2, :NH], [:NO, :OH], :(1.5e-13 .* exp.(-770.0 ./ Tn))],
-                 # [[:O3, :H], [:O2, :OH], :(1.4e-10 .* exp.(-470.0 ./ Tn))], # DUPLICATE
-                 # [[:O3, :HO2], [:O2, :O2, :OH], :(1.0e-14 .* exp.(-490.0 ./ Tn))], # DUPLICATE
                  [[:O3, :N], [:O2, :NO], :(1.0e-16)],
                  [[:O3, :NO], [:NO2, :O2], :(3.0e-12 .* exp.(-1500.0 ./ Tn))],
                  [[:O3, :NO2], [:NO3, :O2], :(1.2e-13 .* exp.(-2450.0 ./ Tn))],
-                 # [[:O3, :O], [:O2, :O2], :(8.0e-12 .* exp.(-2060.0 ./ Tn))], # DUPLICATE!!!
-                 # [[:O3, :OH], [:HO2, :O2], :(1.7e-12 .* exp.(-940.0 ./ Tn))], # DUPLICATE
+
                  # [[:OH, :C], [:CO, :H], :(7.98e-10 .* (Tn .^ -0.34) .* exp.(-0.108 ./ Tn))],
                  # [[:OH, :CH], [:HCO, :H], :(8.31e-13 .* (Tn .^ 0.5) .* exp.(-5000.0 ./ Tn))],
                  [[:OH, :H], [:H2, :O], :(8.1e-21 .* (Tn .^ 2.8) .* exp.(-1950.0 ./ Tn))],
@@ -1334,14 +1350,12 @@ const reactionnet = [   #Photodissociation
                  [[:Dpl, :NO2], [:NOpl, :OD], :(0.95 .* 1.6e-9)],
                  [[:Dpl, :NO2], [:NO2pl, :D], :(0.05 .* 1.6e-9)],
                  [[:DCOpl, :H], [:HCOpl, :D], :(1.5e-11)],
-                 # [[:DOCpl, :H2], [:HCOpl, :HD], :(0.43*6.2e-10)], # removed for now as no production mechanism that doesn't involve a species we're not using
                  [[:Hpl, :HD], [:Dpl, :H2], :(1.1e-10)],
                  [[:HCNpl, :D], [:Dpl, :HCN], :(3.7e-11)],
                  [[:HCOpl, :D], [:DCOpl, :H], :(4.25e-11)],
                  [[:H2Dpl, :H2], [:H3pl, :HD], :(5.3e-10)],
                  [[:H2Dpl, :HD], [:H3pl, :D2], :(0.1 .* 5.0e-10)],
                  [[:H2Dpl, :HD], [:HD2pl, :H2], :(0.9 .* 5.0e-10)],
-                 # [[:H2DOpl, :H2O], [:H3Opl, :HDO], :(6.3e-10)],  # removed for now as we don't have a production mechanism that doesn't involve species like D3
                  [[:HDpl, :HD], [:H2Dpl, :D], :(0.55 .* 1.53e-9)],
                  [[:HDpl, :HD], [:HD2pl, :H], :(0.45 .* 1.53e-9)],
                  [[:HDpl, :Ar], [:ArDpl, :H], :(1.53e-9)],

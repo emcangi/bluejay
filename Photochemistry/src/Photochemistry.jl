@@ -12,19 +12,29 @@ using SparseArrays
 using LinearAlgebra
 using PlotUtils
 
-export calculate_stiffness, charge_type, check_jacobian_eigenvalues, create_folder, deletefirst, find_nonfinites, format_chemistry_string,       # Basic utility functions
-            format_sec_or_min, fluxsymbol, getpos, input, next_in_loop, searchdir, search_subfolders, subtract_difflength,  
-       get_colors, get_grad_colors, plot_atm, plot_bg, plot_extinction, plot_Jrates, plot_rxns, plot_temp_prof,                # plotting functions
-            plot_water_profile,     
-       get_column_rates, make_ratexdensity, rxn_chem, rxn_photo,                                                               # Reaction rate functions
-       flatten_atm, get_ncurrent, n_tot, unflatten_atm, write_ncurrent,                                                                  # Atmosphere array manipulation
-       boundaryconditions, effusion_velocity,                                                                                  # Boundary condition functions
-       Dcoef, Dcoef!, fluxcoefs, flux_param_arrays, flux_pos_and_neg, get_flux, Keddy, scaleH, #lower_up, #upper_down,                                    # transport functions
-       chemical_jacobian, getrate, lossequations, loss_rate, meanmass, production_equations, production_rate,                  # Chemistry functions
-       binupO2, co2xsect, h2o2xsect_l, h2o2xsect, hdo2xsect, ho2xsect_l, o2xsect, O3O1Dquantumyield, padtosolar,               # Photochemistry functions
-            populate_xsect_dict, quantumyield, 
-       T_all, Tpiecewise,                                                                                                      # Temperature functions
-       Psat, Psat_HDO                                                                                                          # Water profile functions                                                                       
+
+export # Basic utility functions
+       calculate_stiffness, charge_type, report_NaNs, check_jacobian_eigenvalues, create_folder, deletefirst, 
+       find_nonfinites, format_chemistry_string, format_sec_or_min, fluxsymbol, getpos, input, nans_present, next_in_loop, searchdir, search_subfolders, 
+       subtract_difflength,
+       # Plotting functions
+       get_colors, get_grad_colors, plot_atm, plot_bg, plot_extinction, plot_Jrates, plot_rxns, plot_temp_prof, plot_water_profile,                 
+       # Reaction rate functions
+       get_column_rates, make_ratexdensity, rxn_chem, rxn_photo,
+       # Atmosphere array manipulation                                                       
+       flatten_atm, get_ncurrent, n_tot, unflatten_atm, write_ncurrent,
+       # Boundary condition functions                                                   
+       boundaryconditions, effusion_velocity,
+       # transport functions                                                                           
+       Dcoef, Dcoef!, fluxcoefs, flux_param_arrays, flux_pos_and_neg, get_flux, Keddy, scaleH,                                 
+       # Chemistry functions
+       chemical_jacobian, getrate, loss_coef!, loss_equations, loss_rate, make_chemjac_key, meanmass, production_equations, production_rate,
+       # Photochemistry functions
+       binupO2, co2xsect, h2o2xsect_l, h2o2xsect, hdo2xsect, ho2xsect_l, o2xsect, O3O1Dquantumyield, padtosolar, populate_xsect_dict, quantumyield, 
+       # Temperature functions
+       T_all, Tpiecewise,                                                                                                      
+       # Water profile functions  
+       Psat, Psat_HDO                                                                                                                                                                               
 
 # Load the parameter file ==========================================================
 # TODO: Make this smarter somehow
@@ -38,6 +48,8 @@ include("/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-conv1
 println("NOTICE: Parameter file in use is /home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-conv1.jl")
 # include("/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-conv2.jl")     
 # println("NOTICE: Parameter file in use is /home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-conv2.jl")
+# include("/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-conv2a.jl")     
+# println("NOTICE: Parameter file in use is /home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-conv2a.jl")
 # include("/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-conv3.jl")
 # println("NOTICE: Parameter file in use is /home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-conv3.jl")
 # include("/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-convall.jl")
@@ -102,7 +114,7 @@ function charge_type(spsymb::Symbol)
     end
 end
 
-function check_jacobian_eigenvalues(J)
+function check_jacobian_eigenvalues(J, path)
     #=
     Check a jacobian matrix to see if it has complex eigenvalues.
     Per Jacob 2003, Models of Atmospheric Transport and Chemistry,
@@ -115,26 +127,47 @@ function check_jacobian_eigenvalues(J)
     1 - at least one eigenvalue is real and positive.
     2 - Complex eigenvalues are present.
     =#
+
+    # Warning: This tends to take a long time.
     if typeof(J) == SparseMatrixCSC{Float64, Int64}
-        J = Array(J)
+        J_nonsparse = Array(J)
     end
 
     # println("Eigenvalues:")
     # println(eigvals(J))
 
-    if any(i->isnan(i), eigvals(J)) || any(i->isinf(i), eigvals(J))
-        throw("ValueError: Jacobian eigenvalues have inf values: $(any(i->isinf(i), eigvals(J))); NaN values: $(any(i->isnan(i), eigvals(J)))")
+    if any(i->isnan(i), eigvals(J_nonsparse)) || any(i->isinf(i), eigvals(J_nonsparse))
+        throw("ValueError: Jacobian eigenvalues have inf values: $(any(i->isinf(i), eigvals(J_nonsparse))); NaN values: $(any(i->isnan(i), eigvals(J_nonsparse)))")
     end
 
-    if all(i->typeof(i) != ComplexF64, eigvals(J)) # all eigenvalues are real
-        if all(i->i<0, eigvals(J)) # all eigenvalues are real and negative
+    if all(i->typeof(i) != ComplexF64, eigvals(J_nonsparse)) # all eigenvalues are real
+        if all(i->i<0, eigvals(J_nonsparse)) # all eigenvalues are real and negative
             return 0
-        else 
+        else
             println("Warning: Some Jacobian eigenvalues are real and positive. Solution will grow without bound")
         end
 
-    elseif any(i->typeof(i) == ComplexF64, eigvals(J))  # complex eigenvalues are present
+    elseif any(i->typeof(i) == ComplexF64, eigvals(J_nonsparse))  # complex eigenvalues are present
+        # f = open(path*"/jacobian_eigenvalues.txt", "w")
         println("Warning: Some Jacobian eigenvalues are complex. Solution behavior is unpredictable and may oscillate (possibly forever?).")
+
+        # # find the indices of the eigenvalues that are complex
+        # i = findall(i->imag(i)!=0, eigvals(J))
+
+        # # get the associated eigenvectors - they are in the ith column of the eigenvector matrix.
+        # problem_eigenvecs = eigvecs(J)[:, i]
+
+
+        # if any(i->real(i)>0, eigvals(J)[imag(eigvals(J)) .== 0])
+        #     println("Warning: Some Jacobian eigenvalues are real and positive. Solution will grow without bound")
+        #     # find the indices of the eigenvalues that are real and positive
+        #     i = findall(i->i>0, eigvals(J))
+
+        #     # get the associated eigenvectors - they are in the ith column of the eigenvector matrix.
+        #     problem_eigenvecs = eigvecs(J)[:, i]
+            
+        # end
+        # close(f)
     end
 end
 
@@ -166,7 +199,7 @@ function delete_old_h5file(filename)
     end
 end
 
-function deletefirst(A::Array, v)
+function deletefirst(A::Array, v)   
     #=
     returns: list A with its first element equal to v removed.
     =#
@@ -182,6 +215,13 @@ function find_nonfinites(collection; collec_name="collection")
     nonfinites = findall(x->x==0, map(el->isfinite(el), collection))
     if length(nonfinites) != 0
         throw("ALERT: Found nonfinite values in $(collec_name) at indices $(nonfinites)")
+        open(results_dir*sim_folder_name*"/$(collec_name).txt", "w") do f
+           for (i, j, v) in zip(findnz(collection)...)
+               write(f, "$(i), $(j), $(v)\n")
+           end
+        end
+        println("Wrote out a jacobian with nonfinite values to $(results_dir*sim_folder_name)/$(collec_name).txt")
+
     end
 end
 
@@ -194,7 +234,7 @@ end
 
 function format_chemistry_string(reactants, products)
     #=
-    Given two lists reactants and products, where the entries are symbols,
+    Given two lists, reactants and products, where the entries are symbols,
     this small function constructs a chemistry reaction string.
     =#
     return string(join(reactants, " + ")) * " --> " * string(join(products, " + "))
@@ -209,7 +249,6 @@ function format_sec_or_min(t)
     if t < 60
         return "$(round(t, digits=1)) seconds"
     elseif t >= 60
-
         return "$(t÷60) minutes, $(round(t%60, digits=1)) seconds"
     end
 end
@@ -247,12 +286,34 @@ function input(prompt::String="")::String
     return chomp(readline())
 end
 
+nans_present(a) = any(x->isnan(x), a) # Returns true if there are NaNs in an array a
+
 function next_in_loop(i::Int64, n::Int64)
     #=
     returns i+1, restricted to values within [1, n]. 
     ret_i(n) returns 1.
     =#
     return i % n + 1
+end
+
+function report_NaNs(d; name="<blank>")
+    #=
+    Looks for NaN in collection d and reports their indices
+    =#
+
+    if isa(d, Dict)
+        for di in keys(d)
+            if nans_present(d[di])
+                throw("Found NaNs in $(name) at index $(findall(x->isnan(x), d[di])) in entry $(di)")
+            end
+        end
+    elseif isa(d, Array)
+        if nans_present(d)
+            throw("Found NaNs in $(name) at index $(findall(x->isnan(x), d))")
+        end
+    else
+        throw("Type $(typeof(d)) not supported by report_NaNs")
+    end
 end
 
 # searches path for key
@@ -855,8 +916,8 @@ function plot_rxns(sp::Symbol, ncur, controltemps::Array, speciesbclist; plot_in
     if trans==true
         transportPL = get_transport_production_and_loss_rate(ncur, sp, controltemps, speciesbclist)
         # now separate into two different arrays for ease of addition.
-        production_i = transportPL .>= 0
-        loss_i = transportPL .< 0
+        production_i = transportPL .>= 0  # boolean array for where transport entries > 0 (production),
+        loss_i = transportPL .< 0 # and for where transport entries < 0 (loss).
         total_transport_prod = production_i .* transportPL
         total_transport_loss = loss_i .* abs.(transportPL)
 
@@ -1214,16 +1275,18 @@ function rxn_chem(ncur, reactants::Array, krate, temps_n::Array, temps_i::Array,
         end
     end
 
+    rate_arr = zeros(num_layers)
+
     # WARNING: invokelatest is key to making this work. I don't really know how. At some point I did. WITCHCRAFT
     if modeltype == "ions"
         @eval ratefunc(Tn, Ti, Te, M, E) = $krate
-        rate_arr = Base.invokelatest(ratefunc, temps_n, temps_i, temps_e, M_by_alt, E_by_alt)
+        rate_arr .= Base.invokelatest(ratefunc, temps_n, temps_i, temps_e, M_by_alt, E_by_alt)
     else  # neutrals-only model
         @eval ratefunc(T, M) = $krate
-        rate_arr = Base.invokelatest(ratefunc, temps_n, M_by_alt)
+        rate_arr .= Base.invokelatest(ratefunc, temps_n, M_by_alt)
     end
-    rate_x_density .*= rate_arr  # this is where we multiply the product of species densities by the reaction rate 
-    return rate_x_density, rate_arr
+    # rate_x_density .*= rate_arr  # this is where we multiply the product of species densities by the reaction rate 
+    return rate_x_density .* rate_arr#rate_x_density, rate_arr
 end
 
 function rxn_photo(ncur, reactant::Symbol, Jrate) 
@@ -1271,13 +1334,12 @@ function get_ncurrent(readfile::String)
     return n_current
 end
 
-
 function n_tot(ncur, z)
     #= 
     Calculate total atmospheric density at a given altitude z.
     =#
     thisaltindex = n_alt_index[z]
-    return sum( [ncur[s][thisaltindex] for s in specieslist] )
+    return sum( [ncur[s][thisaltindex] for s in fullspecieslist] )
 end
 
 function n_tot(ncur, z, sptype)
@@ -1400,8 +1462,8 @@ function boundaryconditions(fluxcoef_dict::Dict, speciesbclist)
         # UPPER
         if bcs[2, 1] == "n"
             # Similar conditions for density here, but for the top of the atmosphere.
-            bcvec[2,:] = [fluxcoef_dict[s][end-1, :][1],
-                          fluxcoef_dict[s][end, :][1]*bcs[1,2]]
+            bcvec[2,:] = [fluxcoef_dict[s][end-1, :][2],
+                          fluxcoef_dict[s][end, :][1]*bcs[2,2]]
         elseif bcs[2, 1] == "f"  
             # n_(top+1) -> n_top flux is constrained to this value (negative because of the way transport is encoded as chemistry.)
             # allows terms not proportional to density - requires another reaction.
@@ -1483,7 +1545,7 @@ These coefficients then describe the diffusion velocity at the top
 and bottom of the atmosphere.
 =#
 
-function Dcoef!(D_arr, T_arr, species::Symbol, ncur)
+function Dcoef!(D_arr, T_arr, species::Symbol, ncur, speciesbclist)
     #=
     Calculates the molecular diffusion coefficient for an atmospheric layer.
     For neutrals, returns D = AT^s/n, from Banks and Kockarts Aeronomy, part B, pg 41, eqn 
@@ -1497,45 +1559,34 @@ function Dcoef!(D_arr, T_arr, species::Symbol, ncur)
     ncur: state of the atmosphere
     z: altitude for which we are calculating
     =#
-
-    #=
-    molecular diffusion parameters. value[1] = A, value[2] = s in the equation
-    D = AT^s / n given by Banks & Kockarts Aeronomy part B eqn. 15.30 and Hunten
-    1973, Table 1.
-
-    molecular diffusion is different only for small molecules and atoms
-    (H, D, HD, and H2), otherwise all species share the same values (Krasnopolsky
-    1993 <- Hunten 1973; Kras cites Banks & Kockarts, but this is actually an
-    incorrect citation.)
-
-    D and HD params are estimated by using Banks & Kockarts eqn 15.29 (the
-    coefficient on T^0.5/n) to calculate A for H and H2 and D and HD, then using
-    (A_D/A_H)_{b+k} = (A_D/A_H)_{hunten} to determine (A_D)_{hunten} since Hunten
-    1973 values are HALF what the calculation provides.
-
-    s, the power of T, is not calculated because there is no instruction on how to
-    do so and is assumed the same as for the hydrogenated species.
-    =#    
-    
+   
     # Calculate as if it was a neutral
     D_arr[:] .= (diffparams(species)[1] .* 1e17 .* T_arr .^ (diffparams(species)[2])) ./ [n_tot(ncur, z) for z in alt]
+
+    # a place to store the density array as if it were the same length as alt, not non_bdy_layers
+    species_density = 0. .* similar(alt)
     
     # If an ion, overwrite with the ambipolar diffusion
     if charge_type(species) == "ion"
-        sum_nu_in = 0. .* similar(ncur[species])
+        sum_nu_in = 0. .* similar(alt)
         mi = speciesmolmasslist[species] .* mH
-        # create the sum of nu_in
+        # create the sum of nu_in. Note that this depends on density, but we only have density for the real layers,
+        # so we have to assume the density at the boundary layers is the same as at the real layers.
         for n in neutrallist
+            species_density .= [ncur[n][n_alt_index[a]] for a in alt]
+            bccheck = get(speciesbclist, species, ["f" 0.; "f" 0.])
+            if bccheck[1,1] == "n"
+                species_density[1] = bccheck[1,2]
+            end
+            if bccheck[2,1] == "n"  # currently this should never apply.
+                species_density[end] = bccheck[2,2]
+            end
             mu_in = (1 ./ mi .+ 1 ./ (speciesmolmasslist[n] .* mH)) .^ (-1) # reduced mass in g
-            sum_nu_in .+= 2 .* pi .* (((species_polarizability[n] .* q .^ 2) ./ mu_in) .^ 0.5) .* ncur[n]
+            sum_nu_in .+= 2 .* pi .* (((species_polarizability[n] .* q .^ 2) ./ mu_in) .^ 0.5) .* species_density
         end
         
         # Since it depends on the densities at each altitude, we can only assign it for the real, non-boundary layers initially:
-        D_arr[2:end-1] .= (kB .* T_arr[2:end-1]) ./ (mi .* sum_nu_in)
-        
-        # Then we can just approximate it to be the same at the boundary layers:
-        D_arr[1] = D_arr[2]
-        D_arr[end] = D_arr[end-1]
+        D_arr .= (kB .* T_arr) ./ (mi .* sum_nu_in)
     end
     return D_arr
 end
@@ -1545,13 +1596,47 @@ function Dcoef(T, species::Symbol, ncur, z)
     Overload for one altitude at a time
     
     =#    
-    Ddict = Dict("neutral"=>(diffparams(species)[1]*1e17*T^(diffparams(species)[2]))/n_tot(ncur, z), 
-                "ion"=>(kB * T) / (speciesmolmasslist[species] * mH * (sum([2*pi*(((species_polarizability[n]*q^2)/((1/(speciesmolmasslist[species] * mH) + 1/(speciesmolmasslist[n] * mH))^(-1)))^0.5)*ncur[n][n_alt_index[z]]] for n in neutrallist)[1])))
+    # Ddict = Dict("neutral"=>(diffparams(species)[1]*1e17*T^(diffparams(species)[2]))/n_tot(ncur, z), 
+    #             "ion"=>(kB * T) / (speciesmolmasslist[species] * mH * (sum([2*pi*(((species_polarizability[n]*q^2)/((1/(speciesmolmasslist[species] * mH) + 1/(speciesmolmasslist[n] * mH))^(-1)))^0.5)*ncur[n][n_alt_index[z]]] for n in neutrallist)[1])))
 
-    return Ddict[charge_type(species)]
+    # Calculate as if it was a neutral
+    D = (diffparams(species)[1] .* 1e17 .* T .^ (diffparams(species)[2])) ./ n_tot(ncur, z)
+        
+    # If an ion, overwrite with the ambipolar diffusion
+    if charge_type(species) == "ion"
+        sum_nu_in = 0
+        mi = speciesmolmasslist[species] .* mH
+        # create the sum of nu_in. Note that this depends on density, but we only have density for the real layers,
+        # so we have to assume the density at the boundary layers is the same as at the real layers.
+        for n in neutrallist
+            mu_in = (1 ./ mi .+ 1 ./ (speciesmolmasslist[n] .* mH)) .^ (-1) # reduced mass in g
+            sum_nu_in += 2 .* pi .* (((species_polarizability[n] .* q .^ 2) ./ mu_in) .^ 0.5) .* ncur[n][n_alt_index[z]]
+        end
+        
+        # Since it depends on the densities at each altitude, we can only assign it for the real, non-boundary layers initially:
+        D = (kB .* T) ./ (mi .* sum_nu_in)
+    end
+    return D
 end
 
-# Diffusion parameters.
+#=
+molecular diffusion parameters. value[1] = A, value[2] = s in the equation
+D = AT^s / n given by Banks & Kockarts Aeronomy part B eqn. 15.30 and Hunten
+1973, Table 1.
+
+molecular diffusion is different only for small molecules and atoms
+(H, D, HD, and H2), otherwise all species share the same values (Krasnopolsky
+1993 <- Hunten 1973; Kras cites Banks & Kockarts, but this is actually an
+incorrect citation.)
+
+D and HD params are estimated by using Banks & Kockarts eqn 15.29 (the
+coefficient on T^0.5/n) to calculate A for H and H2 and D and HD, then using
+(A_D/A_H)_{b+k} = (A_D/A_H)_{hunten} to determine (A_D)_{hunten} since Hunten
+1973 values are HALF what the calculation provides.
+
+s, the power of T, is not calculated because there is no instruction on how to
+do so and is assumed the same as for the hydrogenated species.
+=#  
 diffparams(s) = get(Dict(:H=>[8.4, 0.597], :H2=>[2.23, 0.75],
                              :D=>[5.98, 0.597], :HD=>[1.84, 0.75],
                              :Hpl=>[8.4, 0.597], :H2pl=>[2.23, 0.75],
@@ -1693,7 +1778,7 @@ function fluxcoefs(z, dz, species::Symbol, ncur, controltemps::Array)
     end
 
     # return the coefficients
-    return fluxcoefs(z, dz, [Km , K0, Kp], [Dm , D0, Dp], [Tm_neutral, T0_neutral, Tp_neutral],
+    return fluxcoefs(z, dz, [Km, K0, Kp], [Dm , D0, Dp], [Tm_neutral, T0_neutral, Tp_neutral],
                      [Tm_plasma, T0_plasma, Tp_plasma], [Hsm, Hs0, Hsp], [H0m, H00, H0p], species)
 end
 
@@ -1730,13 +1815,11 @@ function fluxcoefs(T_neutral::Vector{Float64}, T_plasma::Vector{Float64}, K::Vec
     K_lowbdy = [1, K[1:2]...]
     H0_lowbdy = Dict("neutral"=>[1, H0["neutral"][1:2]...], "ion"=>[1, H0["ion"][1:2]...])
     
-    Tn_upbdy = [T_neutral[1:2]..., 1]
-    Tp_upbdy = [T_plasma[1:2]..., 1]
-    K_upbdy = [K[1:2]..., 1]
-    H0_upbdy = Dict("neutral"=>[H0["neutral"][1:2]..., 1], "ion"=>[H0["ion"][1:2]..., 1])
+    Tn_upbdy = [T_neutral[end-1:end]..., 1]
+    Tp_upbdy = [T_plasma[end-1:end]..., 1]
+    K_upbdy = [K[end-1:end]..., 1]
+    H0_upbdy = Dict("neutral"=>[H0["neutral"][end-1:end]..., 1], "ion"=>[H0["ion"][end-1:end]..., 1])
 
-    # println("looping over species in fluxcoefs")
-    # @time 
     for s in transportspecies
         # handle lower boundary layer
         Ds_lowbdy = [1, D[s][1:2]...]
@@ -1744,7 +1827,6 @@ function fluxcoefs(T_neutral::Vector{Float64}, T_plasma::Vector{Float64}, K::Vec
         fluxcoef_dict[s][1, :] .= fluxcoefs(alt[1], dz, K_lowbdy, Ds_lowbdy, 
                                             Tn_lowbdy, Tp_lowbdy, 
                                             Hs_lowbdy, H0_lowbdy[charge_type(s)], s)
-        fluxcoef_dict[s][1, 1] = NaN  # there can be no flux downward at the lower boundary
         
         # handle middle layers
         for i in 2:length(alt)-1
@@ -1753,16 +1835,13 @@ function fluxcoefs(T_neutral::Vector{Float64}, T_plasma::Vector{Float64}, K::Vec
                                                Hs[s][i-1:i+1], H0[charge_type(s)][i-1:i+1], s)
         end
         
-        # handle upper boundary layer
-        Ds_upbdy = [D[s][1:2]..., 1]
-        Hs_upbdy = [Hs[s][1:2]..., 1]
+        # handle upper boundary layer, where "1" is now the layer above
+        Ds_upbdy = [D[s][end-1:end]..., 1]
+        Hs_upbdy = [Hs[s][end-1:end]..., 1]
         fluxcoef_dict[s][end, :] .= fluxcoefs(alt[end], dz, K_upbdy, Ds_upbdy, 
                                               Tn_upbdy, Tp_upbdy, 
                                               Hs_upbdy, H0_upbdy[charge_type(s)], s)
-        fluxcoef_dict[s][end, 2] = NaN  # there can be no flux upward at the upper boundary
-
     end
-    # println("finished timing loop in fluxcoefs")
 
     return fluxcoef_dict
 end
@@ -1839,7 +1918,7 @@ function get_flux(ncur, species::Symbol, controltemps::Array, speciesbclist)
     Tn_arr, Tplasma_arr, Keddy_arr, Dcoef_dict, H0_dict, Hs_dict = flux_param_arrays(ncur, controltemps)
 
     fluxcoefs_all = fluxcoefs(Tn_arr, Tplasma_arr, Keddy_arr, Dcoef_dict, H0_dict, Hs_dict)
-    bc_dict = boundaryconditions_new(fluxcoefs_all, speciesbclist)
+    bc_dict = boundaryconditions(fluxcoefs_all, speciesbclist)
 
     thesecoefs = fluxcoefs_all[species][2:end-1]
     #[fluxcoefs(a, dz, species, ncur, controltemps) for a in non_bdy_layers] 
@@ -1891,9 +1970,6 @@ function get_transport_production_and_loss_rate(ncur, species::Symbol, controlte
     bc_dict = boundaryconditions(fluxcoefs_all, speciesbclist)
 
     # each element in thesecoefs has the format [downward, upward]
-    
-    # thesecoefs = fluxcoefs_all[species][2:end-1]
-
     thesebcs = bc_dict[species]
 
     transport_PL = fill(convert(Float64, NaN), length(non_bdy_layers))
@@ -1909,10 +1985,17 @@ function get_transport_production_and_loss_rate(ncur, species::Symbol, controlte
                              +(-ncur[species][ialt]*fluxcoefs_all[species][ialt, 1]     # leaving to the layer below
                                +ncur[species][ialt-1]*fluxcoefs_all[species][ialt-1, 2]))  # coming in from below
     end
-    transport_PL[end] = ((thesebcs[2, 2]
-                          - ncur[species][end]*thesebcs[2, 1])
-                        + (-ncur[species][end]*fluxcoefs_all[species][end, 1]
-                           +ncur[species][end-1]*fluxcoefs_all[species][end-1, 2]))
+    transport_PL[end] = ((thesebcs[2, 2] # in from upper boundary layer
+                          - ncur[species][end]*thesebcs[2, 1]) # leaving out the top boundary
+                        + (-ncur[species][end]*fluxcoefs_all[species][end, 1] # leaving out to layer below
+                           +ncur[species][end-1]*fluxcoefs_all[species][end-1, 2])) # coming in to top layer from layer below
+
+    # Use these for a sanity check if you like. 
+    # println("Activity in the top layer for species $(species):")
+    # println("In from upper bdy: $(thesebcs[2, 2])")
+    # println("Out through top bdy: $(ncur[species][end]*thesebcs[2, 1])")
+    # println("Down to layer below: $(-ncur[species][end]*fluxcoefs_all[species][end, 1])")
+    # println("In from layer below: $(ncur[species][end-1]*fluxcoefs_all[species][end-1, 2])")
     return transport_PL
 end
 
@@ -1966,13 +2049,14 @@ end
 
 function scaleH(z, species::Symbol, controltemps::Array)
     #=
-    NEW VERSION for make_ratexdensity, which allows passing control temps
+    NEW VERSION which allows it to return values for ions or neutrals, without
+        having to specify which one in the higher-level call to this function.
+        (allows fluxcoefs to be more efficiently written).
     =#  
 
     T = T_all(z, controltemps[1], controltemps[2], controltemps[3], charge_type(species))
     mm = speciesmolmasslist[species]
-    # return kB_MKS*Th/(mm*mH*marsM*bigG)*(((z+radiusM)*1e-2)^2)*1e2 # Old MKS
-    return kB*T/(mm*mH*marsM*bigG)*(((z+radiusM))^2)
+    return scaleH(z, T, mm)#kB*T/(mm*mH*marsM*bigG)*(((z+radiusM))^2)
 end
 
 # thermal diffusion factors (all verified with Krasnopolsky 2002)
@@ -2051,28 +2135,29 @@ function chemical_jacobian(chemnetwork, transportnetwork, specieslist, dspeciesl
     return (ivec, jvec, tvec) # Expr(:vcat, tvec...))  # 
 end
 
-function getrate(chemnet, transportnet, species::Symbol; chem_on=true, trans_on=true, sepvecs=false)
+function getrate(chemnet, transportnet, species::Symbol; chem_on=true, trans_on=true, pchem_eq=false, sepvecs=false)
     #=
     Creates a symbolic expression for the rate at which a given species is
     either produced or lost. Production is from chemical reaction yields or
     entry from other atmospheric layers. Loss is due to consumption in reactions
     or migration to other layers.
     =#
-    rate = :(0.0)
     
+
     chem_prod = Dict(0=>0, 
-                     1=>production_rate(chemnet, species, sepvecs))
+                     1=>production_rate(chemnet, species, sepvecs=sepvecs))
 
     chem_loss = Dict(0=>0,
-                     1=>loss_rate(chemnet, species, sepvecs))
+                     1=>loss_rate(chemnet, species, sepvecs=sepvecs, pchem_eq=pchem_eq))
 
     trans_prod = Dict(0=>0, 
-                     1=>production_rate(transportnet, species, sepvecs))
+                     1=>production_rate(transportnet, species, sepvecs=sepvecs))
 
     trans_loss = Dict(0=>0,
-                     1=>loss_rate(transportnet, species, sepvecs))
+                     1=>loss_rate(transportnet, species, sepvecs=sepvecs, pchem_eq=pchem_eq))
 
     if sepvecs == false
+        rate = :(0.0)
         if issubset([species],chemspecies)
             rate = :($rate 
                      + $(chem_prod[chem_on]) 
@@ -2102,6 +2187,36 @@ function getrate(chemnet, transportnet, species::Symbol; chem_on=true, trans_on=
     end
 end
 
+function loss_coef!(leqn, species; keep_ns_photolysis=true)
+    #=
+    leqn: output of loss_equations (a vector of vectors of symbols)
+    species: Symbol; species for which to calculate the loss coefficient for use in 
+        calculating photochemical equilibrium, n = P/L
+    keep_ns_photolysis: whether to keep the n_s term in unimolecular photolysis reactions.
+        default is true, but setting it to no is useful when using this code to
+        calculate a chemical lifetime.
+
+    this function will remove one entry of [n_s] from each loss equation
+    in the network.
+    =#
+
+    if keep_ns_photolysis
+        num_terms = 2
+    else
+        num_terms = 1
+    end
+    # This loop goes through and removes one instance of n_s in the loss equations so it can be
+    # used to calculate n = P/L for photochemical equilibrium. n_is is not removed from photolysis reactions
+    # if keep_ns_photolysis is set to true.
+    for L in 1:length(leqn)
+        if length(leqn[L]) > num_terms && count(t->t==species, leqn[L]) <= 2
+            leqn[L] = deletefirst(leqn[L], species)
+        end
+    end
+
+    return leqn
+end
+
 function loss_equations(network, species::Symbol)
     #=  
     given a network of equations in the form of reactionnet, this
@@ -2128,13 +2243,26 @@ function loss_equations(network, species::Symbol)
     # automatically finds a species where it occurs twice on the LHS
 end
 
-function loss_rate(network, species::Symbol, sepvecs)
+function loss_rate(network, species::Symbol; vec_not_exprs=false, sepvecs=false, pchem_eq=false)
     #= 
     return a symbolic expression for the loss rate of species in the
     supplied reaction network. Format is a symbolic expression containing a sum
     of reactants * rate. 
     =#
     leqn=loss_equations(network, species) # get the equations
+
+    # here is where we remove one instance of n_s (species concentration) if needed for photochem eq
+    # TODO: This is an inelegant way to trigger when network is the chemical reaction network only. 
+    # Find a better way.
+    if pchem_eq && typeof(network)==Vector{Vector{Any}}   # This catches the chemistry network but not transport.
+        loss_coef!(leqn, species)
+    end
+    
+
+    if vec_not_exprs
+        return leqn 
+    end
+
     if sepvecs
         return map(x->:(*($(x...))), leqn)
     else
@@ -2144,6 +2272,34 @@ function loss_rate(network, species::Symbol, sepvecs)
                                         # for each reaction
                        ,leqn)...)))
         return lval
+    end
+end
+
+# Create keys of chemical jacobian indices -- for troubleshooting
+function make_chemjac_key(fn, fpath, list1, list2)
+    #=
+    This somewhat superfluous function makes a key to the chemical jacobian,
+    telling which index corresponds to which species. But really it just gives the 
+    indices of the entries in fullspecieslist, because that's how the jacobian is ordered,
+    but this function is written agnostically so that could technically change and this
+    function would still work.
+
+    fn: filename to save the key to
+    fpath: where to save fn
+    list1: jacobian row indices
+    list2: jacobian col indices
+    =#
+    dircontents = readdir(fpath)
+    if !(fn in dircontents)
+        println("Creating the chemical jacobian row/column key")
+        f = open(fpath*"/"*fn, "w")
+        write(f, "Chemical jacobian rows (i):\n")
+        write(f, "$([i for i in 1:length(list1)])\n")
+        write(f, "$(list1)\n\n")
+        write(f, "Chemical jacobian cols (j):\n")
+        write(f, "$([j for j in 1:length(list2)])\n")
+        write(f, "$(list2)\n\n")
+        close(f)
     end
 end
 
@@ -2157,8 +2313,8 @@ function meanmass(ncur, z)
     return: mean molecular mass in amu
     =#
     thisaltindex = n_alt_index[z]
-    c = [ncur[sp][thisaltindex] for sp in specieslist]
-    m = [speciesmolmasslist[sp] for sp in specieslist]
+    c = [ncur[sp][thisaltindex] for sp in fullspecieslist]
+    m = [speciesmolmasslist[sp] for sp in fullspecieslist]
     return sum(c.*m)/sum(c)
 end
 
@@ -2192,7 +2348,7 @@ function production_equations(network, species::Symbol)
     return prodeqns
 end
 
-function production_rate(network, species::Symbol, sepvecs)
+function production_rate(network, species::Symbol; sepvecs=false)
     #= 
     return a symbolic expression for the loss rate of species in the
     supplied reaction network.

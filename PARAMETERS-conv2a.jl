@@ -1,11 +1,10 @@
 ################################################################################
-# PARAMETERS-conv3.jl
+# PARAMETERS-conv2a.jl
 # TYPE: (1) Model files - required
 # DESCRIPTION: Global constants, simulation parameters, reaction networks. 
-# USE: Use only when converging an atmosphere after introducing ions, as
-# step 3. Adds N-bearing neutrals and all ions to an atmosphere that contains 
-# standard neutrals, C, CH, HCO, and the Nair minimal ions.
-# 
+# USE: This takes a file where the minimal ionosphere has converged, then adds in
+# all the new neutrals and the rest of the ions and converges them all at once. 
+#
 # Eryn Cangi
 # Created December 2019
 # Last edited: August 2021
@@ -26,15 +25,12 @@ const dt_min_and_max = Dict("neutrals"=>[-3, 14], "ions"=>[-4, 6], "both"=>[-4, 
 const rel_tol = 1e-4
 
 # General species name lists for converged and newly introduced species =======
-const conv_neutrals = [:Ar, :C, :CH, :CO, :CO2, :H, :H2, :H2O, :H2O2, :HCO, :HO2, :HOCO, 
+const conv_neutrals = [:Ar, :CO, :CO2, :H, :H2, :H2O, :H2O2, :HO2, :HOCO, :N2, 
                        :O, :O1D, :O2, :O3, :OH,
-                       :D, :DO2, :DOCO, :HD, :HDO, :HDO2, :N2, :OD];
-const new_neutrals = [:N2O, :NO2, :CN, :HCN, :HNO, :N, :NH, :NH2, :NO];
+                       :D, :DO2, :DOCO, :HD, :HDO, :HDO2, :OD,];
+const new_neutrals = [:C, :CH, :HCO, :N2O, :NO2, :CN, :HCN, :HNO, :N, :NH, :NH2, :NO];
 
-const N_species = [:N2, :N2O, :NO2, :CN, :HCN, :HNO, :N, :NH, :NH2, :NO];
-
-const conv_ions = [:CO2pl, :HCO2pl, :Opl, :O2pl];# Nair minimal ionosphere 
-                  
+const conv_ions = [:CO2pl, :HCO2pl, :Opl, :O2pl]; # Nair minimal ionosphere 
 const new_ions = [:Arpl, :ArHpl, :Cpl, :CHpl, :CNpl, :COpl, 
                   :Hpl, :H2pl, :H2Opl, :H3pl, :H3Opl,
                   :HCNpl, :HCNHpl, :HCOpl, 
@@ -44,6 +40,8 @@ const new_ions = [:Arpl, :ArHpl, :Cpl, :CHpl, :CNpl, :COpl,
                   # Deuterated ions
                   :ArDpl, :Dpl, :DCOpl, :HDpl, :HD2pl, :H2Dpl, :N2Dpl
                  ];
+
+const N_species = [:N2, :N2O, :NO2, :CN, :HCN, :HNO, :N, :NH, :NH2, :NO];
 
 # Photolysis and Photoionization rate symbol lists
 const conv_Jrates = [# Original neutral photodissociation
@@ -59,12 +57,10 @@ const conv_Jrates = [# Original neutral photodissociation
 
                     # New photoionization/ion-involved photodissociation (Roger)
                     :JCO2toCO2pl, :JCO2toOplpCO, :JOtoOpl, :JO2toO2pl, # Nair minimal ionosphere
-
-                    # New neutral photodissociation (from Roger)
-                    :JCO2toCpOpO, :JCO2toCpO2, :JCOtoCpO,
                   ];
 
 const newJrates = [# New neutral photodissociation (from Roger)
+                    :JCO2toCpOpO, :JCO2toCpO2, :JCOtoCpO,
                     :JN2OtoN2pO1D, :JNO2toNOpO, :JNOtoNpO,
 
                     # New photoionization/ion-involved photodissociation (Roger)
@@ -80,14 +76,15 @@ const newJrates = [# New neutral photodissociation (from Roger)
                     :JO3toO3pl
                 ];
 
-const nochemspecies = [];
-const notransportspecies = [];
+const nochemspecies = [:Ar];
+const notransportspecies = [:Ar];
 
 # To converge neutrals: add union(conv_ions, N_species) to nochemspecies and notransportspecies.
 # To converge ions: add setdiff(conv_neutrals, N_species) to nochemspecies and notransportspecies.
 # This is because the N chemistry is intimiately tied up with the ions.
 append!(nochemspecies, setdiff(conv_neutrals, N_species))
 append!(notransportspecies, setdiff(conv_neutrals, N_species))
+
 
 ################################################################################
 ############################ end modification zone #############################
@@ -122,7 +119,7 @@ const zmax = alt[end];
 const dz = alt[2]-alt[1];
 const n_alt_index=Dict([z=>clamp((i-1),1, num_layers) for (i, z) in enumerate(alt)])
 
-# Mean temperatures and simulation temperature parameters ======================
+# Temperatures and water stuff =================================================
 const meanTs = 216.0
 const meanTt = 130.0
 const meanTe = 205.0
@@ -145,6 +142,7 @@ const hiTe = 250.0
 const highestTe = 350.0  # This is the highest exobase temperature considered.
                           # AFAIK this parameter is only used in making the 3-panel
                           # temperature profile plot.
+
 
 # Set up the master lists of species ==========================================
 const Jratelist = [];
@@ -301,6 +299,7 @@ const absorber = Dict(:JCO2ion =>:CO2,
                 );
 
 # Common plot specifications =======================================================
+
 const speciescolor = Dict( # H group
                 :H => "#ff0000", :D => "#ff0000", # red
                 :H2 => "#e526d7", :HD =>  "#e526d7", # dark pink/magenta
@@ -1218,6 +1217,7 @@ const reactionnet = [   #Photodissociation
              [[:Npl, :O2], [:NOpl, :O], :(2 .* 2.32e-10)],
              [[:Npl, :O2], [:O2pl, :N], :(2 .* 3.07e-10)],
              [[:Npl, :O2], [:Opl, :NO], :(2 .* 4.64e-11)],
+             [[:Npl, :OH], [:OHpl, :N], :(2 .* 6.41e-9 .* (Ti .^ -0.5))],
              [[:O2pl, :C], [:COpl, :O], :(2 .* 5.2e-11)],
              [[:O2pl, :C], [:Cpl, :O2], :(2 .* 5.2e-11)],
              [[:O2pl, :CH], [:CHpl, :O2], :(2 .* 5.37e-9 .* (Ti .^ -0.5))],
@@ -1334,51 +1334,51 @@ const reactionnet = [   #Photodissociation
              [[:Opl, :E], [:O], :(2 .* 1.4e-10 .* (Te .^ -0.66))],
 
              # D IONS!
-             [[:Arpl, :HD], [:HDpl, :Ar], :(0.06 .* 8.0e-10)],
-             [[:Arpl, :HD], [:ArHpl, :D], :(0.46 .* 8.0e-10)],
-             [[:Arpl, :HD], [:ArDpl, :H], :(0.48 .* 8.0e-10)],
+             [[:Arpl, :HD], [:HDpl, :Ar], :(0.06*8.0e-10)],
+             [[:Arpl, :HD], [:ArHpl, :D], :(0.46*8.0e-10)],
+             [[:Arpl, :HD], [:ArDpl, :H], :(0.48*8.0e-10)],
              [[:ArHpl, :HD], [:H2Dpl, :Ar], :(8.6e-10)],
              [[:ArDpl, :H2], [:H2Dpl, :Ar], :(8.8e-10)],
              [[:ArDpl, :H2], [:ArHpl, :HD], :(4.5e-10)],
              [[:ArDpl, :N2], [:N2Dpl, :Ar], :(6e-10)],
              [[:ArDpl, :CO], [:DCOpl, :Ar], :(1.25e-9)],
              [[:ArDpl, :CO2], [:OCODpl, :Ar], :(1.1e-9)],
-             [[:Cpl, :HD], [:CHpl, :D], :(0.17 .* 1.2e-16)],
-             [[:Cpl, :HD], [:CDpl, :H], :(0.83 .* 1.2e-16)],
+             [[:Cpl, :HD], [:CHpl, :D], :(0.17*1.2e-16)],
+             [[:Cpl, :HD], [:CDpl, :H], :(0.83*1.2e-16)],
              [[:COpl, :D], [:Dpl, :CO], :(9e-11)],
-             [[:CO2pl, :D], [:DCOpl, :O], :(0.76 .* 8.4e-11)],
-             [[:CO2pl, :D], [:Dpl, :CO2], :(0.24 .* 8.4e-11)],
+             [[:CO2pl, :D], [:DCOpl, :O], :(0.76*8.4e-11)],
+             [[:CO2pl, :D], [:Dpl, :CO2], :(0.24*8.4e-11)],
              [[:Dpl, :H2], [:Hpl, :HD], :(2.2e-9)],
              [[:Dpl, :O], [:Opl, :D], :(2.8e-10)],
              [[:Dpl, :H2O], [:H2Opl, :D], :(5.2e-9)],
              [[:Dpl, :O2], [:O2pl, :D], :(1.6e-9)],
              [[:Dpl, :CO2], [:DCOpl, :O], :(2.6e-9)],
              [[:Dpl, :CO2], [:CO2pl, :D], :(2.6e-9)],
-             [[:Dpl, :N2O], [:N2Opl, :D], :(0.85 .* 1.7e-9)],
-             [[:Dpl, :N2O], [:N2Dpl, :O], :(0.15 .* 1.7e-9)],
+             [[:Dpl, :N2O], [:N2Opl, :D], :(0.85 * 1.7e-9)],
+             [[:Dpl, :N2O], [:N2Dpl, :O], :(0.15 * 1.7e-9)],
              [[:Dpl, :NO], [:NOpl, :D], :(1.8e-9)],
-             [[:Dpl, :NO2], [:NOpl, :OD], :(0.95 .* 1.6e-9)],
-             [[:Dpl, :NO2], [:NO2pl, :D], :(0.05 .* 1.6e-9)],
+             [[:Dpl, :NO2], [:NOpl, :OD], :(0.95*1.6e-9)],
+             [[:Dpl, :NO2], [:NO2pl, :D], :(0.05*1.6e-9)],
              [[:DCOpl, :H], [:HCOpl, :D], :(1.5e-11)],
              [[:Hpl, :HD], [:Dpl, :H2], :(1.1e-10)],
              [[:HCNpl, :D], [:Dpl, :HCN], :(3.7e-11)],
              [[:HCOpl, :D], [:DCOpl, :H], :(4.25e-11)],
              [[:H2Dpl, :H2], [:H3pl, :HD], :(5.3e-10)],
-             [[:H2Dpl, :HD], [:H3pl, :D2], :(0.1 .* 5.0e-10)],
-             [[:H2Dpl, :HD], [:HD2pl, :H2], :(0.9 .* 5.0e-10)],
-             [[:HDpl, :HD], [:H2Dpl, :D], :(0.55 .* 1.53e-9)],
-             [[:HDpl, :HD], [:HD2pl, :H], :(0.45 .* 1.53e-9)],
+             [[:H2Dpl, :HD], [:H3pl, :D2], :(0.1*5.0e-10)],
+             [[:H2Dpl, :HD], [:HD2pl, :H2], :(0.9*5.0e-10)],
+             [[:HDpl, :HD], [:H2Dpl, :D], :(0.55*1.53e-9)],
+             [[:HDpl, :HD], [:HD2pl, :H], :(0.45*1.53e-9)],
              [[:HDpl, :Ar], [:ArDpl, :H], :(1.53e-9)],
-             [[:HD2pl, :H2], [:H3pl, :D2], :(0.25 .* 7.6e-10)],
-             [[:HD2pl, :H2], [:H2Dpl, :HD], :(0.75 .* 7.6e-10)],
-             [[:HD2pl, :HD], [:H2Dpl, :D2], :(0.25 .* 4.5e-10)],
+             [[:HD2pl, :H2], [:H3pl, :D2], :(0.25*7.6e-10)],
+             [[:HD2pl, :H2], [:H2Dpl, :HD], :(0.75*7.6e-10)],
+             [[:HD2pl, :HD], [:H2Dpl, :D2], :(0.25*4.5e-10)],
              [[:HD2pl, :HD], [:D3pl, :H2], :(0.75*4.5e-10)],
-             [[:Npl, :HD], [:NHpl, :D], :(0.25 .* 3.1e-10)],
-             [[:Npl, :HD], [:NDpl, :H], :(0.75 .* 3.1e-10)],
-             [[:N2pl, :HD], [:N2Hpl, :D], :(0.49 .* 1.34e-9)],
-             [[:N2pl, :HD], [:N2Dpl, :H], :(0.51 .* 1.34e-9)],
+             [[:Npl, :HD], [:NHpl, :D], :(0.25*3.1e-10)],
+             [[:Npl, :HD], [:NDpl, :H], :(0.75*3.1e-10)],
+             [[:N2pl, :HD], [:N2Hpl, :D], :(0.49*1.34e-9)],
+             [[:N2pl, :HD], [:N2Dpl, :H], :(0.51*1.34e-9)],
              [[:N2Hpl, :D], [:N2Dpl, :H], :(8e-11)],
              [[:N2Dpl, :H], [:N2Hpl, :D], :(2.5e-11)],
-             [[:Opl, :HD], [:OHpl, :D], :(0.54 .* 1.25e-9)],
-             [[:Opl, :HD], [:ODpl, :H], :(0.46 .* 1.25e-9)],
+             [[:Opl, :HD], [:OHpl, :D], :(0.54*1.25e-9)],
+             [[:Opl, :HD], [:ODpl, :H], :(0.46*1.25e-9)],
              ];

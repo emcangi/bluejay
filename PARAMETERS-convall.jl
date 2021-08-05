@@ -1,85 +1,35 @@
 ################################################################################
-# PARAMETERS-conv1.jl
+# PARAMETERS-convall.jl
 # TYPE: (1) Model files - required
-# DESCRIPTION: Use only when converging an atmosphere after introducing ions, as
-# step 1. Converges the minimal ionosphere as specified by Nair 1994.
+# DESCRIPTION: Global constants, simulation parameters, reaction networks. 
+# USE: Use only when converging an atmosphere after introducing ions, as
+# step 1. Converges the entire ionosphere all at once
 # 
 # Eryn Cangi
 # Created December 2019
-# Last edited: 7 April 2021
-# Currently tested for Julia: 1.5.3
+# Last edited: August 2021
+# Currently tested for Julia: 1.6.1
 ################################################################################
 
-const research_dir = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/"
-const results_dir = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Results/"
-const xsecfolder = research_dir * "uvxsect/";
+################################################################################
+###################### begin modifiable value zone #############################
+################################################################################
 
-# fundamental constants ========================================================
-const kB_MKS = 1.38e-23;        # J/K - needed for saturation vapor pressure empirical equation.
-const kB = 1.38e-16;            # erg/K
-const bigG = 6.67e-8;           # dyne-cm^2/g^2
-const mH = 1.67e-24;            # g 
-const marsM = 0.1075*5.972e27;  # g 
-const radiusM = 3396e5;         # cm
-const q = 4.8032e-10            # statcoulomb (cm^1.5 g^0.5 s^-1)
-const DH = 5.5 * 1.6e-4               # SMOW value from Yung 1988
-
-# Altitude grid discretization =================================================
-const alt = convert(Array, (0:2e5:250e5)) # TODO: Figure out how to get this without being hard-coded
-const intaltgrid = round.(Int64, alt/1e5)[2:end-1]; # the altitude grid CELLS but in integers.
-const non_bdy_layers = alt[2:end-1]  # all layers, centered on 2 km, 4...248. Excludes the boundary layers which are [-1, 1] and [249, 251].
-const num_layers = length(alt) - 2 # there are 124 non-boundary layers.
-const plot_grid = non_bdy_layers ./ 1e5;  # for plotting. Points located at atmospheric layer cell centers and in units of km.
-const plot_grid_bdys = collect(1:2:249)  # the boundaries; includes the boundary layers at top and bottom.
+const max_alt = 250e5
 const upper_lower_bdy = 80e5 # the uppermost layer at which water will be fixed, in cm
-const upper_lower_bdy_i = Int64(upper_lower_bdy / 2e5) # the uppermost layer at which water will be fixed, in cm
-
-const zmin = alt[1]
-const zmax = alt[end];
-const dz = alt[2]-alt[1];
-const n_alt_index=Dict([z=>clamp((i-1),1, num_layers) for (i, z) in enumerate(alt)])
-
 const hygropause_alt = 40e5
-
-# Temperatures and water stuff =================================================
-const meanTs = 216.0
-const meanTt = 130.0
-const meanTe = 205.0
-const meantemps = [meanTs, meanTt, meanTe]
-
-const meanTsint = 216
-const meanTtint = 130
-const meanTeint = 205
-
-# These are the low and high values for the "standard atmosphere and reasonable 
-# climate variations" cases. NOT the full range of temperatures used to make the
-# detailed cases stuff, because those include temps up to 350 K.
-const lowTs = 160.0
-const hiTs = 270.0
-const lowTt = 100.0
-const hiTt = 160.0
-const lowTe = 150.0
-const hiTe = 250.0
-
-const highestTe = 350.0  # This is the highest exobase temperature considered.
-                          # AFAIK this parameter is only used in making the 3-panel
-                          # temperature profile plot.
-
 const MR_mean_water = 1.38e-4
 
-# Timesteps and general simulation parameters =================================
-const dt_min_and_max = Dict("neutrals"=>[-4, 14], "ions"=>[-4, 6], "both"=>[-4, 14])
-const rel_tol = 1e-3
+# Timesteps and iterations =====================================================
+const dt_min_and_max = Dict("neutrals"=>[-3, 14], "ions"=>[-4, 6], "both"=>[-4, 14])
+const rel_tol = 1e-4
 
-
-# Species, Jrates, and which are active ========================================
-
-# !----------------- You may modify per simulation starting here -------------------!
+# General species name lists for converged and newly introduced species =======
 const conv_neutrals = [:Ar, :CO, :CO2, :H, :H2, :H2O, :H2O2, :HO2, :HOCO, :N2, 
                        :O, :O1D, :O2, :O3, :OH,
                        :D, :DO2, :DOCO, :HD, :HDO, :HDO2, :OD,];
-const N_species = [:N2O, :NO2, :CN, :HCN, :HNO, :N, :NH, :NH2, :NO];
 const new_neutrals = [:C, :CH, :HCO, :N2O, :NO2, :CN, :HCN, :HNO, :N, :NH, :NH2, :NO];
+const N_species = [:N2, :N2O, :NO2, :CN, :HCN, :HNO, :N, :NH, :NH2, :NO];
 const conv_ions = [];
 const new_ions = [:CO2pl, :HCO2pl, :Opl, :O2pl, # Nair minimal ionosphere 
                   :Arpl, :ArHpl, :Cpl, :CHpl, :CNpl, :COpl, 
@@ -91,15 +41,6 @@ const new_ions = [:CO2pl, :HCO2pl, :Opl, :O2pl, # Nair minimal ionosphere
                   # Deuterated ions
                   :ArDpl, :Dpl, :DCOpl, :HDpl, :HD2pl, :H2Dpl, :N2Dpl
                  ];
-
-# To converge neutrals: add conv_ions to nochemspecies and notransportspecies.
-# To converge ions: add setdiff(conv_neutrals, N_species) to nochemspecies and notransportspecies.
-# This is because the N chemistry is intimiately tied up with the ions.
-const nochemspecies = [];#:Ar, :N2];
-const notransportspecies = [];#:Ar, :N2]; 
-
-# append!(nochemspecies, conv_neutrals)  # NOTE: This is what to change EVERY TIME YOU RUN until you find a better way
-# append!(notransportspecies, conv_neutrals)  # NOTE: This is what to change EVERY TIME YOU RUN until you find a better way
 
 # Photolysis and Photoionization rate symbol lists
 const conv_Jrates = [# Original neutral photodissociation
@@ -132,11 +73,76 @@ const newJrates = [# New neutral photodissociation (from Roger)
                     :JO3toO3pl
                 ];
 
+const nochemspecies = [];
+const notransportspecies = [];
+
+# To converge neutrals: add conv_ions to nochemspecies and notransportspecies.
+# To converge ions: add setdiff(conv_neutrals, N_species) to nochemspecies and notransportspecies.
+# This is because the N chemistry is intimiately tied up with the ions.
+append!(nochemspecies, setdiff(conv_neutrals, N_species))  
+append!(notransportspecies, setdiff(conv_neutrals, N_species))
+
+
+################################################################################
+############################ end modification zone #############################
+################################################################################
+
+const research_dir = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/"
+const results_dir = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Results/"
+const xsecfolder = research_dir * "uvxsect/";
+
+# fundamental constants ========================================================
+const kB_MKS = 1.38e-23;        # J/K - needed for saturation vapor pressure empirical equation.
+const kB = 1.38e-16;            # erg/K
+const bigG = 6.67e-8;           # dyne-cm^2/g^2
+const mH = 1.67e-24;            # g 
+const marsM = 0.1075*5.972e27;  # g 
+const radiusM = 3396e5;         # cm
+const q = 4.8032e-10            # statcoulomb (cm^1.5 g^0.5 s^-1)
+const DH = 5.5 * 1.6e-4               # SMOW value from Yung 1988
+
+# Altitude grid specifications =================================================
+const alt = convert(Array, (0:2e5:max_alt)) # TODO: Figure out how to get this without being hard-coded
+const intaltgrid = round.(Int64, alt/1e5)[2:end-1]; # the altitude grid CELLS but in integers.
+const non_bdy_layers = alt[2:end-1]  # all layers, centered on 2 km, 4...248. Excludes the boundary layers which are [-1, 1] and [249, 251].
+const num_layers = length(alt) - 2 # there are 124 non-boundary layers.
+const plot_grid = non_bdy_layers ./ 1e5;  # for plotting. Points located at atmospheric layer cell centers and in units of km.
+const plot_grid_bdys = collect(1:2:((max_alt / 1e5)-1))  # the boundaries; includes the boundary layers at top and bottom.
+const upper_lower_bdy_i = Int64(upper_lower_bdy / 2e5) # the uppermost layer at which water will be fixed, in cm
+
+const zmin = alt[1]
+const zmax = alt[end];
+const dz = alt[2]-alt[1];
+const n_alt_index=Dict([z=>clamp((i-1),1, num_layers) for (i, z) in enumerate(alt)])
+
+# Temperatures and water stuff =================================================
+const meanTs = 216.0
+const meanTt = 130.0
+const meanTe = 205.0
+const meantemps = [meanTs, meanTt, meanTe]
+
+const meanTsint = 216
+const meanTtint = 130
+const meanTeint = 205
+
+# These are the low and high values for the "standard atmosphere and reasonable 
+# climate variations" cases. NOT the full range of temperatures used to make the
+# detailed cases stuff, because those include temps up to 350 K.
+const lowTs = 160.0
+const hiTs = 270.0
+const lowTt = 100.0
+const hiTt = 160.0
+const lowTe = 150.0
+const hiTe = 250.0
+
+const highestTe = 350.0  # This is the highest exobase temperature considered.
+                          # AFAIK this parameter is only used in making the 3-panel
+                          # temperature profile plot.
+
+# Set up the master lists of species ==========================================
 const Jratelist = [];
 append!(Jratelist, conv_Jrates)
 append!(Jratelist, newJrates)
-
-# !-------------------------- End modification zone ----------------------------!
 
 const ionlist = [];
 append!(ionlist, conv_ions)
@@ -149,10 +155,8 @@ append!(fullspecieslist, ionlist)
 
 const neutrallist = setdiff(fullspecieslist, ionlist)
 
-const specieslist=fullspecieslist;  
-
-const chemspecies = setdiff(specieslist, nochemspecies);
-const transportspecies = setdiff(specieslist, notransportspecies);
+const chemspecies = setdiff(fullspecieslist, nochemspecies);
+const transportspecies = setdiff(fullspecieslist, notransportspecies);
 const activespecies = union(chemspecies, transportspecies)
 const inactivespecies = intersect(nochemspecies, notransportspecies)
 
@@ -358,6 +362,26 @@ const hdfile = "binnedH2.csv" # TODO: change this to HD file if xsects ever exis
 const ohfile = "binnedOH.csv"
 const oho1dfile = "binnedOHo1D.csv"
 const odfile = "OD.csv"
+
+# Transport network ============================================================
+const upeqns = [Any[Any[[s], [Symbol(string(s)*"_above")],Symbol("t"*string(s)*"_up")],
+                    Any[[Symbol(string(s)*"_above")],[s],Symbol("t"*string(s)*"_above_down")]]
+                    for s in fullspecieslist]
+
+const downeqns = [Any[Any[[s], [Symbol(string(s)*"_below")],Symbol("t"*string(s)*"_down")],
+                      Any[[Symbol(string(s)*"_below")],[s],Symbol("t"*string(s)*"_below_up")]]
+                      for s in fullspecieslist]
+
+const local_transport_rates = [[[Symbol("t"*string(s)*"_up") for s in fullspecieslist]
+                                [Symbol("t"*string(s)*"_down") for s in fullspecieslist]
+                                [Symbol("t"*string(s)*"_above_down") for s in fullspecieslist]
+                                [Symbol("t"*string(s)*"_below_up") for s in fullspecieslist]]...;]
+
+const transportnet = [[upeqns...;]; [downeqns...;]]
+
+# define names for all the species active in the coupled rates:
+const active_above = [Symbol(string(s)*"_above") for s in activespecies]
+const active_below = [Symbol(string(s)*"_below") for s in activespecies]
 
 # Chemistry ====================================================================
 # function to replace three body rates with the recommended expression
@@ -603,7 +627,7 @@ const reactionnet = [   #Photodissociation
              [[:CN, :O], [:NO, :C], :(5.37e-11 .* exp.(-13800.0 ./ Tn))],  # KIDA: :(3.81e-11 .* (Tn ./ 300) .^ 0.5 .* exp.(-14500 ./ Tn))
              [[:CO2, :CH], [:HCO, :CO], :((1.70e-14 .* Tn .^ 0.5) .* exp.(-3000.0 ./ Tn))],  # KIDA: :(2.94e-13 .* (Tn ./ 300) .^ 0.5 .* exp.(3000 ./ Tn))
              [[:CO2, :H], [:CO, :OH], :(3.38e-10 .* exp.(-13163.0 ./ Tn))],  # KIDA: :(2.51e-10 .* exp.(-13300 ./ Tn))
-             # [[:CO2, :N], [:NO, :CO], :(3.20e-13 .* exp.(-1710.0 ./ Tn))],  # KIDA agrees 
+             [[:CO2, :N], [:NO, :CO], :(3.20e-13 .* exp.(-1710.0 ./ Tn))],  # KIDA agrees 
              [[:CO2, :O], [:O2, :CO], :(2.46e-11 .* exp.(-26567.0 ./ Tn))], # KIDA agrees
              [[:H2, :C], [:CH, :H], :(6.64e-10 .* exp.(-11700.0 ./ Tn))],  # KIDA agrees
              [[:H2O, :H], [:OH, :H2], :((1.69e-14 .* Tn .^ 1.2) .* exp.(-9610.0 ./ Tn))], # KIDA :(6.82e-12 .* (Tn ./ 300) .^ 1.6 .* exp.(-9720 ./ Tn))
@@ -645,19 +669,12 @@ const reactionnet = [   #Photodissociation
              [[:HO2, :CH], [:CH2, :O2], :(1.7e-14 .* (Tn .^ 0.5) .* exp.(-7550.0 ./ Tn))],
              [[:HO2, :CH], [:HCO, :OH], :(8.31e-13 .* (Tn .^ 0.5) .* exp.(-3000.0 ./ Tn))],
              [[:HO2, :CO], [:CO2, :OH], :(5.6e-10 .* exp.(-12160.0 ./ Tn))],
-             # [[:HO2, :H], [:H2O, :O], :(1.6e-12)], # DUPLICATES
-             # [[:HO2, :H], [:O2, :H2], :(6.9e-12)], # DUPLICATES
-             # [[:HO2, :H], [:OH, :OH], :(7.2e-11)], # DUPLICATES
              [[:HO2, :H2], [:H2O2, :H], :(5.0e-11 .* exp.(-13110.0 ./ Tn))],
              [[:HO2, :H2O], [:H2O2, :OH], :(4.65e-11 .* exp.(-16500.0 ./ Tn))],
              [[:HO2, :HCO], [:H2CO, :O2], :(5.0e-11)],
-             # [[:HO2, :HO2], [:H2O2, :O2], :(3.0e-13 .* exp.(460.0 ./ Tn))], # DUPLICATE
              [[:HO2, :N], [:NO, :OH], :(2.2e-11)],
              [[:HO2, :N], [:O2, :NH], :(1.7e-13)],
              [[:HO2, :NO], [:NO2, :OH], :(3.3e-12 .* exp.(270.0 ./ Tn))],
-             # [[:HO2, :O], [:O2, :OH], :(3.0e-11 .* exp.(200.0 ./ Tn))], # DUPLICATE
-             # [[:HO2, :OH], [:H2O, :O2], :(4.8e-11 .* exp.(250.0 ./ Tn))], # DUPLICATE
-             # [[:HOCO, :O2], [:CO2, :HO2], :(2.0e-12)], # DUPLICATE
              [[:HOCO, :OH], [:CO2, :H2O], :(1.03e-11)],
              [[:N, :C], [:CN], :(3.49e-19 .* (Tn .^ 0.14) .* exp.(-0.18 ./ Tn))],
              [[:N2O, :CO], [:CO2, :N2], :(1.62e-13 .* exp.(-8780.0 ./ Tn))],
@@ -716,9 +733,6 @@ const reactionnet = [   #Photodissociation
              [[:O, :H], [:OH], :(8.65e-18 .* (Tn .^ -0.38))],
              [[:O1D, :CO], [:CO, :O], :(4.7e-11 .* exp.(63.0 ./ Tn))],
              [[:O1D, :CO], [:CO2], :(8.0e-11)],
-             # [[:O1D, :CO2], [:CO2, :O], :(7.5e-11 .* exp.(115.0 ./ Tn))], # DUPLICATE
-             # [[:O1D, :H2], [:OH, :H], :(1.2e-10)], # DUPLICATE
-             # [[:O1D, :H2O], [:OH, :OH], :(1.63e-10 .* exp.(60.0 ./ Tn))], # DUPLICATE
              [[:O1D, :H2O2], [:H2O2, :O], :(5.2e-10)],
              [[:O1D, :N2], [:N2, :O], :(2.15e-11 .* exp.(110.0 ./ Tn))],
              [[:O1D, :N2O], [:NO, :NO], :(7.26e-11 .* exp.(20.0 ./ Tn))],
@@ -726,9 +740,6 @@ const reactionnet = [   #Photodissociation
              [[:O1D, :NO], [:NO, :O], :(4.0e-11)],
              [[:O1D, :NO2], [:NO2, :O], :(1.13e-10 .* exp.(115.0 ./ Tn))],
              [[:O1D, :NO2], [:O2, :NO], :(2.31e-10)],
-             # [[:O1D, :O2], [:O2, :O], :(3.3e-11 .* exp.(55.0 ./ Tn))], # DUPLICATE
-             # [[:O1D, :O3], [:O2, :O, :O], :(1.2e-10)], # DUPLICATE
-             # [[:O1D, :O3], [:O2, :O2], :(1.2e-10)], # DUPLICATE
              [[:O2, :C], [:CO, :O], :(3.03e-10 .* (Tn .^ -0.32))],
              [[:O2, :CH], [:CO, :O, :H], :(1.2e-11)],
              [[:O2, :CH], [:CO, :OH], :(8.0e-12)],
@@ -743,13 +754,9 @@ const reactionnet = [   #Photodissociation
              [[:O2, :N], [:NO, :O], :(1.5e-11 .* exp.(-3600.0 ./ Tn))],
              [[:O2, :NH], [:HNO, :O], :(4.0e-11 .* exp.(-6970.0 ./ Tn))],
              [[:O2, :NH], [:NO, :OH], :(1.5e-13 .* exp.(-770.0 ./ Tn))],
-             # [[:O3, :H], [:O2, :OH], :(1.4e-10 .* exp.(-470.0 ./ Tn))], # DUPLICATE
-             # [[:O3, :HO2], [:O2, :O2, :OH], :(1.0e-14 .* exp.(-490.0 ./ Tn))], # DUPLICATE
              [[:O3, :N], [:O2, :NO], :(1.0e-16)],
              [[:O3, :NO], [:NO2, :O2], :(3.0e-12 .* exp.(-1500.0 ./ Tn))],
              [[:O3, :NO2], [:NO3, :O2], :(1.2e-13 .* exp.(-2450.0 ./ Tn))],
-             # [[:O3, :O], [:O2, :O2], :(8.0e-12 .* exp.(-2060.0 ./ Tn))], # DUPLICATE!!!
-             # [[:O3, :OH], [:HO2, :O2], :(1.7e-12 .* exp.(-940.0 ./ Tn))], # DUPLICATE
              [[:OH, :C], [:CO, :H], :(7.98e-10 .* (Tn .^ -0.34) .* exp.(-0.108 ./ Tn))],
              [[:OH, :CH], [:HCO, :H], :(8.31e-13 .* (Tn .^ 0.5) .* exp.(-5000.0 ./ Tn))],
              [[:OH, :H], [:H2, :O], :(8.1e-21 .* (Tn .^ 2.8) .* exp.(-1950.0 ./ Tn))],
@@ -948,7 +955,6 @@ const reactionnet = [   #Photodissociation
              [[:H2pl, :HCN], [:HCNpl, :H2], :(2 .* 4.68e-8 .* (Ti .^ -0.5))],
              [[:H2pl, :HCO], [:H3pl, :CO], :(2 .* 1.73e-8 .* (Ti .^ -0.5))],
              [[:H2pl, :HCO], [:HCOpl, :H2], :(2 .* 1.73e-8 .* (Ti .^ -0.5))],
-             # UNUSED # [[:H2pl, :He], [:HeHpl, :H], :(2 .* 1.35e-10)],
              [[:H2pl, :N], [:NHpl, :H], :(2 .* 1.9e-9)],
              [[:H2pl, :N2], [:N2Hpl, :H], :(2 .* 2.0e-9)],
              [[:H2pl, :N2O], [:HN2Opl, :H], :(2 .* 1.32e-9)],
@@ -1025,46 +1031,6 @@ const reactionnet = [   #Photodissociation
              [[:HCOpl, :NH2], [:NH3pl, :CO], :(2 .* 1.54e-8 .* (Ti .^ -0.5))],
              [[:HCOpl, :OH], [:H2Opl, :CO], :(2 .* 1.07e-8 .* (Ti .^ -0.5))],
              [[:HCOpl, :OH], [:HCO2pl, :H], :(2 .* 1.73e-8 .* (Ti .^ -0.5))],
-             # UNUSED # [[:Hepl, :C], [:Cpl, :He], :(2 .* 8.74e-17 .* (Ti .^ 0.75))],
-             # UNUSED # [[:Hepl, :CH], [:CHpl, :He], :(2 .* 8.66e-9 .* (Ti .^ -0.5))],
-             # UNUSED # [[:Hepl, :CH], [:Cpl, :He, :H], :(2 .* 1.91e-8 .* (Ti .^ -0.5))],
-             # UNUSED # [[:Hepl, :CN], [:Cpl, :N, :He], :(2 .* 1.52e-8 .* (Ti .^ -0.5))],
-             # UNUSED # [[:Hepl, :CN], [:Npl, :C, :He], :(2 .* 1.52e-8 .* (Ti .^ -0.5))],
-             # UNUSED # [[:Hepl, :CO], [:Cpl, :O, :He], :(2 .* 1.6e-9)],
-             # UNUSED # [[:Hepl, :CO2], [:CO2pl, :He], :(2 .* 5.0e-11)],
-             # UNUSED # [[:Hepl, :CO2], [:COpl, :O, :He], :(2 .* 7.8e-10)],
-             # UNUSED # [[:Hepl, :CO2], [:Cpl, :O2, :He], :(2 .* 2.0e-11)],
-             # UNUSED # [[:Hepl, :CO2], [:O2pl, :C, :He], :(2 .* 1.1e-11)],
-             # UNUSED # [[:Hepl, :CO2], [:Opl, :CO, :He], :(2 .* 1.4e-10)],
-             # UNUSED # [[:Hepl, :H], [:HeHpl], :(2 .* 3.43e-15 .* (Ti .^ -0.37))],
-             # UNUSED # [[:Hepl, :H], [:Hpl, :He], :(2 .* 2.88e-16 .* (Ti .^ 0.25))],
-             # UNUSED # [[:Hepl, :H2], [:H2pl, :He], :(2 .* 1.7e-14)],
-             # UNUSED # [[:Hepl, :H2], [:Hpl, :He, :H], :(2 .* 8.3e-14)],
-             # UNUSED # [[:Hepl, :H2O], [:H2Opl, :He], :(2 .* 5.5e-11 .* (Ti .^ -0.5))],
-             # UNUSED # [[:Hepl, :H2O], [:Hpl, :OH, :He], :(2 .* 1.85e-10)],
-             # UNUSED # [[:Hepl, :H2O], [:OHpl, :He, :H], :(2 .* 2.6e-10 .* (Ti .^ -0.5))],
-             # UNUSED # [[:Hepl, :HCN], [:CHpl, :N, :He], :(2 .* 6.93e-10)],
-             # UNUSED # [[:Hepl, :HCN], [:CNpl, :He, :H], :(2 .* 1.55e-9)],
-             # UNUSED # [[:Hepl, :HCN], [:Cpl, :NH, :He], :(2 .* 8.25e-10)],
-             # UNUSED # [[:Hepl, :HCN], [:Npl, :CH, :He], :(2 .* 2.31e-10)],
-             # UNUSED # [[:Hepl, :HCO], [:CHpl, :O, :He], :(2 .* 8.49e-9 .* (Ti .^ -0.5))],
-             # UNUSED # [[:Hepl, :HCO], [:COpl, :He, :H], :(2 .* 8.49e-9 .* (Ti .^ -0.5))],
-             # UNUSED # [[:Hepl, :HCO], [:HeHpl, :CO], :(2 .* 5.2e-9 .* (Ti .^ -0.5))],
-             # UNUSED # [[:Hepl, :HNO], [:Hpl, :NO, :He], :(2 .* 1.73e-8 .* (Ti .^ -0.5))],
-             # UNUSED # [[:Hepl, :HNO], [:NOpl, :He, :H], :(2 .* 1.73e-8 .* (Ti .^ -0.5))],
-             # UNUSED # [[:Hepl, :N2], [:N2pl, :He], :(2 .* 5.2e-10)],
-             # UNUSED # [[:Hepl, :N2], [:Npl, :N, :He], :(2 .* 7.8e-10)],
-             # UNUSED # [[:Hepl, :N2O], [:N2pl, :O, :He], :(2 .* 1.24e-9)],
-             # UNUSED # [[:Hepl, :N2O], [:NOpl, :N, :He], :(2 .* 4.83e-10)],
-             # UNUSED # [[:Hepl, :N2O], [:Npl, :NO, :He], :(2 .* 2.99e-10)],
-             # UNUSED # [[:Hepl, :N2O], [:Opl, :N2, :He], :(2 .* 2.76e-10)],
-             # UNUSED # [[:Hepl, :NH], [:Npl, :He, :H], :(2 .* 1.91e-8 .* (Ti .^ -0.5))],
-             # UNUSED # [[:Hepl, :NH2], [:NHpl, :He, :H], :(2 .* 1.39e-8 .* (Ti .^ -0.5))],
-             # UNUSED # [[:Hepl, :NO], [:Npl, :O, :He], :(2 .* 1.35e-9)],
-             # UNUSED # [[:Hepl, :NO], [:Opl, :N, :He], :(2 .* 1.02e-10)],
-             # UNUSED # [[:Hepl, :O2], [:O2pl, :He], :(2 .* 3.0e-11)],
-             # UNUSED # [[:Hepl, :O2], [:Opl, :O, :He], :(2 .* 9.7e-10)],
-             # UNUSED # [[:Hepl, :OH], [:Opl, :He, :H], :(2 .* 1.91e-8 .* (Ti .^ -0.5))],
              [[:HN2Opl, :CO], [:HCOpl, :N2O], :(2 .* 5.3e-10)],
              [[:HN2Opl, :H2O], [:H3Opl, :N2O], :(2 .* 2.83e-9)],
              [[:HNOpl, :C], [:CHpl, :NO], :(2 .* 1.0e-9)],
@@ -1113,7 +1079,6 @@ const reactionnet = [   #Photodissociation
              [[:Hpl, :HCO], [:COpl, :H2], :(2 .* 1.63e-8 .* (Ti .^ -0.5))],
              [[:Hpl, :HCO], [:H2pl, :CO], :(2 .* 1.63e-8 .* (Ti .^ -0.5))],
              [[:Hpl, :HCO], [:HCOpl, :H], :(2 .* 1.63e-8 .* (Ti .^ -0.5))],
-             # UNUSED # [[:Hpl, :He], [:HeHpl], :(2 .* 3.14e-19 .* (Ti .^ -0.24))],
              [[:Hpl, :HNO], [:NOpl, :H2], :(2 .* 6.93e-8 .* (Ti .^ -0.5))],
              [[:Hpl, :N2O], [:N2Hpl, :O], :(2 .* 3.52e-10)],
              [[:Hpl, :N2O], [:N2Opl, :H], :(2 .* 1.85e-9)],
@@ -1247,9 +1212,6 @@ const reactionnet = [   #Photodissociation
              [[:Npl, :O2], [:O2pl, :N], :(2 .* 3.07e-10)],
              [[:Npl, :O2], [:Opl, :NO], :(2 .* 4.64e-11)],
              [[:Npl, :OH], [:OHpl, :N], :(2 .* 6.41e-9 .* (Ti .^ -0.5))],
-             # UNUSED # [[:O2Dpl, :H2], [:H2pl, :O], :(2 .* 4.4e-8 .* (Ti .^ -0.98) .* exp.(-302.4 ./ Ti))],
-             # UNUSED # [[:O2Dpl, :H2], [:Hpl, :OH], :(2 .* 1.62e-8 .* (Ti .^ -0.95) .* exp.(-335.1 ./ Ti))],
-             # UNUSED # [[:O2Dpl, :H2], [:OHpl, :H], :(2 .* 1.5e-9)],
              [[:O2pl, :C], [:COpl, :O], :(2 .* 5.2e-11)],
              [[:O2pl, :C], [:Cpl, :O2], :(2 .* 5.2e-11)],
              [[:O2pl, :CH], [:CHpl, :O2], :(2 .* 5.37e-9 .* (Ti .^ -0.5))],
@@ -1337,7 +1299,6 @@ const reactionnet = [   #Photodissociation
              [[:HCOpl, :E], [:CH, :O], :(2 .* 1.15e-7 .* (Te .^ -0.64))],
              [[:HCOpl, :E], [:CO, :H], :(2 .* 1.06e-5 .* (Te .^ -0.64))],
              [[:HCOpl, :E], [:OH, :C], :(2 .* 8.08e-7 .* (Te .^ -0.64))],
-             # UNUSED # [[:Hepl, :E], [:He], :(2 .* 9.28e-11 .* (Te .^ -0.5))],
              [[:HN2Opl, :E], [:N2, :O, :H], :(2 .* 3.81e-5 .* (Te .^ -0.74))],
              [[:HN2Opl, :E], [:N2, :OH], :(2 .* 4.38e-5 .* (Te .^ -0.74))],
              [[:HNOpl, :E], [:NO, :H], :(2 .* 5.2e-6 .* (Te .^ -0.5))],
@@ -1393,14 +1354,12 @@ const reactionnet = [   #Photodissociation
              [[:Dpl, :NO2], [:NOpl, :OD], :(0.95 .* 1.6e-9)],
              [[:Dpl, :NO2], [:NO2pl, :D], :(0.05 .* 1.6e-9)],
              [[:DCOpl, :H], [:HCOpl, :D], :(1.5e-11)],
-             # [[:DOCpl, :H2], [:HCOpl, :HD], :(0.43*6.2e-10)], # removed for now as no production mechanism that doesn't involve a species we're not using
              [[:Hpl, :HD], [:Dpl, :H2], :(1.1e-10)],
              [[:HCNpl, :D], [:Dpl, :HCN], :(3.7e-11)],
              [[:HCOpl, :D], [:DCOpl, :H], :(4.25e-11)],
              [[:H2Dpl, :H2], [:H3pl, :HD], :(5.3e-10)],
              [[:H2Dpl, :HD], [:H3pl, :D2], :(0.1 .* 5.0e-10)],
              [[:H2Dpl, :HD], [:HD2pl, :H2], :(0.9 .* 5.0e-10)],
-             # [[:H2DOpl, :H2O], [:H3Opl, :HDO], :(6.3e-10)],  # removed for now as we don't have a production mechanism that doesn't involve species like D3
              [[:HDpl, :HD], [:H2Dpl, :D], :(0.55 .* 1.53e-9)],
              [[:HDpl, :HD], [:HD2pl, :H], :(0.45 .* 1.53e-9)],
              [[:HDpl, :Ar], [:ArDpl, :H], :(1.53e-9)],
