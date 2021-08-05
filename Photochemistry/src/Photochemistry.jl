@@ -44,10 +44,10 @@ export # Basic utility functions
 # println("NOTICE: Parameter file in use is /home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS.jl")
 
 # Files for slowly incorporating ions into a converged neutral atmosphere.
-include("/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-conv1.jl")     
-println("NOTICE: Parameter file in use is /home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-conv1.jl")
-# include("/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-conv2.jl")     
-# println("NOTICE: Parameter file in use is /home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-conv2.jl")
+# include("/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-conv1.jl")     
+# println("NOTICE: Parameter file in use is /home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-conv1.jl")
+include("/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-conv2.jl")     
+println("NOTICE: Parameter file in use is /home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-conv2.jl")
 # include("/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-conv2a.jl")     
 # println("NOTICE: Parameter file in use is /home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-conv2a.jl")
 # include("/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-conv3.jl")
@@ -208,6 +208,14 @@ function deletefirst(A::Array, v)
     return A[keep]
 end
 
+function find_nans(collection; collec_name="collection")
+    #=
+    Alert to any nonfinite values (inf or nan) in collection.
+    =#
+    nans = findall(x->isnan(x), collection)
+    return nans
+end
+
 function find_nonfinites(collection; collec_name="collection")
     #=
     Alert to any nonfinite values (inf or nan) in collection.
@@ -215,12 +223,12 @@ function find_nonfinites(collection; collec_name="collection")
     nonfinites = findall(x->x==0, map(el->isfinite(el), collection))
     if length(nonfinites) != 0
         throw("ALERT: Found nonfinite values in $(collec_name) at indices $(nonfinites)")
-        open(results_dir*sim_folder_name*"/$(collec_name).txt", "w") do f
-           for (i, j, v) in zip(findnz(collection)...)
-               write(f, "$(i), $(j), $(v)\n")
-           end
-        end
-        println("Wrote out a jacobian with nonfinite values to $(results_dir*sim_folder_name)/$(collec_name).txt")
+        # open(results_dir*sim_folder_name*"/$(collec_name).txt", "w") do f
+        #    for (i, j, v) in zip(findnz(collection)...)
+        #        write(f, "$(i), $(j), $(v)\n")
+        #    end
+        # end
+        # println("Wrote out a jacobian with nonfinite values to $(results_dir*sim_folder_name)/$(collec_name).txt")
 
     end
 end
@@ -296,7 +304,7 @@ function next_in_loop(i::Int64, n::Int64)
     return i % n + 1
 end
 
-function report_NaNs(d; name="<blank>")
+function report_NaNs(d; name="<blank>", verbose=false)
     #=
     Looks for NaN in collection d and reports their indices
     =#
@@ -307,9 +315,15 @@ function report_NaNs(d; name="<blank>")
                 throw("Found NaNs in $(name) at index $(findall(x->isnan(x), d[di])) in entry $(di)")
             end
         end
+        if verbose==true
+            println("No NaNs found")
+        end
     elseif isa(d, Array)
         if nans_present(d)
             throw("Found NaNs in $(name) at index $(findall(x->isnan(x), d))")
+        end
+        if verbose==true
+            println("No NaNs found")
         end
     else
         throw("Type $(typeof(d)) not supported by report_NaNs")
@@ -1564,17 +1578,28 @@ function Dcoef!(D_arr, T_arr, species::Symbol, ncur, speciesbclist)
     D_arr[:] .= (diffparams(species)[1] .* 1e17 .* T_arr .^ (diffparams(species)[2])) ./ [n_tot(ncur, z) for z in alt]
 
     # a place to store the density array as if it were the same length as alt, not non_bdy_layers
-    species_density = 0. .* similar(alt)
+    species_density = zeros(size(alt))
     
     # If an ion, overwrite with the ambipolar diffusion
     if charge_type(species) == "ion"
-        sum_nu_in = 0. .* similar(alt)
+        sum_nu_in = zeros(size(alt))
+        if nans_present(sum_nu_in)
+            println("Confirmed: NaN is present in sum_nu_in, right after initialization")
+            nani = find_nans(sum_nu_in)
+            println("alt indexed by the nan indices: $(alt[nani])")
+            println("sum_nu_in indexed by the nan indices: $(sum_nu_in[nani])")
+            println("Entire sum_nu_in which SHOULD be a bunch of zeros:")
+            throw("*endless screaming*")
+        end
+
         mi = speciesmolmasslist[species] .* mH
         # create the sum of nu_in. Note that this depends on density, but we only have density for the real layers,
         # so we have to assume the density at the boundary layers is the same as at the real layers.
         for n in neutrallist
-            species_density .= [ncur[n][n_alt_index[a]] for a in alt]
-            bccheck = get(speciesbclist, species, ["f" 0.; "f" 0.])
+            species_density .= [ncur[n][n_alt_index[a]] for a in alt] # done this way to capture the boundary layers.
+
+            bccheck = get(speciesbclist, n, ["f" 0.; "f" 0.])
+   
             if bccheck[1,1] == "n"
                 species_density[1] = bccheck[1,2]
             end
@@ -1583,6 +1608,16 @@ function Dcoef!(D_arr, T_arr, species::Symbol, ncur, speciesbclist)
             end
             mu_in = (1 ./ mi .+ 1 ./ (speciesmolmasslist[n] .* mH)) .^ (-1) # reduced mass in g
             sum_nu_in .+= 2 .* pi .* (((species_polarizability[n] .* q .^ 2) ./ mu_in) .^ 0.5) .* species_density
+
+            if nans_present(sum_nu_in)
+                println("NaN found in $(species) sum_nu_in during neutral loop")
+                nani = find_nans(sum_nu_in)
+                println("polarizability: $(species_polarizability[n])")
+                println("q: $(q)")
+                println("Mu_in: $(mu_in)")
+                println("$(n) density: $(species_density)")
+                println("$(n) density at $(nani): $(species_density[nani])")
+            end
         end
         
         # Since it depends on the densities at each altitude, we can only assign it for the real, non-boundary layers initially:
@@ -1858,9 +1893,9 @@ function flux_param_arrays(n_dict, controltemps::Array)
     Tplasma_arr = Float64[T_all(z, T_surf, T_tropo, T_exo, "ion") for z in alt]
     whichtemps = Dict("neutral"=>Tn_arr, "ion"=>Tplasma_arr)
 
-    Keddy_arr = similar(alt)
+    Keddy_arr = zeros(alt)
     Keddy_arr .= map(z->Keddy(z, n_tot(n_dict, z)), alt)
-    Dcoef_arr = 0. .* similar(Tn_arr) 
+    Dcoef_arr = zeros(size(Tn_arr)) 
     Dcoef_dict = Dict{Symbol, Vector{Float64}}([s=>deepcopy(Dcoef!(Dcoef_arr, whichtemps[charge_type(s)], s, n_dict)) for s in fullspecieslist])
     H0_dict = Dict{String, Vector{Float64}}("neutral"=>map((z,t)->scaleH(z, t, n_dict), alt, Tn_arr),
                                        "ion"=>map((z,t)->scaleH(z, t, n_dict), alt, Tplasma_arr))
