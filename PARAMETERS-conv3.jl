@@ -25,16 +25,20 @@ const MR_mean_water = 1.38e-4
 const dt_min_and_max = Dict("neutrals"=>[-3, 14], "ions"=>[-4, 6], "both"=>[-4, 14])
 const rel_tol = 1e-4
 
-# General species name lists for converged and newly introduced species =======
+# Species name lists and Jrate symbol lists  ===================================
+
+# Neutrals --------------------------------------------------------------------
 const conv_neutrals = [:Ar, :C, :CH, :CO, :CO2, :H, :H2, :H2O, :H2O2, :HCO, :HO2, :HOCO, 
                        :O, :O1D, :O2, :O3, :OH,
                        :D, :DO2, :DOCO, :HD, :HDO, :HDO2, :N2, :OD];
 const new_neutrals = [:N2O, :NO2, :CN, :HCN, :HNO, :N, :NH, :NH2, :NO];
 
-const N_species = [:N2, :N2O, :NO2, :CN, :HCN, :HNO, :N, :NH, :NH2, :NO];
+const neutral_species = [];
+append!(neutral_species, conv_neutrals)
+append!(neutral_species, new_neutrals)
 
-const conv_ions = [:CO2pl, :HCO2pl, :Opl, :O2pl];# Nair minimal ionosphere 
-                  
+# Ions -------------------------------------------------------------------------
+const conv_ions = [:CO2pl, :HCO2pl, :Opl, :O2pl];  # Nair minimal ionosphere  
 const new_ions = [:Arpl, :ArHpl, :Cpl, :CHpl, :CNpl, :COpl, 
                   :Hpl, :H2pl, :H2Opl, :H3pl, :H3Opl,
                   :HCNpl, :HCNHpl, :HCOpl, 
@@ -45,7 +49,16 @@ const new_ions = [:Arpl, :ArHpl, :Cpl, :CHpl, :CNpl, :COpl,
                   :ArDpl, :Dpl, :DCOpl, :HDpl, :HD2pl, :H2Dpl, :N2Dpl
                  ];
 
-# Photolysis and Photoionization rate symbol lists
+const ion_species = [];
+append!(ion_species, conv_ions)
+append!(ion_species, new_ions)
+
+# Full species list -------------------------------------------------------------
+const all_species = [];
+append!(all_species, neutral_species)
+append!(all_species, ion_species)
+
+# Photolysis and Photoionization rate symbol lists ----------------------------
 const conv_Jrates = [# Original neutral photodissociation
                     :JCO2toCOpO,:JCO2toCOpO1D,:JO2toOpO,:JO2toOpO1D,
                     :JO3toO2pO,:JO3toO2pO1D,:JO3toOpOpO,:JH2toHpH,:JOHtoOpH,
@@ -63,7 +76,6 @@ const conv_Jrates = [# Original neutral photodissociation
                     # New neutral photodissociation (from Roger)
                     :JCO2toCpOpO, :JCO2toCpO2, :JCOtoCpO,
                   ];
-
 const newJrates = [# New neutral photodissociation (from Roger)
                     :JN2OtoN2pO1D, :JNO2toNOpO, :JNOtoNpO,
 
@@ -80,14 +92,42 @@ const newJrates = [# New neutral photodissociation (from Roger)
                     :JO3toO3pl
                 ];
 
-const nochemspecies = [];
-const notransportspecies = [];
+const Jratelist = [];
+append!(Jratelist, conv_Jrates)
+append!(Jratelist, newJrates)
 
-# To converge neutrals: add union(conv_ions, N_species) to nochemspecies and notransportspecies.
-# To converge ions: add setdiff(conv_neutrals, N_species) to nochemspecies and notransportspecies.
+# Other logical groupings -------------------------------------------------------
+const N_species = [:N2, :N2O, :NO2, :CN, :HCN, :HNO, :N, :NH, :NH2, :NO];
+
+# Short lived species, whose chemical lifetime is << diffusion timescale
+const short_lived_species = [:NO2, :CN, :HNO, :NH, :NH2];#:CH, :HCO, :HO2, :O3, :OH, :O1D, :DO2, :OD, ];
+append!(short_lived_species, ion_species)
+
+const long_lived_species = setdiff(all_species, short_lived_species)
+
+# Species participating in chem and transport -----------------------------------
+
+# To converge neutrals: add union(conv_ions, N_species) to no_chem_species and no_transport_species.
+# To converge ions: add setdiff(conv_neutrals, N_species) to no_chem_species and no_transport_species.
 # This is because the N chemistry is intimiately tied up with the ions.
-append!(nochemspecies, setdiff(conv_neutrals, N_species))
-append!(notransportspecies, setdiff(conv_neutrals, N_species))
+const no_chem_species = [];
+const no_transport_species = [];
+append!(no_chem_species, setdiff(conv_neutrals, N_species))  # i.e. non-nitrogen bearing neutrals are inactive
+append!(no_transport_species, setdiff(conv_neutrals, N_species))
+
+const chem_species = setdiff(all_species, no_chem_species);
+const transport_species = setdiff(all_species, no_transport_species);
+const active_species = union(chem_species, transport_species)
+const inactive_species = intersect(no_chem_species, no_transport_species)
+const active_longlived = intersect(active_species, long_lived_species)
+const active_shortlived = intersect(active_species, short_lived_species)
+
+# NEW - for handling different water behavior in upper/lower atmo
+# Get the position of H2O and HDO symbols within active species. This is used so that we can control its behavior differently
+# in different parts of the atmosphere.
+const H2Oi = findfirst(x->x==:H2O, active_longlived)
+const HDOi = findfirst(x->x==:HDO, active_longlived)
+
 
 ################################################################################
 ############################ end modification zone #############################
@@ -146,32 +186,6 @@ const highestTe = 350.0  # This is the highest exobase temperature considered.
                           # AFAIK this parameter is only used in making the 3-panel
                           # temperature profile plot.
 
-# Set up the master lists of species ==========================================
-const Jratelist = [];
-append!(Jratelist, conv_Jrates)
-append!(Jratelist, newJrates)
-
-const ionlist = [];
-append!(ionlist, conv_ions)
-append!(ionlist, new_ions)
-
-const fullspecieslist = [];
-append!(fullspecieslist, conv_neutrals)
-append!(fullspecieslist, new_neutrals)
-append!(fullspecieslist, ionlist)
-
-const neutrallist = setdiff(fullspecieslist, ionlist)
-
-const chemspecies = setdiff(fullspecieslist, nochemspecies);
-const transportspecies = setdiff(fullspecieslist, notransportspecies);
-const activespecies = union(chemspecies, transportspecies)
-const inactivespecies = intersect(nochemspecies, notransportspecies)
-
-# NEW - for handling different water behavior in upper/lower atmo
-# Get the position of H2O and HDO symbols within active species. This is used so that we can control its behavior differently
-# in different parts of the atmosphere.
-const H2Oi = findfirst(x->x==:H2O, activespecies)
-const HDOi = findfirst(x->x==:HDO, activespecies)
 
 #  Useful dictionaries ==========================================================
 # List of D bearing species and their H analogues. INCOMPLETE, only has ions right now because we don't need the neutral analogue list.
@@ -373,22 +387,22 @@ const odfile = "OD.csv"
 # Transport network ============================================================
 const upeqns = [Any[Any[[s], [Symbol(string(s)*"_above")],Symbol("t"*string(s)*"_up")],
                     Any[[Symbol(string(s)*"_above")],[s],Symbol("t"*string(s)*"_above_down")]]
-                    for s in fullspecieslist]
+                    for s in all_species]
 
 const downeqns = [Any[Any[[s], [Symbol(string(s)*"_below")],Symbol("t"*string(s)*"_down")],
                       Any[[Symbol(string(s)*"_below")],[s],Symbol("t"*string(s)*"_below_up")]]
-                      for s in fullspecieslist]
+                      for s in all_species]
 
-const local_transport_rates = [[[Symbol("t"*string(s)*"_up") for s in fullspecieslist]
-                                [Symbol("t"*string(s)*"_down") for s in fullspecieslist]
-                                [Symbol("t"*string(s)*"_above_down") for s in fullspecieslist]
-                                [Symbol("t"*string(s)*"_below_up") for s in fullspecieslist]]...;]
+const local_transport_rates = [[[Symbol("t"*string(s)*"_up") for s in all_species]
+                                [Symbol("t"*string(s)*"_down") for s in all_species]
+                                [Symbol("t"*string(s)*"_above_down") for s in all_species]
+                                [Symbol("t"*string(s)*"_below_up") for s in all_species]]...;]
 
 const transportnet = [[upeqns...;]; [downeqns...;]]
 
 # define names for all the species active in the coupled rates:
-const active_above = [Symbol(string(s)*"_above") for s in activespecies]
-const active_below = [Symbol(string(s)*"_below") for s in activespecies]
+const active_longlived_above = [Symbol(string(s)*"_above") for s in active_longlived]
+const active_longlived_below = [Symbol(string(s)*"_below") for s in active_longlived]
 
 # Chemistry ====================================================================
 # function to replace three body rates with the recommended expression
@@ -766,7 +780,7 @@ const reactionnet = [   #Photodissociation
              [[:O3, :NO2], [:NO3, :O2], :(1.2e-13 .* exp.(-2450.0 ./ Tn))],
              [[:OH, :C], [:CO, :H], :(7.98e-10 .* (Tn .^ -0.34) .* exp.(-0.108 ./ Tn))],
              [[:OH, :CH], [:HCO, :H], :(8.31e-13 .* (Tn .^ 0.5) .* exp.(-5000.0 ./ Tn))],
-             [[:OH, :H], [:H2, :O], :(8.1e-21 .* (Tn .^ 2.8) .* exp.(-1950.0 ./ Tn))],
+             # [[:OH, :H], [:H2, :O], :(8.1e-21 .* (Tn .^ 2.8) .* exp.(-1950.0 ./ Tn))], # Duplicate
              [[:OH, :N], [:NH, :O], :(1.06e-11 .* (Tn .^ 0.1) .* exp.(-10700.0 ./ Tn))],
              [[:OH, :N], [:NO, :H], :(1.8e-10 .* (Tn .^ -0.2))],
              [[:OH, :NH], [:H2O, :N], :(3.3e-15 .* (Tn .^ 1.2))],

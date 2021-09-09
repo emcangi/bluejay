@@ -22,7 +22,7 @@ const MR_mean_water = 1.38e-4
 
 # Timesteps and iterations =====================================================
 const dt_min_and_max = Dict("neutrals"=>[-3, 14], "ions"=>[-4, 6], "both"=>[-4, 14])
-const rel_tol = 1e-4
+const rel_tol = 1e-3
 
 # General species name lists for converged and newly introduced species =======
 const conv_neutrals = [:Ar, :CO, :CO2, :H, :H2, :H2O, :H2O2, :HO2, :HOCO, :N2, 

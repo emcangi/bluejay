@@ -15,8 +15,8 @@ using PlotUtils
 
 export # Basic utility functions
        calculate_stiffness, charge_type, report_NaNs, check_jacobian_eigenvalues, create_folder, deletefirst, 
-       find_nonfinites, format_chemistry_string, format_sec_or_min, fluxsymbol, getpos, input, nans_present, next_in_loop, searchdir, search_subfolders, 
-       subtract_difflength,
+       find_nonfinites, format_chemistry_string, format_sec_or_min, fluxsymbol, getpos, input, nans_present, next_in_loop, rxns_where_species_is_observer, 
+       searchdir, search_subfolders, subtract_difflength,
        # Plotting functions
        get_colors, get_grad_colors, plot_atm, plot_bg, plot_extinction, plot_Jrates, plot_rxns, plot_temp_prof, plot_water_profile,                 
        # Reaction rate functions
@@ -28,7 +28,9 @@ export # Basic utility functions
        # transport functions                                                                           
        Dcoef, Dcoef!, fluxcoefs, flux_param_arrays, flux_pos_and_neg, get_flux, Keddy, scaleH,                                 
        # Chemistry functions
-       chemical_jacobian, getrate, loss_coef!, loss_equations, loss_rate, make_chemjac_key, meanmass, production_equations, production_rate,
+       chemical_jacobian, getrate, loss_equations, loss_rate, make_chemjac_key, make_net_change_expr, meanmass, production_equations, production_rate,
+       # Photochemical equilibrium functions
+       choose_solutions, construct_quadratic, group_terms, loss_coef, linear_in_species_density,
        # Photochemistry functions
        binupO2, co2xsect, h2o2xsect_l, h2o2xsect, hdo2xsect, ho2xsect_l, o2xsect, O3O1Dquantumyield, padtosolar, populate_xsect_dict, quantumyield, 
        # Temperature functions
@@ -37,52 +39,41 @@ export # Basic utility functions
        Psat, Psat_HDO                                                                                                                                                                               
 
 # Load the parameter file ==========================================================
-# TODO: Make this smarter somehow
 
 # Standard case for doing science!
-# include("/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS.jl")     
-# println("NOTICE: Parameter file in use is /home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS.jl")
+pfile = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS.jl"
 
-# Files for slowly incorporating ions into a converged neutral atmosphere.
-# include("/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-conv1.jl")     
-# println("NOTICE: Parameter file in use is /home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-conv1.jl")
-include("/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-conv2.jl")     
-println("NOTICE: Parameter file in use is /home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-conv2.jl")
-# include("/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-conv2a.jl")     
-# println("NOTICE: Parameter file in use is /home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-conv2a.jl")
-# include("/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-conv3.jl")
-# println("NOTICE: Parameter file in use is /home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-conv3.jl")
-# include("/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-convall.jl")
-# println("NOTICE: Parameter file in use is /home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-convall.jl")
-# include("/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-ionsfirst.jl")
-# println("NOTICE: Parameter file in use is /home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-ionsfirst.jl")
+# Possible parameter files using DifferentialEquations.jl solver -------------------
 
-# Files for slowly incorporating ions into a converged neutral atmosphere, but with the old solver
-# include("/home/emc/GDrive-CU/Research-Modeling/OriginalCode-WithIons/Code/PARAMETERS-conv1.jl")     
-# println("NOTICE: Parameter file in use is /home/emc/GDrive-CU/Research-Modeling/OriginalCode-WithIons/Code/PARAMETERS-conv1.jl")
-# include("/home/emc/GDrive-CU/Research-Modeling/OriginalCode-WithIons/Code/PARAMETERS-conv2.jl")     
-# println("NOTICE: Parameter file in use is /home/emc/GDrive-CU/Research-Modeling/OriginalCode-WithIons/Code/PARAMETERS-conv2.jl")
-# include("/home/emc/GDrive-CU/Research-Modeling/OriginalCode-WithIons/Code/PARAMETERS-conv3.jl")
-# println("NOTICE: Parameter file in use is /home/emc/GDrive-CU/Research-Modeling/OriginalCode-WithIons/Code/PARAMETERS-conv3.jl")
-# include("/home/emc/GDrive-CU/Research-Modeling/OriginalCode-WithIons/Code/PARAMETERS-conv4.jl")     
-# println("NOTICE: Parameter file in use is /home/emc/GDrive-CU/Research-Modeling/OriginalCode-WithIons/Code/PARAMETERS-conv4.jl")
+# Files for slowly incorporating ions into a converged neutral atmosphere. Use either 2a or 3 but not both.
+# pfile = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-conv1.jl"  # add in the minimal ionosphere (CO2+, O2+, O+, HCO2+)
+# pfile = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-conv2.jl"  # add in the neutrals HCO, CH, C
+# pfile = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-conv2a.jl" # add in the neutrals HCO, CH, C, N-bearing neutrals, and all other ions
+# pfile = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-conv3.jl"  # add in N-bearing neutrals and all other ions
 
+# Options to try adding in everything new all at once, either all or just ions first.
+# pfile = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-convall.jl"   # add in all ion species and new neutrals at once
+# pfile = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-ionsfirst.jl" # Add all ions to the basic neutral atmosphere 
 
-# Converge a CO2 only atmosphere, no chemistry. Starts from scratch.
-# include("/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-CO2Only.jl")     
-# println("NOTICE: Parameter file in use is /home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-CO2Only.jl")
+# Additional cases for testing
+# pfile = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-CO2Only.jl"      # CO2 only atmosphere, no chemistry. Starts from scratch.
+# pfile = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-buildupatm.jl"   # Build up the neutral atmosphere starting with the basic CO2 atmosphere 
+# pfile = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-NeutralsOnly.jl" # Use the neutral atmosphere only (from Cangi+2020)
 
-# Build up the neutral atmosphere starting with the basic CO2 atmosphere converged using the files in the lines directly above.
-# include("/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-buildupatm.jl")     
-# println("NOTICE: Parameter file in use is /home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-buildupatm.jl")
+# Possible parameter files using the original homebrew solver ---------------------
 
-# For using the final neutral atmosphere from 2020 paper, and messing around with it but within the scope of THIS code. 
- # include("/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-NeutralsOnly.jl")     
- # println("NOTICE: Parameter file in use is /home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/PARAMETERS-NeutralsOnly.jl")
+# Files for slowly incorporating ions into a converged neutral atmosphere, but with the old solver. Use either 2a or 3 but not both.
+# pfile = "/home/emc/GDrive-CU/Research-Modeling/OriginalCode-WithIons/Code/PARAMETERS-conv1.jl"  # add in the minimal ionosphere (CO2+, O2+, O+, HCO2+)
+# pfile = "/home/emc/GDrive-CU/Research-Modeling/OriginalCode-WithIons/Code/PARAMETERS-conv2.jl"  # add in the neutrals HCO, CH, C
+# pfile = "/home/emc/GDrive-CU/Research-Modeling/OriginalCode-WithIons/Code/PARAMETERS-conv2a.jl" # add in the neutrals HCO, CH, C, N-bearing neutrals, and all other ions
+# pfile = "/home/emc/GDrive-CU/Research-Modeling/OriginalCode-WithIons/Code/PARAMETERS-conv3.jl"  # add in N-bearing neutrals and all other ions
+# pfile = "/home/emc/GDrive-CU/Research-Modeling/OriginalCode-WithIons/Code/PARAMETERS-conv4.jl"  # converge neutrals again after adding ions    
 
 # For running the original code with only neutrals from Cangi+ 2020 
-# include("/home/emc/GDrive-CU/Research-Modeling/FractionationFactor/Code/PARAMETERS.jl")
-# println("NOTICE: Parameter file in use is /home/emc/GDrive-CU/Research-Modeling/FractionationFactor/Code/PARAMETERS.jl")
+# pfile = "/home/emc/GDrive-CU/Research-Modeling/FractionationFactor/Code/PARAMETERS.jl"
+
+include(pfile)     
+println("NOTICE: Parameter file in use is $(pfile)")
 
 # basic utility functions ==========================================================
 function calculate_stiffness(J)
@@ -367,6 +358,31 @@ function search_subfolders(path, key; type="folders")
     elseif type=="files"
         filelist = filter(x->occursin(key, x), filelist)
         return filelist
+    end
+end
+
+function rxns_where_species_is_observer(sp, chemnet)
+    #=
+    Returns a true if species sp appears on both sides of a chemical reaction,
+    and a false if not.
+    =#
+
+    krate_rxns = filter(x->!occursin("J", string(x[3])), chemnet)
+    
+    twosides = []
+
+    flag = false
+    for rxn in krate_rxns
+        if in(sp, rxn[1]) && in(sp, rxn[2])
+            flag = true
+            twosides = push!(twosides, rxn)
+        end
+    end
+
+    if flag == true 
+        return twosides
+    else
+        return nothing
     end
 end
 
@@ -1269,9 +1285,9 @@ function rxn_chem(ncur, reactants::Array, krate, temps_n::Array, temps_i::Array,
     end
     # Calculate the sum of all bodies in a layer (M) for third body reactions. 
     # This does it in an array so we can easily plot.
-    M_by_alt = sum([ncur[sp] for sp in fullspecieslist]) 
+    M_by_alt = sum([ncur[sp] for sp in all_species]) 
     if modeltype == "ions"
-        E_by_alt = sum([ncur[sp] for sp in ionlist])
+        E_by_alt = sum([ncur[sp] for sp in ion_species])
     end
 
     # multiply the result array by all reactant densities
@@ -1327,7 +1343,7 @@ function flatten_atm(atmdict, splist)
     [n_sp1(z=0), n_sp2(z=0)...n_sp1(z=250)...n_spN(z=250)] for the species included in splist.
     This function is the reverse of unflatten_atm. 
 
-    splist: either 'fullspecieslist' or 'activespecies' or 'inactivespecies'
+    splist: either 'all_species' or 'active_species' or 'inactive_species'
     =#
 
     return deepcopy(Float64[[atmdict[sp][ialt] for sp in splist, ialt in 1:length(non_bdy_layers)]...])
@@ -1353,7 +1369,7 @@ function n_tot(ncur, z)
     Calculate total atmospheric density at a given altitude z.
     =#
     thisaltindex = n_alt_index[z]
-    return sum( [ncur[s][thisaltindex] for s in fullspecieslist] )
+    return sum( [ncur[s][thisaltindex] for s in all_species] )
 end
 
 function n_tot(ncur, z, sptype)
@@ -1362,7 +1378,7 @@ function n_tot(ncur, z, sptype)
     sptype: either "neutral" or "ion"
     =#
 
-    which_slist = Dict("neutral"=>neutrallist, "ion"=>ionlist)
+    which_slist = Dict("neutral"=>neutral_species, "ion"=>ion_species)
     thisaltindex = n_alt_index[z]
     return sum( [ncur[s][thisaltindex] for s in which_slist[sptype]] )
 end
@@ -1374,7 +1390,7 @@ function unflatten_atm(n_vec, splist)
     user-readable dictionary where the keys are species names and the values are the density
     arrays by altitude.
 
-    splist: either 'fullspecieslist' or 'activespecies'
+    splist: either 'all_species' or 'active_species'
 
     This function is the reverse of flatten_atm.
     =#
@@ -1425,7 +1441,7 @@ function boundaryconditions(fluxcoef_dict::Dict, speciesbclist)
     n_(num_layers) is the topmost atmospheric layer, and n_(num_layers+1) is the top boundary layer.
 
     fluxcoef_dict: a dictionary containing the K and D flux coefficients for every species throughout
-                   the atmosphere. Format species=>Array{Float64}(length(fullspecieslist), length(alt)).
+                   the atmosphere. Format species=>Array{Float64}(length(all_species), length(alt)).
                    By passing this in instead of calculating it here, calls to this function have been optimized
                    to avoid slow solution of the production and loss equation.
     speciesbclist: User-supplied boundary conditions for various atmospheric constituents. Dictionary.
@@ -1433,13 +1449,13 @@ function boundaryconditions(fluxcoef_dict::Dict, speciesbclist)
     
     # This is where we will store all the boundary condition numbers in the format that the code
     # understands.
-    bc_dict = Dict{Symbol, Array{Float64}}([s=>[0 0; 0 0] for s in fullspecieslist])
+    bc_dict = Dict{Symbol, Array{Float64}}([s=>[0 0; 0 0] for s in all_species])
 
-    for s in fullspecieslist
+    for s in all_species
         # retrieves user-supplied boundary conditions. When unsupplied, falls back to flux = 0 at both boundaries.
         bcs = get(speciesbclist, s, ["f" 0.; "f" 0.]) 
         # Flux is also 0 at both boundaries for species disallowed from transport.
-        if issubset([s],notransportspecies)
+        if issubset([s],no_transport_species)
             bcs = ["f" 0.; "f" 0.]
         end
 
@@ -1507,11 +1523,6 @@ function effusion_velocity(Texo::Float64, m::Float64, zmax)
     
     # lambda is the Jeans parameter (Gronoff 2020), basically the ratio of the 
     # escape velocity GmM/z to the thermal energy, kT.
-    # Old MKS code:
-    # lambda = (m*mH*bigG*marsM)/(kB_MKS*Texo*1e-2*(radiusM+zmax))  # unitless
-    # vth = sqrt(2*kB_MKS*Texo/(m*mH))  # this one is in m/s
-    # v = 1e2*exp(-lambda)*vth*(lambda+1)/(2*pi^0.5)  # this is in cm/s
-
     lambda = (m*mH*bigG*marsM)/(kB*Texo*(radiusM+zmax))
     vth = sqrt(2*kB*Texo/(m*mH))
     v = exp(-lambda)*vth*(lambda+1)/(2*pi^0.5)
@@ -1583,19 +1594,11 @@ function Dcoef!(D_arr, T_arr, species::Symbol, ncur, speciesbclist)
     # If an ion, overwrite with the ambipolar diffusion
     if charge_type(species) == "ion"
         sum_nu_in = zeros(size(alt))
-        if nans_present(sum_nu_in)
-            println("Confirmed: NaN is present in sum_nu_in, right after initialization")
-            nani = find_nans(sum_nu_in)
-            println("alt indexed by the nan indices: $(alt[nani])")
-            println("sum_nu_in indexed by the nan indices: $(sum_nu_in[nani])")
-            println("Entire sum_nu_in which SHOULD be a bunch of zeros:")
-            throw("*endless screaming*")
-        end
 
         mi = speciesmolmasslist[species] .* mH
         # create the sum of nu_in. Note that this depends on density, but we only have density for the real layers,
         # so we have to assume the density at the boundary layers is the same as at the real layers.
-        for n in neutrallist
+        for n in neutral_species
             species_density .= [ncur[n][n_alt_index[a]] for a in alt] # done this way to capture the boundary layers.
 
             bccheck = get(speciesbclist, n, ["f" 0.; "f" 0.])
@@ -1609,15 +1612,6 @@ function Dcoef!(D_arr, T_arr, species::Symbol, ncur, speciesbclist)
             mu_in = (1 ./ mi .+ 1 ./ (speciesmolmasslist[n] .* mH)) .^ (-1) # reduced mass in g
             sum_nu_in .+= 2 .* pi .* (((species_polarizability[n] .* q .^ 2) ./ mu_in) .^ 0.5) .* species_density
 
-            if nans_present(sum_nu_in)
-                println("NaN found in $(species) sum_nu_in during neutral loop")
-                nani = find_nans(sum_nu_in)
-                println("polarizability: $(species_polarizability[n])")
-                println("q: $(q)")
-                println("Mu_in: $(mu_in)")
-                println("$(n) density: $(species_density)")
-                println("$(n) density at $(nani): $(species_density[nani])")
-            end
         end
         
         # Since it depends on the densities at each altitude, we can only assign it for the real, non-boundary layers initially:
@@ -1632,7 +1626,7 @@ function Dcoef(T, species::Symbol, ncur, z)
     
     =#    
     # Ddict = Dict("neutral"=>(diffparams(species)[1]*1e17*T^(diffparams(species)[2]))/n_tot(ncur, z), 
-    #             "ion"=>(kB * T) / (speciesmolmasslist[species] * mH * (sum([2*pi*(((species_polarizability[n]*q^2)/((1/(speciesmolmasslist[species] * mH) + 1/(speciesmolmasslist[n] * mH))^(-1)))^0.5)*ncur[n][n_alt_index[z]]] for n in neutrallist)[1])))
+    #             "ion"=>(kB * T) / (speciesmolmasslist[species] * mH * (sum([2*pi*(((species_polarizability[n]*q^2)/((1/(speciesmolmasslist[species] * mH) + 1/(speciesmolmasslist[n] * mH))^(-1)))^0.5)*ncur[n][n_alt_index[z]]] for n in neutral_species)[1])))
 
     # Calculate as if it was a neutral
     D = (diffparams(species)[1] .* 1e17 .* T .^ (diffparams(species)[2])) ./ n_tot(ncur, z)
@@ -1643,7 +1637,7 @@ function Dcoef(T, species::Symbol, ncur, z)
         mi = speciesmolmasslist[species] .* mH
         # create the sum of nu_in. Note that this depends on density, but we only have density for the real layers,
         # so we have to assume the density at the boundary layers is the same as at the real layers.
-        for n in neutrallist
+        for n in neutral_species
             mu_in = (1 ./ mi .+ 1 ./ (speciesmolmasslist[n] .* mH)) .^ (-1) # reduced mass in g
             sum_nu_in += 2 .* pi .* (((species_polarizability[n] .* q .^ 2) ./ mu_in) .^ 0.5) .* ncur[n][n_alt_index[z]]
         end
@@ -1842,7 +1836,7 @@ function fluxcoefs(T_neutral::Vector{Float64}, T_plasma::Vector{Float64}, K::Vec
     =#
     
     # the return dictionary: Each species has 2 entries for every layer of the atmosphere.
-    fluxcoef_dict = Dict{Symbol, Array{Float64}}([s=>fill(0., length(alt), 2) for s in fullspecieslist])
+    fluxcoef_dict = Dict{Symbol, Array{Float64}}([s=>fill(0., length(alt), 2) for s in all_species])
     
     # Manually use 1 for the "layer below" since we are working at the boundary layer
     Tn_lowbdy = [1, T_neutral[1:2]...]
@@ -1855,7 +1849,7 @@ function fluxcoefs(T_neutral::Vector{Float64}, T_plasma::Vector{Float64}, K::Vec
     K_upbdy = [K[end-1:end]..., 1]
     H0_upbdy = Dict("neutral"=>[H0["neutral"][end-1:end]..., 1], "ion"=>[H0["ion"][end-1:end]..., 1])
 
-    for s in transportspecies
+    for s in transport_species
         # handle lower boundary layer
         Ds_lowbdy = [1, D[s][1:2]...]
         Hs_lowbdy = [1, Hs[s][1:2]...]
@@ -1896,10 +1890,10 @@ function flux_param_arrays(n_dict, controltemps::Array)
     Keddy_arr = zeros(alt)
     Keddy_arr .= map(z->Keddy(z, n_tot(n_dict, z)), alt)
     Dcoef_arr = zeros(size(Tn_arr)) 
-    Dcoef_dict = Dict{Symbol, Vector{Float64}}([s=>deepcopy(Dcoef!(Dcoef_arr, whichtemps[charge_type(s)], s, n_dict)) for s in fullspecieslist])
+    Dcoef_dict = Dict{Symbol, Vector{Float64}}([s=>deepcopy(Dcoef!(Dcoef_arr, whichtemps[charge_type(s)], s, n_dict)) for s in all_species])
     H0_dict = Dict{String, Vector{Float64}}("neutral"=>map((z,t)->scaleH(z, t, n_dict), alt, Tn_arr),
                                        "ion"=>map((z,t)->scaleH(z, t, n_dict), alt, Tplasma_arr))
-    Hs_dict = Dict{Symbol, Vector{Float64}}([sp=>map(z->scaleH(z, sp, controltemps), alt) for sp in fullspecieslist])
+    Hs_dict = Dict{Symbol, Vector{Float64}}([sp=>map(z->scaleH(z, sp, controltemps), alt) for sp in all_species])
 
     return Tn_arr, Tplasma_arr, Keddy_arr, Dcoef_dict, H0_dict, Hs_dict
 end
@@ -2124,11 +2118,11 @@ function chemical_jacobian(chemnetwork, transportnetwork, specieslist, dspeciesl
         # get the production and loss equations
         peqn = []
         leqn = []
-        if issubset([ispecies],chemspecies)
+        if issubset([ispecies],chem_species)
             peqn = [peqn; production_equations(chemnetwork, ispecies)] 
             leqn = [leqn; loss_equations(chemnetwork, ispecies)]
         end
-        if issubset([ispecies],transportspecies)
+        if issubset([ispecies],transport_species)
             peqn = [peqn; production_equations(transportnetwork, ispecies)]
             leqn = [leqn; loss_equations(transportnetwork, ispecies)]
         end
@@ -2170,142 +2164,102 @@ function chemical_jacobian(chemnetwork, transportnetwork, specieslist, dspeciesl
     return (ivec, jvec, tvec) # Expr(:vcat, tvec...))  # 
 end
 
-function getrate(chemnet, transportnet, species::Symbol; chem_on=true, trans_on=true, pchem_eq=false, sepvecs=false)
+function getrate(chemnet, transportnet, species::Symbol; chemistry_on=true, transport_on=true, sepvecs=false)
     #=
     Creates a symbolic expression for the rate at which a given species is
     either produced or lost. Production is from chemical reaction yields or
     entry from other atmospheric layers. Loss is due to consumption in reactions
     or migration to other layers.
     =#
-    
 
-    chem_prod = Dict(0=>0, 
-                     1=>production_rate(chemnet, species, sepvecs=sepvecs))
-
-    chem_loss = Dict(0=>0,
-                     1=>loss_rate(chemnet, species, sepvecs=sepvecs, pchem_eq=pchem_eq))
-
-    trans_prod = Dict(0=>0, 
-                     1=>production_rate(transportnet, species, sepvecs=sepvecs))
-
-    trans_loss = Dict(0=>0,
-                     1=>loss_rate(transportnet, species, sepvecs=sepvecs, pchem_eq=pchem_eq))
-
+    # This block will return the total net change for the species, P - L.
     if sepvecs == false
         rate = :(0.0)
-        if issubset([species],chemspecies)
+        if issubset([species],chem_species) && chemistry_on
             rate = :($rate 
-                     + $(chem_prod[chem_on]) 
-                     - $(chem_loss[chem_on]))
+                     + $(production_rate(chemnet, species, sepvecs=sepvecs)) 
+                     - $(loss_rate(chemnet, species, sepvecs=sepvecs)) 
+                    )
         end
-        if issubset([species],transportspecies)
+        if issubset([species],transport_species) && transport_on
             rate = :($rate 
-                     + $(trans_prod[trans_on]) 
-                     - $(trans_loss[trans_on]))
+                     + $(production_rate(transportnet, species, sepvecs=sepvecs)) 
+                     - $(loss_rate(transportnet, species, sepvecs=sepvecs))
+                    )
         end
         return rate
-    else
-        chemprod_rate = :(0.0)
-        chemloss_rate = :(0.0)
-        transprod_rate = :(0.0)
-        transloss_rate = :(0.0)
+    else  # if we want a vector of expressions for each production and loss (4 terms, 2 each for chemistry and transport)
+        if issubset([species],chem_species) && chemistry_on
+            chemprod_rate = production_rate(chemnet, species, sepvecs=sepvecs)
+            chemloss_rate = loss_rate(chemnet, species, sepvecs=sepvecs)
+        else
+            chemprod_rate = [:(0.0 + 0.0)]  # Doing it this way because it's the easiest way to make a vector of one expression that's just 0
+            chemloss_rate = [:(0.0 + 0.0)]
+        end
+        
+        if issubset([species],transport_species) && transport_on
+            transprod_rate = production_rate(transportnet, species, sepvecs=sepvecs)
+            transloss_rate = loss_rate(transportnet, species, sepvecs=sepvecs)
+        else
+            transprod_rate = [:(0.0 + 0.0)]
+            transloss_rate = [:(0.0 + 0.0)]
 
-        if issubset([species],chemspecies)
-            chemprod_rate = chem_prod[chem_on]
-            chemloss_rate = chem_loss[chem_on]
         end
-        if issubset([species],transportspecies)
-            transprod_rate = trans_prod[chem_on]
-            transloss_rate = trans_loss[chem_on]
-        end
+
         return chemprod_rate, chemloss_rate, transprod_rate, transloss_rate
     end
 end
 
-function loss_coef!(leqn, species; keep_ns_photolysis=true)
-    #=
-    leqn: output of loss_equations (a vector of vectors of symbols)
-    species: Symbol; species for which to calculate the loss coefficient for use in 
-        calculating photochemical equilibrium, n = P/L
-    keep_ns_photolysis: whether to keep the n_s term in unimolecular photolysis reactions.
-        default is true, but setting it to no is useful when using this code to
-        calculate a chemical lifetime.
-
-    this function will remove one entry of [n_s] from each loss equation
-    in the network.
-    =#
-
-    if keep_ns_photolysis
-        num_terms = 2
-    else
-        num_terms = 1
-    end
-    # This loop goes through and removes one instance of n_s in the loss equations so it can be
-    # used to calculate n = P/L for photochemical equilibrium. n_is is not removed from photolysis reactions
-    # if keep_ns_photolysis is set to true.
-    for L in 1:length(leqn)
-        if length(leqn[L]) > num_terms && count(t->t==species, leqn[L]) <= 2
-            leqn[L] = deletefirst(leqn[L], species)
-        end
-    end
-
-    return leqn
-end
-
 function loss_equations(network, species::Symbol)
     #=  
-    given a network of equations in the form of reactionnet, this
-    function returns the loss equations and rate coefficient for all
-    reactions where the supplied species is consumed, in the form of an array
-    where each entry is of the form [reactants, rate] 
+    given a network of chemical or transport equations, this function returns the 
+    loss equations and relevant rate coefficients for species.
+    the form is an array where each entry is of the form [reactants..., rate].
+    For example, [[:O2, :JO2toOpO], [:O1D, :O2, :k]] are two possible entries 
+    for loss of O2 (k not printed because not important for this example).
+
+    Automatically accounts for cases where a species occurs twice on the LHS by
+    reporting those reactions twice.
     =#
 
-    # get list of all chemical reactions species participates in:
+    # Identify all positions of the species within the network.
+    # The format is [R, side, el] where R = index of reaction vector in network,
+    # side = 1 (reactant) or 2 (product) and finally
+    # el = index of species position in either reactant or product vector.
     speciespos = getpos(network, species)
-    # find pos where species is on LHS but not RHS:
-    lhspos = map(x->x[1],  # we only need the reaction number
-               map(x->speciespos[x],  # select the appropriate reactions
-                   findall(x->x[2]==1, speciespos)))
-    rhspos = map(x->x[1],  # we only need the reaction number
-               map(x->speciespos[x],  # select the appropriate reactions
-                   findall(x->x[2]==2, speciespos)))
+
+    # This collects only R (see above comment) for any reaction here species is on LHS:
+    lhspos = map(x->x[1], map(x->speciespos[x], findall(x->x[2]==1, speciespos)))
+    # and RHS:
+    rhspos = map(x->x[1], map(x->speciespos[x], findall(x->x[2]==2, speciespos)))
+
+    # Ignore reactions where species occurs on both sides of the equation as an observer.
+    # Since we are counting loss equations here, only need to remove it from the LHS list.
     for i in intersect(lhspos, rhspos)
         lhspos = deletefirst(lhspos, i)
     end
 
     # get the products and rate coefficient for the identified reactions.
-    losseqns=map(x->vcat(Any[network[x][1]...,network[x][3]]), lhspos)
-    # automatically finds a species where it occurs twice on the LHS
+    # format is a vector of vectors of symbols.
+    losseqns = map(x->vcat(Any[network[x][1]...,network[x][3]]), lhspos)
 end
 
-function loss_rate(network, species::Symbol; vec_not_exprs=false, sepvecs=false, pchem_eq=false)
-    #= 
+function loss_rate(network, species::Symbol; return_leqn_unmapped=false, sepvecs=false)
+    #=  
     return a symbolic expression for the loss rate of species in the
     supplied reaction network. Format is a symbolic expression containing a sum
     of reactants * rate. 
     =#
-    leqn=loss_equations(network, species) # get the equations
+    leqn = loss_equations(network, species) # select relevant reactions from network
 
-    # here is where we remove one instance of n_s (species concentration) if needed for photochem eq
-    # TODO: This is an inelegant way to trigger when network is the chemical reaction network only. 
-    # Find a better way.
-    if pchem_eq && typeof(network)==Vector{Vector{Any}}   # This catches the chemistry network but not transport.
-        loss_coef!(leqn, species)
-    end
-    
-
-    if vec_not_exprs
+    if return_leqn_unmapped # gives vector of vectors like [:CO2, :O, :(k)]
         return leqn 
     end
 
-    if sepvecs
+    if sepvecs # returns a vector of expressions
         return map(x->:(*($(x...))), leqn)
-    else
-        lval=:(+($( # and add the products together
-                   map(x->:(*($(x...))) # take the product of the
-                                        # concentrations and coefficients
-                                        # for each reaction
-                       ,leqn)...)))
+    else  # returns one massive expression
+        lval = make_net_change_expr(leqn)
         return lval
     end
 end
@@ -2315,7 +2269,7 @@ function make_chemjac_key(fn, fpath, list1, list2)
     #=
     This somewhat superfluous function makes a key to the chemical jacobian,
     telling which index corresponds to which species. But really it just gives the 
-    indices of the entries in fullspecieslist, because that's how the jacobian is ordered,
+    indices of the entries in all_species, because that's how the jacobian is ordered,
     but this function is written agnostically so that could technically change and this
     function would still work.
 
@@ -2348,57 +2302,274 @@ function meanmass(ncur, z)
     return: mean molecular mass in amu
     =#
     thisaltindex = n_alt_index[z]
-    c = [ncur[sp][thisaltindex] for sp in fullspecieslist]
-    m = [speciesmolmasslist[sp] for sp in fullspecieslist]
+    c = [ncur[sp][thisaltindex] for sp in all_species]
+    m = [speciesmolmasslist[sp] for sp in all_species]
     return sum(c.*m)/sum(c)
 end
 
+function make_net_change_expr(network_vectors)
+    #=
+    network_vectors: a subset of the chemical or transport network, pre-selected for a 
+                     specific species and either production or loss. format is a vector 
+                     of vectors of symbols; each vector of symbols is a specific 
+                     reaction rate or transport terms.
+
+    Output: A massive expression that gives the net rate of change due to the 
+            equations in network_vectors by multiplying the densities of each
+            reactant with the reaction rate coefficient (chemistry) or transport
+            coefficient (transport) and summing the products.
+
+    I.e. to create a term for the rate of change of the CO2 density due to the
+    reactions [[[:CO, :O], [:CO2], :(k1)], [[:CO2], [:CO, :O], :(J1)]], this function 
+    would generate the expression :(CO * O * k1 + CO2 * J1). 
+    =#
+    net_change = :(+($(map(x->:(*($(x...))), network_vectors)...)))
+    return net_change
+end
+
 function production_equations(network, species::Symbol)
-    #= 
-    given a network of equations in the form of reactionnet, this
-    function returns the production equations and rate coefficient for all
-    reactions where the supplied species is produced, in the form of a vector
-    where each entry is of the form [reactants..., rate]. 
-    For example, for O(1D)+H2, the entry is [:O1D, :H2, 1.2e-10].
+    #=  
+    given a network of chemical or transport equations, this function returns the 
+    production equations and relevant rate coefficients for species.
+    the form is an array where each entry is of the form [reactants..., rate].
+
+    Automatically accounts for cases where a species occurs twice on the RHS by
+    reporting those reactions twice.
+
+    See loss_equations for more detailed comments on how the function works.
     =#
 
-    speciespos = getpos(network, species) # list of all reactions where species is produced
-    # find pos where species is on RHS but not LHS
-    lhspos = map(x->x[1], # we only need the reaction number
-               map(x->speciespos[x], #select the appropriate reactions
-                   findall(x->x[2]==1, speciespos)))
-    rhspos = map(x->x[1], # we only need the reaction number
-               map(x->speciespos[x], # select the appropriate reactions
-                   findall(x->x[2]==2, speciespos)))
+    speciespos = getpos(network, species) 
+    lhspos = map(x->x[1], map(x->speciespos[x], findall(x->x[2]==1, speciespos)))
+    rhspos = map(x->x[1], map(x->speciespos[x], findall(x->x[2]==2, speciespos)))
+
     for i in intersect(rhspos, lhspos)
         rhspos = deletefirst(rhspos, i)
     end
 
-    # get the products and rate coefficient for the identified reactions.
-    prodeqns = map(x->vcat(Any[network[x][1]...,network[x][3]]),
-                 # automatically finds and counts duplicate
-                 # production for each molecule produced
-                 rhspos)
+    prodeqns = map(x->vcat(Any[network[x][1]...,network[x][3]]), rhspos)
 
     return prodeqns
 end
 
-function production_rate(network, species::Symbol; sepvecs=false)
+function production_rate(network, species::Symbol; return_peqn_unmapped=false, sepvecs=false)
     #= 
-    return a symbolic expression for the loss rate of species in the
-    supplied reaction network.
+    return a symbolic expression for the total loss rate of species in the
+    supplied reaction network. See loss_rate for more detailed comments.
     =#
 
-    # get the reactants and rate coefficients
     peqn = production_equations(network, species)
 
-    # add up and take the product of each set of reactants and coeffecient
+    if return_peqn_unmapped
+        return peqn 
+    end
+
     if sepvecs
-        return map(x->:(*($(x...))), peqn)
+        return map(x->:(*($(x...))), peqn)  
     else
-        pval = :(+ ( $(map(x -> :(*($(x...))), peqn) ...) ))
+        pval = make_net_change_expr(peqn)
         return pval
     end
+end
+
+# photochemical equilibrium functions =============================================
+
+function choose_solutions(possible_solns, prev_densities)
+    #=
+    next_density_solns: An array of possible next densities for each 
+    species being solved for. If P-L=0 is linear in the species density,
+    the solution is in column 1 of possible_solns. If quadratic, there are two solutions
+    in columns 1 and 2 and 3 possible cases:
+    - Both solutions are positive, in which case we use the one that minimizes the 
+      change in density from the previous state
+    - Both solutions are negative, in which case we set the density to 0
+    - There is a positive and a negative solution, in which case we use
+      the solution that minimizes the change in density from the previous
+      state and also sets the negative value to 0 if that's the chosen one.
+
+    This function will return a single vector of the best possible choice of solution
+    for each species based on these rules.
+    =#
+
+    # make an array copy to return 
+    accepted_solns = deepcopy(possible_solns)
+
+    # need to get the size of previous densities to be the same as what we will eventually subtract it from
+    prev_densities_2d = hcat(prev_densities, prev_densities)
+
+    # all indices in possible_solns that store quadratic solutions
+    has_quadsoln = findall(possible_solns[:, 2] .!= 0)
+
+    # find any quadratic solution where at least one solution is positive
+    anypos = [r for r in has_quadsoln if any(possible_solns[r, :] .> 0)]
+
+    # If there are any positive solutions, use the solution that minimizes the difference between the previous density and itself
+    # and set the accepted solution to 0 if it's negative
+    change = abs.(accepted_solns[anypos, :] .- prev_densities_2d[anypos, :])
+    inds_of_min_change = reshape([x[2] for x in argmin(change, dims=2)], size(change)[1])
+    accepted_solns[anypos, 1] .= [accepted_solns[i, j] for (i,j) in zip(anypos, inds_of_min_change)]
+    accepted_solns[anypos, 2] .= NaN
+
+    # zero out any negative solutions -- this includes quadratic solutions where both entries are negative.
+    neg_solns = findall(accepted_solns[:, 1] .< 0)
+    accepted_solns[neg_solns, 1] .= 0
+    
+    # The second column is now useless -- includes quadratic solutions where this second solution is negative.
+    accepted_solns[:, 2] .= NaN 
+    
+    return accepted_solns[:, 1]
+end
+
+function construct_quadratic(sp, prod_rxn_list, loss_rxn_list)
+    #=
+    rxn_list here is the output of loss_rate with return_leqn_unmapped set to true.
+    
+    for this function, let n_s represent the density term for sp, the species of interest.
+    =#
+    
+    # Get rid of duplicates (normally present because a reaction with two instances of a species on the LHS
+    # would be counted twice to account for the two species density terms). Only for loss reactions.
+    # Continue letting production reactions appear twice since for those, sp is on the RHS. 
+    # (easier to add a reaction in twice when figure out it's a duplicate and append "2 *")
+    # Also because of the way filter! and insert! work, reaching all the way out to the global scope (??), 
+    # deepcopy() has to be here to avoid adding another sp^0 term to whatever was passed in as prod_rxn_list and loss_rxn_list 
+    # every time this function runs.
+    loss_rxn_list = deepcopy(collect(Set(loss_rxn_list)))
+    prod_rxn_list = deepcopy(prod_rxn_list) 
+ 
+    # Reconstruct loss_rxn_list such that the first term is n_s to some power
+    for r in 1:length(loss_rxn_list)
+        ns_power = count(x->x==sp, loss_rxn_list[r]) # find the power of the density term
+
+        # Replace all instances of n_s with a single term raised to ns_power
+        filter!(x->x!=sp, loss_rxn_list[r]) 
+        insert!(loss_rxn_list[r], 1, :($sp ^ $ns_power))
+    end
+ 
+    # Do the same for prod_rxn_list, but the power should always be 0
+    for r in 1:length(prod_rxn_list)
+        ns_power = count(x->x==sp, prod_rxn_list[r])
+
+        # Replace all instances of n_s with a single term raised to ns_power
+        filter!(x->x!=sp, prod_rxn_list[r]) 
+        insert!(prod_rxn_list[r], 1, :($sp ^ $ns_power))
+    end
+
+    quad_coef_dict = group_terms(prod_rxn_list, loss_rxn_list)
+end
+
+function group_terms(prod_rxn_arr, loss_rxn_arr)
+    #=
+    Given production and loss reaction lists in the form:
+    Vector{Any}[[:(sp ^ 2), :k1], [:sp, :X, :k2]...], [[:Y, :k3]...]...]
+    this function will form a quadratic expression like:
+    :(sp^2 * k1 + sp * (X*k2 + Y*k3)...)
+    that can be evaluated. 
+    
+    Returns a dictionary of the form Dict("A"=>:(r1*k1 + r2+k2...), "B"=>:(r3*k3 + r4*k4...))
+    =#
+    terms_vecs = Dict("A"=>[], "B"=>[], "C"=>[])
+    terms_exprs = Dict("A"=>:(), "B"=>:(), "C"=>:())
+    qcoef_dict = Dict(2=>"A", 1=>"B", 0=>"C")
+    
+    for r in 1:length(loss_rxn_arr)
+
+        # assign the quadratic coefficient.
+        pow = (loss_rxn_arr[r][1]).args[3]
+        quadratic_coef = qcoef_dict[pow]
+        
+        if quadratic_coef == "C"
+            throw("Loss eqn has n_s^0")
+        end
+    
+        # For each power term (i.e. (n_s)^2 or (n_s)^1), store all the coefficients
+        # as a product of reactant and associated rate, i.e. :(r1*k1), :(r2*k2)
+        # Note this looks a little ugly if end=2, but it works fine.
+        push!(terms_vecs[quadratic_coef], :(*($(loss_rxn_arr[r][2:end]...))))
+    end
+    
+    # Same loop, but over the production reactions. All of these should have quadratic_coef = "C"
+    for r in 1:length(prod_rxn_arr)
+        # assign the quadratic coefficient.
+        pow = (prod_rxn_arr[r][1]).args[3]
+        quadratic_coef = qcoef_dict[pow]
+        
+        if quadratic_coef != "C"
+            throw("Production eqn has n_s power > 0")
+        end
+    
+        push!(terms_vecs[quadratic_coef], :(*($(prod_rxn_arr[r][2:end]...))))
+    end
+
+    for k in keys(terms_vecs)
+        # Collect the value vectors into sum expressions
+        # again, this is ugly if length(terms[k]) = 1, but it works and keeps code simple.
+        terms_exprs[k] = :(+($(terms_vecs[k]...)))
+    end
+    
+    return terms_exprs
+end
+
+function loss_coef(leqn_vec, species; keep_ns_photolysis=true, calc_tau_chem=false)
+    #=
+    leqn: output of loss_equations (a vector of vectors of symbols)
+    species: Symbol; species for which to calculate the loss coefficient for use in 
+        calculating photochemical equilibrium, n = P/L
+    calc_tau_chem: if set to true, the first species density (n_s) term will be deleted
+                   from all reactions, including photolysis reactions.
+
+    this function will remove one entry of [n_s] from each loss equation
+    in the network. 
+
+    IT ASSUMES THAT (P_s - L_s) = 0 FOR A GIVEN SPECIES IS LINEAR IN THE SPECIES DENSITY n_s. 
+    NOT to be used if (P_s - L_s) = 0 is quadratic in n_s!!
+    =#
+
+    # Sets the number of terms a reaction must have before entries of the species density n_s
+    # start getting removed. If 1, then all reactions will have n_s removed, including 
+    # photolysis reactions--this is useful to calculate the chemical lifetime.
+    # If 2, photolysis reactions will keep their n_s, since it's the only reactant.
+    if calc_tau_chem
+        min_terms = 1
+    else
+        min_terms = 2
+    end
+
+    for L in 1:length(leqn_vec)
+
+        # conditions for readability
+        modifiable_rxn = length(leqn_vec[L]) > min_terms ? true : false
+        num_density_terms_present = count(t->t==species, leqn_vec[L])
+        
+        if modifiable_rxn && num_density_terms_present == 1 
+            leqn_vec[L] = deletefirst(leqn_vec[L], species)
+        else
+            if num_density_terms_present > 1
+                throw("Error: $(num_density_terms_present) density terms found in the reaction for $(species). Not linear!") 
+            elseif num_density_terms_present == 0
+                continue
+            end
+        end
+    end
+
+    return leqn_vec
+end
+
+function linear_in_species_density(sp, lossnet)
+    #=
+    Checks chemical network to see if all reactions are linear
+    in the species density of sp, that is, whether or not only one 
+    instance of :sp shows up on the LHS of the equation. Returns 
+    true or false.
+    =#
+   
+    for r in 1:length(lossnet)
+        d = count(x->x==sp, lossnet[r])
+        if d > 1
+            return false
+        end
+    end
+    return true 
 end
 
 # photochemistry functions ========================================================

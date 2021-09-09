@@ -10,78 +10,25 @@
 # Currently tested for Julia: 1.5.3
 ################################################################################
 
-const research_dir = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/"
-const results_dir = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Results/"
-const xsecfolder = research_dir * "uvxsect/";
+################################################################################
+###################### begin modifiable value zone #############################
+################################################################################
 
-# fundamental constants ========================================================
-const kB_MKS = 1.38e-23;        # J/K - needed for saturation vapor pressure empirical equation.
-const kB = 1.38e-16;            # erg/K
-const bigG = 6.67e-8;           # dyne-cm^2/g^2
-const mH = 1.67e-24;            # g 
-const marsM = 0.1075*5.972e27;  # g 
-const radiusM = 3396e5;         # cm
-const q = 4.8032e-10            # statcoulomb (cm^1.5 g^0.5 s^-1)
-const DH = 5.5 * 1.6e-4               # SMOW value from Yung 1988
-
-# Altitude grid discretization =================================================
-const alt = convert(Array, (0:2e5:250e5)) # TODO: Figure out how to get this without being hard-coded
-const intaltgrid = round.(Int64, alt/1e5)[2:end-1]; # the altitude grid CELLS but in integers.
-const non_bdy_layers = alt[2:end-1]  # all layers, centered on 2 km, 4...248. Excludes the boundary layers which are [-1, 1] and [249, 251].
-const num_layers = length(alt) - 2 # there are 124 non-boundary layers.
-const plot_grid = non_bdy_layers ./ 1e5;  # for plotting. Points located at atmospheric layer cell centers and in units of km.
-const plot_grid_bdys = collect(1:2:249)  # the boundaries; includes the boundary layers at top and bottom.
+const max_alt = 250e5
 const upper_lower_bdy = 80e5 # the uppermost layer at which water will be fixed, in cm
-const upper_lower_bdy_i = Int64(upper_lower_bdy / 2e5) # the uppermost layer at which water will be fixed, in cm
-
-const zmin = alt[1]
-const zmax = alt[end];
-const dz = alt[2]-alt[1];
-const n_alt_index=Dict([z=>clamp((i-1),1, num_layers) for (i, z) in enumerate(alt)])
-
 const hygropause_alt = 40e5
-
-# Temperatures and water stuff =================================================
-const meanTs = 216.0
-const meanTt = 130.0
-const meanTe = 205.0
-const meantemps = [meanTs, meanTt, meanTe]
-
-const meanTsint = 216
-const meanTtint = 130
-const meanTeint = 205
-
-# These are the low and high values for the "standard atmosphere and reasonable 
-# climate variations" cases. NOT the full range of temperatures used to make the
-# detailed cases stuff, because those include temps up to 350 K.
-const lowTs = 160.0
-const hiTs = 270.0
-const lowTt = 100.0
-const hiTt = 160.0
-const lowTe = 150.0
-const hiTe = 250.0
-
-const highestTe = 350.0  # This is the highest exobase temperature considered.
-                          # AFAIK this parameter is only used in making the 3-panel
-                          # temperature profile plot.
-
 const MR_mean_water = 1.38e-4
 
-# Timesteps and general simulation parameters =================================
-const dt_min_and_max = Dict("neutrals"=>[-4, 14], "ions"=>[-4, 6], "both"=>[-4, 14])
-const rel_tol = 1e-4
+# Timesteps and iterations =====================================================
+const dt_min_and_max = Dict("neutrals"=>[-3, 14], "ions"=>[-4, 6], "both"=>[-4, 14])
+const rel_tol = 1e-3
 
-# Species, Jrates, and which are active ========================================
-
-# !----------------- You may modify per simulation starting here -------------------!
 const conv_neutrals = [:Ar, :CO, :CO2, :H, :H2, :H2O, :H2O2, :HO2, :HOCO, :N2, 
                        :O, :O1D, :O2, :O3, :OH,
                        :D, :DO2, :DOCO, :HD, :HDO, :HDO2, :OD,];
-const N_species = [:N2, :N2O, :NO2, :CN, :HCN, :HNO, :N, :NH, :NH2, :NO];
 const new_neutrals = [:N2O, :NO2, :CN, :HCN, :HNO, :N, :NH, :NH2, :NO]; #:C, :CH, :HCO, 
-const conv_ions = [];
-const new_ions = [:CO2pl, :HCO2pl, :Opl, :O2pl, # Nair minimal ionosphere 
-                  :Arpl, :ArHpl, :Cpl, :CHpl, :CNpl, :COpl, 
+const conv_ions = [:CO2pl, :HCO2pl, :Opl, :O2pl,]; # Nair minimal ionosphere 
+const new_ions = [:Arpl, :ArHpl, :Cpl, :CHpl, :CNpl, :COpl, 
                   :Hpl, :H2pl, :H2Opl, :H3pl, :H3Opl,
                   :HCNpl, :HCNHpl, :HCOpl, 
                   :HNOpl, :HN2Opl, :HOCpl, :HO2pl, 
@@ -90,15 +37,7 @@ const new_ions = [:CO2pl, :HCO2pl, :Opl, :O2pl, # Nair minimal ionosphere
                   # Deuterated ions
                   :ArDpl, :Dpl, :DCOpl, :HDpl, :HD2pl, :H2Dpl, :N2Dpl
                  ];
-
-# To converge neutrals: add conv_ions to nochemspecies and notransportspecies.
-# To converge ions: add setdiff(conv_neutrals, N_species) to nochemspecies and notransportspecies.
-# This is because the N chemistry is intimiately tied up with the ions.
-const nochemspecies = [:Ar];# :N2];
-const notransportspecies = [:Ar];#, :N2]; 
-
-append!(nochemspecies, setdiff(conv_neutrals, N_species))  # NOTE: This is what to change EVERY TIME YOU RUN until you find a better way
-append!(notransportspecies, setdiff(conv_neutrals, N_species))  # NOTE: This is what to change EVERY TIME YOU RUN until you find a better way
+const N_species = [:N2, :N2O, :NO2, :CN, :HCN, :HNO, :N, :NH, :NH2, :NO];
 
 # Photolysis and Photoionization rate symbol lists
 const conv_Jrates = [# Original neutral photodissociation
@@ -131,11 +70,78 @@ const newJrates = [# New neutral photodissociation (from Roger)
                     :JO3toO3pl
                 ];
 
+const nochemspecies = [:Ar];
+const notransportspecies = [:Ar]; 
+
+# To converge neutrals: add conv_ions to nochemspecies and notransportspecies.
+# To converge ions: add setdiff(conv_neutrals, N_species) to nochemspecies and notransportspecies.
+# This is because the N chemistry is intimiately tied up with the ions.
+append!(nochemspecies, setdiff(conv_neutrals, N_species))  # NOTE: This is what to change EVERY TIME YOU RUN until you find a better way
+append!(notransportspecies, setdiff(conv_neutrals, N_species))  # NOTE: This is what to change EVERY TIME YOU RUN until you find a better way
+
+################################################################################
+############################ end modification zone #############################
+################################################################################
+
+const extra_plots_dir = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Auxiliary plots/"
+const research_dir = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/"
+const results_dir = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Results/"
+const xsecfolder = research_dir * "uvxsect/";
+
+# fundamental constants ========================================================
+const kB_MKS = 1.38e-23;        # J/K - needed for saturation vapor pressure empirical equation.
+const kB = 1.38e-16;            # erg/K
+const bigG = 6.67e-8;           # dyne-cm^2/g^2
+const mH = 1.67e-24;            # g 
+const marsM = 0.1075*5.972e27;  # g 
+const radiusM = 3396e5;         # cm
+const q = 4.8032e-10            # statcoulomb (cm^1.5 g^0.5 s^-1)
+const DH = 5.5 * 1.6e-4               # SMOW value from Yung 1988
+
+# Altitude grid specifications =================================================
+const alt = convert(Array, (0:2e5:max_alt)) # TODO: Figure out how to get this without being hard-coded
+const intaltgrid = round.(Int64, alt/1e5)[2:end-1]; # the altitude grid CELLS but in integers.
+const non_bdy_layers = alt[2:end-1]  # all layers, centered on 2 km, 4...248. Excludes the boundary layers which are [-1, 1] and [249, 251].
+const num_layers = length(alt) - 2 # there are 124 non-boundary layers.
+const plot_grid = non_bdy_layers ./ 1e5;  # for plotting. Points located at atmospheric layer cell centers and in units of km.
+const plot_grid_bdys = collect(1:2:((max_alt / 1e5)-1))  # the boundaries; includes the boundary layers at top and bottom.
+const upper_lower_bdy_i = Int64(upper_lower_bdy / 2e5) # the uppermost layer at which water will be fixed, in cm
+
+const zmin = alt[1]
+const zmax = alt[end];
+const dz = alt[2]-alt[1];
+const n_alt_index=Dict([z=>clamp((i-1),1, num_layers) for (i, z) in enumerate(alt)])
+
+# Mean temperatures and simulation temperature parameters ======================
+
+const meanTs = 216.0
+const meanTt = 130.0
+const meanTe = 205.0
+const meantemps = [meanTs, meanTt, meanTe]
+
+const meanTsint = 216
+const meanTtint = 130
+const meanTeint = 205
+
+# These are the low and high values for the "standard atmosphere and reasonable 
+# climate variations" cases. NOT the full range of temperatures used to make the
+# detailed cases stuff, because those include temps up to 350 K.
+const lowTs = 160.0
+const hiTs = 270.0
+const lowTt = 100.0
+const hiTt = 160.0
+const lowTe = 150.0
+const hiTe = 250.0
+
+const highestTe = 350.0  # This is the highest exobase temperature considered.
+                          # AFAIK this parameter is only used in making the 3-panel
+                          # temperature profile plot.
+
+
+# Set up the master lists of species ==========================================
 const Jratelist = [];
 append!(Jratelist, conv_Jrates)
 append!(Jratelist, newJrates)
-
-# !-------------------------- End modification zone ----------------------------!
 
 const ionlist = [];
 append!(ionlist, conv_ions)
@@ -148,10 +154,8 @@ append!(fullspecieslist, ionlist)
 
 const neutrallist = setdiff(fullspecieslist, ionlist)
 
-const specieslist=fullspecieslist;  
-
-const chemspecies = setdiff(specieslist, nochemspecies);
-const transportspecies = setdiff(specieslist, notransportspecies);
+const chemspecies = setdiff(fullspecieslist, nochemspecies);
+const transportspecies = setdiff(fullspecieslist, notransportspecies);
 const activespecies = union(chemspecies, transportspecies)
 const inactivespecies = intersect(nochemspecies, notransportspecies)
 
@@ -361,16 +365,16 @@ const odfile = "OD.csv"
 # Transport network ============================================================
 const upeqns = [Any[Any[[s], [Symbol(string(s)*"_above")],Symbol("t"*string(s)*"_up")],
                     Any[[Symbol(string(s)*"_above")],[s],Symbol("t"*string(s)*"_above_down")]]
-                    for s in specieslist]
+                    for s in fullspecieslist]
 
 const downeqns = [Any[Any[[s], [Symbol(string(s)*"_below")],Symbol("t"*string(s)*"_down")],
                       Any[[Symbol(string(s)*"_below")],[s],Symbol("t"*string(s)*"_below_up")]]
-                      for s in specieslist]
+                      for s in fullspecieslist]
 
-const local_transport_rates = [[[Symbol("t"*string(s)*"_up") for s in specieslist]
-                                [Symbol("t"*string(s)*"_down") for s in specieslist]
-                                [Symbol("t"*string(s)*"_above_down") for s in specieslist]
-                                [Symbol("t"*string(s)*"_below_up") for s in specieslist]]...;]
+const local_transport_rates = [[[Symbol("t"*string(s)*"_up") for s in fullspecieslist]
+                                [Symbol("t"*string(s)*"_down") for s in fullspecieslist]
+                                [Symbol("t"*string(s)*"_above_down") for s in fullspecieslist]
+                                [Symbol("t"*string(s)*"_below_up") for s in fullspecieslist]]...;]
 
 const transportnet = [[upeqns...;]; [downeqns...;]]
 
