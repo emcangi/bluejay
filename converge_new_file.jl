@@ -27,9 +27,7 @@ using SparseArrays
 using LinearAlgebra
 using ProgressMeter
 using Photochemistry  # custom module
-
 using DifferentialEquations
-# using Sundials
 
 t2 = time()
 
@@ -39,8 +37,16 @@ user_input_paramfile = input("Enter a parameter file or press enter to use defau
 paramfile = user_input_paramfile == "" ? "PARAMETERS.jl" : user_input_paramfile*".jl"
 t3 = time()
 include(paramfile)
+
+# Some user-specified files have their own networks due to needing certain reactions to be on or off.
+# For all others, load the default network.
+load_rxn_net = ["PARAMETERS.jl", "PARAMETERS-conv3.jl", "PARAMETERS-convall.jl", "PARAMETERS-conv2a.jl", "PARAMETERS-conv4.jl"]
+if any(x->occursin(x, paramfile), load_rxn_net)
+    include("/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/reaction_network.jl")
+end
+
 t4 = time()
-println("Time to load PARAMETERS: $(format_sec_or_min(t4-t3))")
+println("Time to load PARAMETERS and reaction network: $(format_sec_or_min(t4-t3))")
 
 t5 = time()
 
@@ -58,35 +64,45 @@ For additional functions, see the Photochemistry module.
 =#
 
 # Chemical Jacobian functions ==================================================
-function chemJmat(nthis, inactive, active_species, inactive_species, Jrates, Tn, Ti, Te, tup, tdown, tlower, tupper, dt=1.; time=nothing, check_eigen=true)
+function chemJmat(n_active_longlived, n_active_shortlived, n_inactive, activellsp, activeslsp, inactivesp, Jrates, Tn, Ti, Te, tup, tdown, tlower, tupper; dt=1., check_eigen=false)
     #=
     Collects coordinate tuples of (I, J, V) [row index, column index, value] for a sparse matrix
     representing the chemical jacobian of the atmospheric system. 
 
-    nthis: The atmospheric densities array, but flattened, in the form [n_CO(z=0), n_CO2(z=0)...n_N2Dpl(z=0), n_CO(z=2)...n_N2Dpl(z=250)]
-    inactive: A flattened array of the atmospheric densities of any inactive species, same format as nthis. Functionally constant.
-    active_species: List of active species (const)
-    inactive_species: List of inactive_species (const)
+    n_active_longlived: The atmospheric densities array, but flattened, in the form [n_CO(z=0), n_CO2(z=0)...n_N2Dpl(z=0), n_CO(z=2)...n_N2Dpl(z=250)], for active 
+                        and chemically long-lived species.
+    n_active_shortlived: active shortlived species densities, necessary to to calculations for longlived species.
+    n_inactive: A flattened array of the atmospheric densities of any inactive species, same format as nthis. Functionally constant.
+    activellsp, activeslsp, inactivesp: Lists of active and longlived, active shortlived, and ianctive species (const)
     Jrates: Flattened array of Jrates, same format as nthis.
     Tn, Ti, Te: Temperature-vs-altitude arrays for neutrals, ions, electrons. (const)
     tup, tdown: Transport coefficients
     tlower, tupper: Transport coefficients
 
+    check_eigen: Will check the eigenvalues of the jacobian for non-real or real/positive values if true. Code currently commented out.
+
     dt: Can be specified to manually control the timestep by which the derivatives are multiplied.
         If not supplied, then dt=1 so that the external solver can manage the multiplication by time.
-    =#
+    =#              
 
-    nthismat = reshape(nthis, (length(active_species), num_layers))
-    inactivemat = reshape(inactive, (length(inactive_species), num_layers))
+    nmat_llsp = reshape(n_active_longlived, (length(activellsp), num_layers))
+    nmat_slsp = reshape(n_active_shortlived, (length(activeslsp), num_layers))
+    nmat_inactive = reshape(n_inactive, (length(inactivesp), num_layers))
+    
+    # For storing the jacobian indices and values
     chemJi = Int64[]
     chemJj = Int64[]
     chemJval = Float64[]
 
     # tc___ are the coordinate tuples containing (I, J, V) to be used to fill a sparse matrix.
-    (tclocal, tcupper, tclower) = chemJmat_local([nthismat[:,1]; nthismat[:,2]; fill(1.0, length(active_species));
-                                                  inactivemat[:,1]; Jrates[:,1];
-                                                  Tn[1]; Ti[1]; Te[1]; 
-                                                  tup[:,1]; tlower[:,1];
+    (tclocal, tcupper, tclower) = chemJmat_local([nmat_llsp[:, 1];  # active_longlived; 
+                                                  nmat_llsp[:, 2]; # active_longlived_above; 
+                                                  fill(1.0, length(activellsp)); # active_longlived_below;
+                                                  nmat_slsp[:, 1]; # active_shortlived; 
+                                                  nmat_inactive[:,1];  # inactive_species; 
+                                                  Jrates[:,1]; # Jratelist; 
+                                                  Tn[1]; Ti[1]; Te[1];  #:Tn; :Ti; :Te; 
+                                                  tup[:,1]; tlower[:,1]; # local_transport_rates
                                                   tdown[:,2]; tlower[:,2]]...) 
 
 
@@ -97,67 +113,70 @@ function chemJmat(nthis, inactive, active_species, inactive_species, Jrates, Tn,
 
     # and the upper densities
     append!(chemJi, tcupper[1])
-    append!(chemJj, tcupper[2] .+ length(active_species))
+    append!(chemJj, tcupper[2] .+ length(activellsp))
     append!(chemJval, tcupper[3])
 
     for ialt in 2:(num_layers-1)
-        (tclocal, tcupper, tclower) = chemJmat_local([nthismat[:,ialt];
-                                                      nthismat[:,ialt+1];
-                                                      nthismat[:,ialt-1];
-                                                      inactivemat[:,ialt];
-                                                      Jrates[:,ialt]; Tn[ialt]; Ti[ialt]; Te[ialt];
-                                                      tup[:,ialt];
-                                                      tdown[:,ialt];
-                                                      tdown[:,ialt+1];
-                                                      tup[:,ialt-1]]...)
+        (tclocal, tcupper, tclower) = chemJmat_local([nmat_llsp[:, ialt];
+                                                      nmat_llsp[:, ialt+1];
+                                                      nmat_llsp[:, ialt-1];
+                                                      nmat_slsp[:, ialt];
+                                                      nmat_inactive[:, ialt];
+                                                      Jrates[:, ialt]; 
+                                                      Tn[ialt]; Ti[ialt]; Te[ialt];
+                                                      tup[:, ialt];
+                                                      tdown[:, ialt];
+                                                      tdown[:, ialt+1];
+                                                      tup[:, ialt-1]]...)
 
 
         # add the influence of the local densities
-        append!(chemJi, tclocal[1].+(ialt-1)*length(active_species))
-        append!(chemJj, tclocal[2].+(ialt-1)*length(active_species))
+        append!(chemJi, tclocal[1].+(ialt-1)*length(activellsp))
+        append!(chemJj, tclocal[2].+(ialt-1)*length(activellsp))
         append!(chemJval, tclocal[3])
         # and the upper densities
-        append!(chemJi, tcupper[1].+(ialt-1)*length(active_species))
-        append!(chemJj, tcupper[2].+(ialt  )*length(active_species))
+        append!(chemJi, tcupper[1].+(ialt-1)*length(activellsp))
+        append!(chemJj, tcupper[2].+(ialt  )*length(activellsp))
         append!(chemJval, tcupper[3])
         # and the lower densities
-        append!(chemJi, tclower[1].+(ialt-1)*length(active_species))
-        append!(chemJj, tclower[2].+(ialt-2)*length(active_species))
+        append!(chemJi, tclower[1].+(ialt-1)*length(activellsp))
+        append!(chemJj, tclower[2].+(ialt-2)*length(activellsp))
         append!(chemJval, tclower[3])
     end
 
-    (tclocal, tcupper, tclower) = chemJmat_local([nthismat[:,end];
-                                              fill(1.0, length(active_species));
-                                              nthismat[:,end-1];
-                                              inactivemat[:,end];
-                                              Jrates[:,end];
-                                              Tn[end]; Ti[end]; Te[end]; 
-                                              tupper[:,1]; tdown[:,end];
-                                              tupper[:,2]; tup[:,end-1]]...)
+    (tclocal, tcupper, tclower) = chemJmat_local([nmat_llsp[:,end];
+                                                 fill(1.0, length(activellsp));
+                                                 nmat_llsp[:,end-1];
+                                                 nmat_slsp[:, end];
+                                                 nmat_inactive[:,end];
+                                                 Jrates[:,end];
+                                                 Tn[end]; Ti[end]; Te[end]; 
+                                                 tupper[:,1]; tdown[:,end];
+                                                 tupper[:,2]; tup[:,end-1]]...)
 
     # add the influence of the local densities
-    append!(chemJi, tclocal[1].+(num_layers-1)*length(active_species))
-    append!(chemJj, tclocal[2].+(num_layers-1)*length(active_species))
+    append!(chemJi, tclocal[1].+(num_layers-1)*length(activellsp))
+    append!(chemJj, tclocal[2].+(num_layers-1)*length(activellsp))
     append!(chemJval, tclocal[3])
 
     # and the lower densities
-    append!(chemJi, tclower[1].+(num_layers-1)*length(active_species))
-    append!(chemJj, tclower[2].+(num_layers-2)*length(active_species))
+    append!(chemJi, tclower[1].+(num_layers-1)*length(activellsp))
+    append!(chemJj, tclower[2].+(num_layers-2)*length(activellsp))
     append!(chemJval, tclower[3])
 
-    # NEW: fix water below whatever we set as upper/lower atmosphere boundary.
-    # This only runs if water is designated as an active species; if it's in inactive_species, this doesn't need to run,
-    # and in fact, CAN'T run. When it is active, this finds all the H2O and HDO indices for the lower atmosphere. 
+    # fix water below whatever we set as upper/lower atmosphere boundary.
+    # This only runs if water is designated as an active species; if it's in inactive_species, this won't run,
+    # When it is active, this finds all the H2O and HDO indices for the lower atmosphere. 
     # It's like above where we add (ialt-1)*length(active_species), but this way it's outside the loop.
-    if in(:H2O, active_species) && in(:HDO, active_species)
-        H2Opositions = H2Oi .+ length(active_species)*collect(0:upper_lower_bdy_i-1) # if H2Oi is 5, this returns 5, 69, 133...
-        HDOpositions = HDOi .+ length(active_species)*collect(0:upper_lower_bdy_i-1)
+    if in(:H2O, activellsp) && in(:HDO, activellsp)
+        H2Opositions = H2Oi .+ length(activellsp)*collect(0:upper_lower_bdy_i-1)
+        HDOpositions = HDOi .+ length(activellsp)*collect(0:upper_lower_bdy_i-1)
         water_positions = sort(union(H2Opositions, HDOpositions))
 
         i_remove = findall(x->in(x, water_positions), chemJi)
         j_remove = findall(x->in(x, water_positions), chemJj)
         remove_these = sort(union(i_remove, j_remove)) # This makes a set, since it describes the locations where the H2O and HDO indices are.
-                                                       # Kinda confusing since we're talking about indices of indices.s
+                                                       # Kinda confusing since we're talking about indices of indices.
         chemJval[remove_these] .= 0 
     end
 
@@ -168,45 +187,50 @@ function chemJmat(nthis, inactive, active_species, inactive_species, Jrates, Tn,
     #     append!(stiffness, calculate_stiffness(J))
     # end
 
-    return sparse(chemJi, chemJj, chemJval, length(nthis), length(nthis), +) #J
+    return sparse(chemJi, chemJj, chemJval, length(n_active_longlived), length(n_active_longlived), +)
 end
 
-function ratefn(nthis, inactive, inactive_species, active_species, Jrates, Tn, Ti, Te, tup, tdown, tlower, tupper)
+function ratefn(n_active_longlived, n_active_shortlived, n_inactive, activellsp, activeslsp, inactivesp, Jrates, Tn, Ti, Te, tup, tdown, tlower, tupper)
     #=
     at each altitude, get the appropriate group of concentrations,
     coefficients, and rates to pass to ratefn_local
     =#
-    # println("enter ratefn")
-    nthismat = reshape(nthis, (length(active_species), num_layers))
-    inactivemat = reshape(inactive, (length(inactive_species), num_layers))
-    returnrates = zero(nthismat)
-
+    nmat_llsp = reshape(n_active_longlived, (length(activellsp), num_layers))
+    nmat_slsp = reshape(n_active_shortlived, (length(activeslsp), num_layers))
+    nmat_inactive = reshape(n_inactive, (length(inactivesp), num_layers))
+    returnrates = zeros(size(nmat_llsp))
+    
     # fill the first altitude entry with information for all species
-    returnrates[:,1] .= ratefn_local([nthismat[:,1]; nthismat[:,2];
-                                     fill(1.0, length(active_species));
-                                     inactivemat[:,1]; Jrates[:,1]; 
-                                     Tn[1]; Ti[1]; Te[1];
-                                     tup[:,1]; tlower[:,1]; tdown[:,2]; tlower[:,2]]...)
+    returnrates[:,1] .= ratefn_local([nmat_llsp[:,1]; # densities for active_longlived;
+                                      nmat_llsp[:,2]; # active_longlived_above; 
+                                      fill(1.0, length(activellsp)); #active_longlived_below;
+                                      nmat_slsp[:, 1]; # active_shortlived;
+                                      nmat_inactive[:,1];  # inactive_species; 
+                                      Jrates[:,1];  # Jratelist; 
+                                      Tn[1]; Ti[1]; Te[1];  # :Tn; :Ti; :Te;
+                                      tup[:,1]; tlower[:,1]; tdown[:,2]; tlower[:,2]]...) # local_transport_rates
 
     # iterate through other altitudes in the lower atmosphere
     for ialt in 2:(num_layers-1)
-        returnrates[:,ialt] .= ratefn_local([nthismat[:,ialt];
-                                            nthismat[:,ialt+1];
-                                            nthismat[:,ialt-1];
-                                            inactivemat[:,ialt];
+        returnrates[:,ialt] .= ratefn_local([nmat_llsp[:, ialt]; # active_longlived;
+                                            nmat_llsp[:, ialt+1];
+                                            nmat_llsp[:, ialt-1];
+                                            nmat_slsp[:, ialt]; # active_shortlived;
+                                            nmat_inactive[:,ialt];
                                             Jrates[:,ialt];
                                             Tn[ialt]; Ti[ialt]; Te[ialt];
-                                            tup[:,ialt]; 
-                                            tdown[:,ialt];
-                                            tdown[:,ialt+1]; 
-                                            tup[:,ialt-1]]...)
+                                            tup[:, ialt]; 
+                                            tdown[:, ialt];
+                                            tdown[:, ialt+1]; 
+                                            tup[:, ialt-1]]...)
     end
 
     # fill in the last level of altitude
-    returnrates[:,end] .= ratefn_local([nthismat[:,end];
-                                       fill(1.0, length(active_species));
-                                       nthismat[:,end-1];
-                                       inactivemat[:,end];
+    returnrates[:,end] .= ratefn_local([nmat_llsp[:, end];
+                                       fill(1.0, length(activellsp));
+                                       nmat_llsp[:, end-1];
+                                       nmat_slsp[:, end]; # active_shortlived;
+                                       nmat_inactive[:,end];
                                        Jrates[:,end];
                                        Tn[end]; Ti[end]; Te[end];
                                        tupper[:,1]; 
@@ -217,7 +241,7 @@ function ratefn(nthis, inactive, inactive_species, active_species, Jrates, Tn, T
 
     # NEW: Overwrite the entries for water in the lower atmosphere with 0s so that it will behave as fixed.
     # Only runs when water is in the active_species list. If neutrals are set to inactive, it will be taken care of already.
-    if in(:H2O, active_species) && in(:HDO, active_species)
+    if in(:H2O, activellsp) && in(:HDO, activellsp)
         returnrates[H2Oi, 1:upper_lower_bdy_i] .= 0
         returnrates[HDOi, 1:upper_lower_bdy_i] .= 0
     end
@@ -225,80 +249,98 @@ function ratefn(nthis, inactive, inactive_species, active_species, Jrates, Tn, T
     return [returnrates...;]
 end
 
-function get_transport_and_J_rates(n, inactive, activesp, inactivesp, neutral_temps::Vector{Float64}, plasma_temps::Vector{Float64}, 
+function get_transport_and_J_rates(n, n_short, n_inactive, activellsp, activeslsp, inactivesp, neutral_temps::Vector{Float64}, plasma_temps::Vector{Float64}, 
                                    D_arr::Vector{Float64}; compute_Jrates=true)
     #=
-    This takes the current densities of all active species (n), transforms
-    back into an atmospheric state dictionary, calculates the current Jrates, 
-    and then returns the transport coefficients, boundary layer transport
-    coefficients, and Jrates needed to run ratefn and chemical_jacobian.
+    This takes the current densities of all active species (n), transforms  back into an atmospheric state dictionary, calculates the current Jrates, 
+    and then returns the transport coefficients, boundary layer transport coefficients, and Jrates needed to run ratefn and chemical_jacobian.
+
+    n: densities by altitude for active, long-lived species 
+    n_short: the same but for active short-lived species assumed to be in photochemical equilibrium.
+    n_inactive: the same but for inactive species
+    inactivesp, activellsp, activeslsp: species lists 
+    neutral_temps, plasma_temps: temperature by altitude for neutrals and plasmas
+    D_arr: An empty array to store diffusion coefficients, makes initializing the Dcoef dictionary faster.
+
     =#
     
-    # transform n vector back into n_current so we can operate on it ---------------------------------------------
+    # transform n vectors back into dictionary so we can operate on it -------------------------------------------
     # Time for this block is ~0.0002 seconds.
-    n_cur_active = unflatten_atm(n, activesp)
-    n_cur_inactive = unflatten_atm(inactive, inactivesp)
-    n_cur_all = Dict(vcat([k=>n_cur_active[k] for k in keys(n_cur_active)],
-                           [k=>n_cur_inactive[k] for k in keys(n_cur_inactive)]))
+    n_cur_active_long = unflatten_atm(n, activellsp)
+    n_cur_active_short = unflatten_atm(n_short, activeslsp)
+    n_cur_inactive = unflatten_atm(n_inactive, inactivesp)
+    n_cur_all = Dict(vcat([k=>n_cur_active_long[k] for k in keys(n_cur_active_long)],
+                          [k=>n_cur_active_short[k] for k in keys(n_cur_active_short)],
+                          [k=>n_cur_inactive[k] for k in keys(n_cur_inactive)]))
+    
     # Retrieve diffusion coefficients and mean scale height profiles for current atmospheric state ----------------
     # Keddy: 1D by altitude (array) independent of species
     # Molecular diffusion: species=>[D by altitude] (dictionary)
     # Mean atmospheric scale height (dictionary of 1D arrays)
+    # Neither meal atmospheric scale height nor eddy diffusion are functions of species, but both depend on the total species density of the whole atmosphere.
     Keddy_arr = zeros(size(alt))
     Keddy_arr .= map(z->Keddy(z, n_tot(n_cur_all, z)), alt) # Eddy diffusion: K coefficient by altitude (array)
-    Dcoef_dict = Dict{Symbol, Vector{Float64}}([s=>deepcopy(Dcoef!(D_arr, whichtemps[charge_type(s)], s, n_cur_all, speciesbclist)) for s in all_species])
     H0_dict = Dict{String, Vector{Float64}}("neutral"=>map((z,t)->scaleH(z, t, n_cur_all), alt, neutral_temps),
                                             "ion"=>map((z,t)->scaleH(z, t, n_cur_all), alt, plasma_temps))
 
-    # check for NaNs in these important inputs to fluxcoefs_all -- mostly for troubleshooting
-    report_NaNs(Keddy_arr, name="eddy diffusion coefficients")
-    report_NaNs(Dcoef_dict, name="diffusion coefficients")
-    report_NaNs(H0_dict, name="mean atmospheric scale height")
-    report_NaNs(Hs_dict, name="species-specific scale heights")
+    # Molecular diffusion is only needed for transport species, though.
+    Dcoef_dict = Dict{Symbol, Vector{Float64}}([s=>deepcopy(Dcoef!(D_arr, whichtemps[charge_type(s)], s, n_cur_all, speciesbclist)) for s in transport_species])
+
+    # check for NaNs in these important inputs to fluxcoefs_all
+    # report_NaNs(Keddy_arr, name="eddy diffusion coefficients")
+    # report_NaNs(Dcoef_dict, name="diffusion coefficients")
+    # report_NaNs(H0_dict, name="mean atmospheric scale height")
+    # report_NaNs(Hs_dict, name="species-specific scale heights")
 
     # Calculate things which will be passed into ratefn() -------------------------------
     if compute_Jrates==true
         update_Jrates!(n_cur_all)
         # copy all the Jrates into an external dictionary for storage
         for jr in Jratelist                # time for this is ~0.000005 s
-            global Jrate_storage[jr] = n_cur_all[jr]
+            global external_storage[jr] = n_cur_all[jr]
         end
     end
 
     # time to flatten Jrates is ~0.00014 s
-    Jrates = deepcopy(Float64[Jrate_storage[jr][ialt] for jr in Jratelist, ialt in 1:length(non_bdy_layers)])
-    # Jrates = deepcopy(Float64[n_cur_all[sp][ialt] for sp in Jratelist, ialt in 1:length(non_bdy_layers)]) # can't use flatten_atm because it splats, this can't splat
+    Jrates = deepcopy(Float64[external_storage[jr][ialt] for jr in Jratelist, ialt in 1:length(non_bdy_layers)])
     
     # transport coefficients for bulk layers:
     # these are the sum of the transport flux coefficients D+K, divided by Δz², units 1/s
     # Temperature arrays and Hs dict are global scope. Rest are created within this function bc they depend on densities.
     fluxcoefs_all = fluxcoefs(neutral_temps, plasma_temps, Keddy_arr, Dcoef_dict, H0_dict, Hs_dict)
-    tup = fill(-999., length(all_species), num_layers)
-    tdown = fill(-999., length(all_species), num_layers)
-    for (s, i) in zip(all_species, collect(1:length(all_species)))
+    tup = fill(-999., length(activellsp), num_layers)
+    tdown = fill(-999., length(activellsp), num_layers)
+    for (i, s) in enumerate(activellsp)
         tup[i, :] .= fluxcoefs_all[s][2:end-1, 2]
         tdown[i, :] .= fluxcoefs_all[s][2:end-1, 1]
     end
     
-    # time for these 3 lines is ~0.0003 seconds.
     # transport coefficients for boundary layers
     bc_dict = boundaryconditions(fluxcoefs_all, speciesbclist)
-    tlower = permutedims(reduce(hcat, [bc_dict[sp][1,:] for sp in all_species]))
-    tupper = permutedims(reduce(hcat, [bc_dict[sp][2,:] for sp in all_species]))
+    tlower = permutedims(reduce(hcat, [bc_dict[sp][1,:] for sp in activellsp]))
+    tupper = permutedims(reduce(hcat, [bc_dict[sp][2,:] for sp in activellsp]))
     
     return Jrates, tup, tdown, tlower, tupper
 end
 
 function make_jacobian(n, p, t)
     #=
-    Constructs the chemical jacobian for the active species vector n, given parameters p.
+    Constructs the chemical jacobian in the normal way, including stuff to calculate parameters for chemJmat.
     =#
 
     # Unpack the parameters ---------------------------------------------------------------
-    inactive, inactivesp, activesp, Tn::Vector{Float64}, Ti::Vector{Float64}, Te::Vector{Float64}, Tp::Vector{Float64}, D_arr::Vector{Float64}, check_eigen = p
-    Jrates, tup, tdown, tlower, tupper = get_transport_and_J_rates(n, inactive, activesp, inactivesp, Tn, Tp, D_arr, compute_Jrates=true)
+    n_inactive, inactivesp, activesp, activellsp, activeslsp, Tn::Vector{Float64}, Ti::Vector{Float64}, Te::Vector{Float64}, Tp::Vector{Float64}, D_arr::Vector{Float64} = p 
 
-    return chemJmat(n, inactive, activesp, inactivesp, Jrates, Tn, Ti, Te, tup, tdown, tlower, tupper; check_eigen=check_eigen, time=t)
+    # get the concentrations of species assumed to be in photochemical equilibrium. 
+    n_shortlived = flatten_atm(external_storage, activeslsp)  # retrieve the shortlived species from their storage and flatten them
+
+    # update Jrates and transport coefficients
+    Jrates, tup, tdown, tlower, tupper = get_transport_and_J_rates(n, n_shortlived, inactive, activellsp, activeslsp, inactivesp, Tn, Tp, D_arr, compute_Jrates=true)
+
+    # and update the shortlived species with the new Jrates 
+    # n_short_updated = set_concentrations!(external_storage, n, n_shortlived, n_inactive, activellsp, activeslsp, inactivesp, Jrates, Tn, Ti, Te)
+
+    return chemJmat(n, n_short_updated, n_inactive, activellsp, activeslsp, inactivesp, Jrates, Tn, Ti, Te, tup, tdown, tlower, tupper; dt=t)
 end
 
 function jacobian_wrapper(J, n, p, t)
@@ -307,6 +349,62 @@ function jacobian_wrapper(J, n, p, t)
     =#
 
     J .= make_jacobian(n, p, t)
+end
+# Photochemical equilibrium functions ==========================================
+
+function set_concentrations!(external_storage, n_active_long, n_active_short, n_inactive, activellsp, activeslsp, inactivesp, Jrates, Tn, Ti, Te)
+    #=
+    at each altitude, sets the concentrations for short-lived species assumed to be in photochemical equilibrium
+    and sends them back into the storage dictionary, external_storage
+
+    external_storage: dictionary storing densities for short-lived and inactive species, as well as Jrates.
+    n_active_short, n_active_long, n_inactive: density of short-lived, long-lived, and inactive species
+    activeslsp, activellsp, inactivesp:: list of short- and long-lived species names
+    Jrates: Jrates for each species, for a particular altitude
+    Tn, Ti, Te: temperature arrays
+    =#
+    
+    # rows = species, columns = altitudes. 
+    nmat_shortlived = reshape(n_active_short, (length(activeslsp), num_layers))
+    
+    # auxiliary information that is needed. 
+    nmat_longlived = reshape(n_active_long, (length(activellsp), num_layers))
+    nmat_inactive = reshape(n_inactive, (length(inactivesp), num_layers))
+    
+    # storage for the updated concentrations
+    new_densities = zeros(size(nmat_shortlived))
+    # dist_zero = zeros(length(nmat_shortlived)) # TODO: Figure out how to make useful
+
+    # fill the first altitude entry with information for all species   
+    new_densities[:,1] .= set_concentrations_local([nmat_shortlived[:,1]; nmat_longlived[:, 1]; nmat_inactive[:, 1]; Jrates[:, 1]; Tn[1]; Ti[1]; Te[1]]...)
+    # dist_zero[1] = check_zero_distance([nmat_shortlived[:,1]; nmat_longlived[:, 1]; nmat_inactive[:, 1]; Jrates[:, 1]; Tn[1]; Ti[1]; Te[1]]...)
+
+    # iterate through other altitudes in the lower atmosphere
+    for ialt in 2:(num_layers-1)
+        new_densities[:,ialt] .= set_concentrations_local([nmat_shortlived[:,ialt]; nmat_longlived[:, ialt]; nmat_inactive[:, ialt]; Jrates[:, ialt]; Tn[ialt]; Ti[ialt]; Te[ialt]]...)
+        # dist_zero[ialt] = check_zero_distance([nmat_shortlived[:,ialt]; nmat_longlived[:, ialt]; nmat_inactive[:, ialt]; Jrates[:, ialt]; Tn[ialt]; Ti[ialt]; Te[ialt]]...)
+    end
+
+    # fill in the last level of altitude
+    new_densities[:,end] .= set_concentrations_local([nmat_shortlived[:, end]; nmat_longlived[:, end]; nmat_inactive[:, end]; Jrates[:, end]; Tn[end]; Ti[end]; Te[end]]...)
+    # dist_zero[end] = check_zero_distance([nmat_shortlived[:, end]; nmat_longlived[:, end]; nmat_inactive[:, end]; Jrates[:, end]; Tn[end]; Ti[end]; Te[end]]...)
+
+    # Keep track of how many elements have experienced a change of > 1e-6 (1 ppm)
+    change = abs.(vec(new_densities) .- n_active_short) ./ (n_active_short)
+    ppm = 1e-6*ones(size(n_active_short)) # parts per thousand
+    global num_beyond += count(x->x==true, change .> ppm)
+    global num_times_called += 1
+    
+    # write out the new densities for shortlived species to the external storage
+    for (s, ssp) in enumerate(activeslsp)
+        external_storage[ssp] .= new_densities[s, :]
+    end
+
+    # if any(x->x>100, dist_zero)
+    #     println("elements >100 from zero: $(dist_zero[findall(x->x>100, dist_zero)])")
+    # end
+
+    return vec(new_densities)
 end
 
 # Production and loss equation functions =======================================
@@ -319,13 +417,35 @@ function PnL_eqn(dndt, n, p, t)
     =#
 
     # Unpack the parameters needed to call ratefn 
-    inactive, inactivesp, activesp, Tn::Vector{Float64}, Ti::Vector{Float64}, Te::Vector{Float64}, Tp::Vector{Float64}, D_arr::Vector{Float64} = p 
-    
-    Jrates, tup, tdown, tlower, tupper = get_transport_and_J_rates(n, inactive, activesp, inactivesp, Tn, Tp, D_arr, compute_Jrates=false)
+    n_inactive, inactivesp, activesp, activellsp, activeslsp, Tn::Vector{Float64}, Ti::Vector{Float64}, Te::Vector{Float64}, Tp::Vector{Float64}, D_arr::Vector{Float64} = p 
 
-    # println(t) # present time 
- 
-    dndt .= ratefn(n, inactive, inactivesp, activesp, Jrates, Tn, Ti, Te, tup, tdown, tlower, tupper)
+    if t / timestorage >= 10
+        f = open(results_dir*sim_folder_name*"/simulation_params_"*FNext*".txt", "a")
+        progress_alert = "reached timestep $(t) in $(format_sec_or_min(time() - ti))\n"
+        write(f, progress_alert)
+        close(f)
+        println(progress_alert) # prints present timestep, but only if it's a factor of 10 greater than the last stored timestep (so we don't get a trillion outputs)
+        global timestorage = t # updates the last stored timestep to repeat process
+        
+        # Write out atmospheric state to a file to keep track as things run.
+        ncur = merge(external_storage, unflatten_atm(n, activellsp))
+        plot_atm(ncur, [neutral_species, ion_species], results_dir*sim_folder_name*"/atm_peek_dt=$(t).png", t="$(round(t, digits=4))")
+        write_ncurrent(ncur, results_dir*sim_folder_name*"/atm_dt=$(t).h5")
+    end
+
+    # retrieve the shortlived species from their storage and flatten them
+    n_short = flatten_atm(external_storage, activeslsp)  
+
+    # Use the current state to retrieve the appropriate J rates and transport coefficients for the long-lived species.
+    Jrates, tup, tdown, tlower, tupper = get_transport_and_J_rates(n, n_short, n_inactive, activellsp, activeslsp, inactivesp, Tn, Tp, D_arr, compute_Jrates=false)
+        
+    # set the concentrations of species assumed to be in photochemical equilibrium. Runs multiple times to ensure it gets closer to the true solution.
+    n_short_updated = set_concentrations!(external_storage, n, n_short, n_inactive, activellsp, activeslsp, inactivesp, Jrates, Tn, Ti, Te)
+    for i in 1:9
+        n_short_updated = set_concentrations!(external_storage, n, n_short_updated, n_inactive, activellsp, activeslsp, inactivesp, Jrates, Tn, Ti, Te)
+    end 
+
+    dndt .= ratefn(n, n_short_updated, inactive, activellsp, activeslsp, inactivesp, Jrates, Tn, Ti, Te, tup, tdown, tlower, tupper)
 end
 
 function update_Jrates!(n_cur_densities::Dict{Symbol, Array{Float64, 1}})
@@ -391,32 +511,36 @@ end
 function evolve_atmosphere(atm_init::Dict{Symbol, Array{Float64, 1}}, log_t_start, log_t_end; t_to_save=[])
     #=
     Sets up the initial conditions for the simulation and calls the ODE solver. 
+
+    atm_init: dictionary of species densities by altitude for the current sttae.
+
+    log_t_start: Starting time will be 10^log_t_start.
+    log_t_end: Similar, but end time.
     t_to_save: timesteps at which to save a snapshot of the atmosphere.
-    
-    plotJratesflag: if set to true, it will plot the Jrates.
     =#
 
     # Set up the initial state and check for any problems 
-    nstart = flatten_atm(atm_init, active_species)
+    nstart = flatten_atm(atm_init, active_longlived)
     find_nonfinites(nstart, collec_name="nstart")
     # Next line calculates 1 ppt of the total density at each altitude for absolute error tolerance,
     # vector in same shape as nstart.
-    abs_tol_vec = 1e-12 .* [[n_tot(atm_init, a) for sp in active_species, a in non_bdy_layers]...] 
+    abs_tol_vec = 1e-12 .* [[n_tot(atm_init, a) for sp in active_longlived, a in non_bdy_layers]...] 
+
 
     # Set up simulation solver parameters and log them
     odesolver = "QNDF"
     saveall = false
-    abst = "1 ppt for active species"
+    abst = "1 ppt for active long-lived species"
     relt = rel_tol
     sys_size = length(nstart)
     startdt = 10.0^log_t_start
     tspan = (10.0^log_t_start, 10.0^log_t_end)
     
     Dcoef_arr_template = zeros(size(Tn_arr))  # For making diffusion coefficient calculation go faster 
-    params = [inactive, inactive_species, active_species, Tn_arr::Vector{Float64}, Ti_arr::Vector{Float64}, Te_arr::Vector{Float64}, 
-              Tplasma_arr::Vector{Float64}, Dcoef_arr_template::Vector{Float64}, false]
-    params_exjac = [inactive, inactive_species, active_species, Tn_arr::Vector{Float64}, Ti_arr::Vector{Float64}, Te_arr::Vector{Float64}, 
-                    Tplasma_arr::Vector{Float64}, Dcoef_arr_template::Vector{Float64}, false]
+    params = [inactive, inactive_species, active_species, active_longlived, active_shortlived, Tn_arr::Vector{Float64}, Ti_arr::Vector{Float64}, Te_arr::Vector{Float64}, 
+              Tplasma_arr::Vector{Float64}, Dcoef_arr_template::Vector{Float64}]
+    params_exjac = [inactive, inactive_species, active_species, active_longlived, active_shortlived, Tn_arr::Vector{Float64}, Ti_arr::Vector{Float64}, Te_arr::Vector{Float64}, 
+                    Tplasma_arr::Vector{Float64}, Dcoef_arr_template::Vector{Float64}]
 
     # Set up an example Jacobian and its preconditioner
     example_jacobian = make_jacobian(nstart, params_exjac, tspan[1])
@@ -427,7 +551,6 @@ function evolve_atmosphere(atm_init::Dict{Symbol, Array{Float64, 1}}, log_t_star
     f = open(results_dir*sim_folder_name*"/simulation_params_"*FNext*".txt", "a")
     write(f, "SOLVER OPTIONS: \nsystem size: $(sys_size)\njacobian total elements: $(sys_size^2)\n")
     write(f, "timespan=$(tspan)\nsolver=$(odesolver)\nsaveat=$(t_to_save)\nsave_everystep=$(saveall)\nabstol=$(abst)\nreltol=$(relt)\nstarting dt=$(startdt)\n\n")
-
     
     sparsity = round(length(example_jacobian.nzval)*100/(size(example_jacobian)[1] * size(example_jacobian)[2]), digits=2)
     if sparsity > 1
@@ -435,7 +558,6 @@ function evolve_atmosphere(atm_init::Dict{Symbol, Array{Float64, 1}}, log_t_star
     end
     write(f, "Sparsity: $(sparsity)\n\n")
     close(f)
-
 
     # Now define the problem and solve it
     f = ODEFunction(PnL_eqn, jac=jacobian_wrapper, jac_prototype=example_jacobian)
@@ -452,14 +574,12 @@ end
 
 # Set up simulation files and experiment type ==================================
 
-# Note: directory paths are in PARAMETERS.jl
 # get command line arguments for experiment type. format:
-# <experiment type> <parameters> <solar cycle type>
+# <experiment type> <parameters> 
 # examples: 
-# temp Tsurf Ttropo Texo mean; water <mixing ratio> mean; dh <multiplier> mean; 
-# Oflux <cm^-2s^-1> mean
-# examples: temp 190 110 200 mean; water 1e-3 mean; dh 8 mean; Oflux 1.2e8 mean.
-# last argument is solar cycle: min, mean, or max.
+# temp Tsurf Ttropo Texo; water <mixing ratio>; dh <multiplier>; 
+# Oflux <cm^-2s^-1>
+# examples: temp 190 110 200; water 1e-3; dh 8; Oflux 1.2e8.
 args = Any[ARGS[i] for i in 1:1:length(ARGS)]
 
 # Establish a pattern for filenames. FNext = filename extension
@@ -478,18 +598,21 @@ else
     throw("Error! Bad experiment type")
 end
 
-user_input_folder_name = input("Enter a name for the results folder or press enter to use default: ")
-const sim_folder_name = user_input_folder_name == "" ? FNext : user_input_folder_name
-# Set up the folder if it doesn't exist
+# Create the results folder
+sim_folder_name = sim_folder_name == "" ? FNext : sim_folder_name  # allows to not specify a name and use the default
 create_folder(sim_folder_name, results_dir)
 
-# Converging an altitude grid of a new extent ==================================
-make_new_alt_grid = input("Would you like to use the script to converge a new atmosphere of a different extent? (y/n): ")
-while make_new_alt_grid != "y" && make_new_alt_grid != "n"
-    println("Bad entry!")
-    global make_new_alt_grid = input("Would you like to use the script to converge a new atmosphere of a different extent? (y/n): ")
+# Establish the final write-out file
+final_atm_file = final_atm_file == "" ? "final_atmosphere_$(FNext).h5" : final_atm_file 
+
+# Convert the arguments to numbers so we can use them to do maths
+for i in 2:1:length(args)
+    args[i] = parse(Float64, args[i])
 end
-if make_new_alt_grid=="y"
+
+# Code used to change the vertical extent (altitudes) ================================================
+if make_new_alt_grid==true # TODO: rework this because it is deprecated.
+    throw("The code for extending the altitude grid needs to be redone.")
     readfile = research_dir*"converged_200km_atmosphere.h5"
     const alt = convert(Array, (0:2e5:200e5))
     n_current = get_ncurrent(readfile)
@@ -509,26 +632,15 @@ if make_new_alt_grid=="y"
                  250 is hard-coded in the PARAMETERS.jl file. I haven't made this
                  general yet. So the code is probably about to break")
     end
-elseif make_new_alt_grid=="n"
-    # Set up the converged file to read from and load the simulation state at init.
-    defaultatm = "converged_neutral_atmosphere.h5"
-    file_to_use = input("Enter the name of a file containing a converged, 250 km atmosphere to use (press enter to use default: $(defaultatm)): ")   # TODO: revert
-    readfile = file_to_use == "" ?  defaultatm : file_to_use * ".h5"
-    const n_current = get_ncurrent(readfile)
 end
 
-# Setup of new species profiles =======================================================================
-converge_which = input("Converging ions, neutrals or both?: ")
-while converge_which != "neutrals" && converge_which != "ions" && converge_which != "both"
-    println("Bad entry! Please enter ions or neturals or both.")
-    global converge_which = input("Converging ions, neutrals or both?: ")
-end
-# Whether to initialize new species as zeros or not
-use_nonzero_initial_profiles = true#false 
+# Load the starting atmosphere ======================================================================== 
+const n_current = get_ncurrent(initial_atm_file)
 
-# Set up initial profiles and time steps 
+# Setup of new species profiles and density storage ===================================================
+
 if converge_which == "neutrals"
-    println("ALERT: Did you make sure that the ions are added to no_chem_species and no_transport_species?")
+    println("Converging neutrals only. The following readout should contain the ions and N-bearing neutrals: $(inactive_species)")
 
     for nn in new_neutrals
         n_current[nn] = zeros(num_layers)
@@ -541,7 +653,7 @@ if converge_which == "neutrals"
         end
     end
 elseif converge_which == "ions"
-    println("ALERT: Did you make sure that the neutrals are added to no_chem_species and no_transport_species?")
+    println("Converging ions. The following readout should contain the non-N-bearing neutrals: $(inactive_species)")
 
     for ni in new_ions
         n_current[ni] = zeros(num_layers)
@@ -549,21 +661,22 @@ elseif converge_which == "ions"
 
     if use_nonzero_initial_profiles
         println("Initializing non-zero profiles for $(new_ions)")
-        for ni in new_ions
-            try
-                n_current[ni] = reshape(readdlm("../Resources/initial_profiles/$(string(ni))_initial_profile.txt", '\r', comments=true, comment_char='#'), (num_layers,))
-            catch
-                nothing
-            end  
+        # first fill in the H-bearing ions from data-inspired profiles
+        for ni in setdiff(new_ions, keys(D_H_analogues))
+            n_current[ni] = reshape(readdlm("../Resources/initial_profiles/$(string(ni))_initial_profile.txt", '\r', comments=true, comment_char='#'), (num_layers,))
         end
-        for Dion in keys(D_H_analogues)
-            if in(Dion, new_ions)
-                n_current[Dion] = DH .* n_current[D_H_analogues[Dion]]
-            end
+        # Then create profiles for the D-bearing analogues based on the H-bearing species profiles
+        for ni in intersect(new_ions, keys(D_H_analogues))
+            n_current[ni] = DH .* n_current[ni]
         end
     end
 elseif converge_which == "both" 
-    println("ALERT: Did you make sure no_chem_species and no_transport_species are only :Ar and :N2?")
+    if occursin("PARAMETERS-conv3", paramfile)
+        println("Converging N-bearing neutrals and ions together. This list readout of inactive_species should contain non-N-bearing neutrals: $(inactive_species)")
+    else
+        println("Converging neutrals and ions together. This list readout of inactive_species should be empty: $(inactive_species)")
+    end
+
     for nn in new_neutrals
         n_current[nn] = zeros(num_layers)
     end
@@ -574,20 +687,23 @@ elseif converge_which == "both"
     if use_nonzero_initial_profiles
         println("Initializing non-zero profiles for $(new_neutrals) and $(new_ions)")
         for nn in new_neutrals
-            n_current[nn] = reshape(readdlm("../Resources/initial_profiles/$(string(nn))_initial_profile.txt", '\r', comments=true, comment_char='#'), (num_layers,))
+            try
+                n_current[nn] = reshape(readdlm("../Resources/initial_profiles/$(string(nn))_initial_profile.txt", '\r', comments=true, comment_char='#'), (num_layers,))
+            catch 
+                println("No initial guess found for $(nn). Initial profile will be zero everywhere.")
+            end
         end
 
-        for ni in new_ions
+        for ni in setdiff(new_ions, keys(D_H_analogues))
             try
                 n_current[ni] = reshape(readdlm("../Resources/initial_profiles/$(string(ni))_initial_profile.txt", '\r', comments=true, comment_char='#'), (num_layers,))
-            catch
-                nothing
-            end  
-        end
-        for Dion in keys(D_H_analogues)
-            if in(Dion, new_ions)
-                n_current[Dion] = DH .* n_current[D_H_analogues[Dion]]
+            catch 
+                println("No initial guess found for $(ni). Initial profile will be zero everywhere.")
             end
+        end
+        
+        for ni in intersect(new_ions, keys(D_H_analogues))
+            n_current[ni] = DH .* n_current[ni]
         end
     end
 else
@@ -599,54 +715,12 @@ for nj in newJrates
     n_current[nj] = zeros(num_layers)
 end
 
-# Create a separate n_current for: short lived species, inactive species, and Jrates which will be updated separately from
-# the main solving routine, then merged back in.
-const Jrate_storage = Dict([j=>n_current[j] for j in union(short_lived_species, inactive_species, Jratelist)])
+# Create a separate dictionary for: short lived species, inactive species, and Jrates which will be updated separately from
+# the main solving routine because these values cannot be/need not be part of the solver algorithm. 
+const external_storage = Dict([j=>n_current[j] for j in union(short_lived_species, inactive_species, Jratelist)])
 
-# Here you can choose whether to turn chemistry or transport on and off for testing ==================
-do_chem = input("Allow chemistry? (on/off): ")
-while do_chem != "on" && do_chem != "off" 
-   println("Bad entry! Please enter on or off")
-   global do_chem = input("Allow chemistry? (on/off): ")
-end
-const do_chem=="on" ? true : false
-
-do_trans = input("Allow transport? (on/off): ")
-while do_trans != "on" && do_trans != "off" 
-   println("Bad entry! Please enter on or off")
-   global do_chem = input("Allow transport? (on/off): ")
-end
-const do_trans=="on" ? true : false
-
-# Use this to zero out all neutrals. Used to attempt to get things to converge all together.
-# for n in setdiff(all_species, [:CO2])
-#     n_current[n] = zeros(num_layers)
-# end
-
-# Various other needful things ===============================================================================
-
-# Densities of inactive species, which won't change by definition
+# Densities of inactive species, which by definition do not change for entire simulation
 const inactive = flatten_atm(n_current, inactive_species)
-
-# Set up the timesteps
-const mindt = dt_min_and_max[converge_which][1]
-const maxdt = dt_min_and_max[converge_which][2]
-
-# Set solar cycle file
-cycle = args[end]
-solar_data_file = Dict("max"=>"marssolarphotonflux_solarmax.dat", 
-                       "mean"=>"marssolarphotonflux_solarmean.dat", 
-                       "min"=>"marssolarphotonflux_solarmin.dat")
-const solarfile = solar_data_file[cycle]
-# Let the user know what is being done 
-if cycle != "mean"
-    println("ALERT: Solar $(cycle) data being used")
-end
-
-# Convert the arguments to numbers so we can use them to do maths
-for i in 2:1:length(args)-1
-    args[i] = parse(Float64, args[i])
-end
 
 # Plot styles ==================================================================
 rcParams = PyCall.PyDict(matplotlib."rcParams")
@@ -822,88 +896,132 @@ const speciesbclist=Dict(
     to and from the cells above and below: (CONTENT MOVED TO PARAMETERS FILE)
 =#
 
-# obtain the rates and jacobian for each altitude
-# TODO: rates_local must also be mapped over a new list which designates whether the species is in photochemical equilibrium or not, 
-# and that argument must be passed to getrate.
-# const rates_local = Expr(:vcat, map(x->getrate(reactionnet, transportnet, x, chem_on=do_chem, trans_on=do_trans), active_species)...);
-const chemJ_local = chemical_jacobian(reactionnet, transportnet, active_species, active_species);
-const chemJ_above = chemical_jacobian(reactionnet, transportnet, active_species, active_above);
-const chemJ_below = chemical_jacobian(reactionnet, transportnet, active_species, active_below);
+# Create symbolic expressions for the chemical jacobian at a local layer with influence from that same layer, 
+# the one above, and the one below
+const chemJ_local = chemical_jacobian(reactionnet, transportnet, active_longlived, active_longlived);
+const chemJ_above = chemical_jacobian(reactionnet, transportnet, active_longlived, active_longlived_above);
+const chemJ_below = chemical_jacobian(reactionnet, transportnet, active_longlived, active_longlived_below);
 
-# define a replacement for rates_local
+# Active long-lived and short-lived species expression arrays =====================
+
+# Long-lived species expression array ---------------------------------------------
+# An array to store the rate equations for active, long-lived species, which are 
+# solved for in the production and loss equation.
 # each row is for each species; each column is for chemical production, chemical loss, 
 # transport production, transport loss, in that order.
-prod_loss_array = Array{Array{Expr}}(undef, length(active_species), 4)
-for (i, asp) in enumerate(active_species)
-    prod_loss_array[i, :] .= getrate(reactionnet, transportnet, asp, sepvecs=true, chem_on=do_chem, trans_on=do_trans)
+active_longlived_species_rates = Array{Array{Expr}}(undef, length(active_longlived), 4)
+for (i, sp) in enumerate(active_longlived)
+    active_longlived_species_rates[i, :] .= getrate(reactionnet, transportnet, sp, sepvecs=true)
 end
 
-# TODO: Turn these notes into a test that looks for "+()" in rates_local instead of debugging lines. 
-# -----------------------------------------------------------------------------------------------
-# These lines are useful for troubleshooting if you're getting weird errors with ratefn.
-# "no method matching +()" means the chemical system is unbalanced and you've got a
-# species that has production but no consumption, or vice versa.
-# other errors may occur. Uncomment these 3 lines to inspect what goes into rates_local.
-# println("The contents of rates_local: ")
-# println(rates_local)
-# println("That was rates_local")
+# Short-lived species expression array --------------------------------------------
+# Similarly, this array stores expressions for the concentrations of
+# active, short-lived species, which are assumed to be in photochemical equilibrium. 
+# Instead of rates, the expressions calculate the new density, n_s.
+#
+# The stored value is the equation P - L = 0 for photochemical equilibrium, where each 
+# row corresponds to the equation for a different species. 
+# If the loss term is linear in n_s, the solution is n_s = P/L.
+# If it's quadratic in n_s, the solution is a quadratic equation for which two solutions
+# are possible. 
+# Column 1: Solution 1 for n_s
+# Column 2: Either 0 if loss term is linear in species density, or Solution 2 if quadratic.
+short_lived_density_eqn = Array{Expr}(undef, length(short_lived_species), 2)
 
-const arglist_local = [active_species; active_above; active_below; inactive_species;
-                      Jratelist; :Tn; :Ti; :Te; local_transport_rates]
+# This array just stores the same P - L = 0, but in the format P - nL = 0 for linear 
+# and an^2 + bn + c = 0 for quadratic. This allows us to check how good a job the 
+# densities solved for do in actually getting the system in equilibrium.
+# The reason it's possible for P - nL =/= 0 or an^2 + bn + c =/= 0 is that 
+# we solve for the density of each species one-by-one rather than solving it
+# as a vector system. This may eventually need to be changed. It may also not be
+# possible to solve it as a vector system and satisfy the constraints... which would 
+# just be the entire original problem that we were trying to avoid by assuming photochemical
+# equilibrium. 
+equilibrium_eqn_terms = Array{Expr}(undef, length(short_lived_species), 1)
 
-const arglist_local_typed = [:($s::Float64) for s in arglist_local]
+for (i, sp) in enumerate(active_shortlived)
+    # Removes from consideration any reaction where a species appears on both sides of the equation (as an observer)
+    ret = rxns_where_species_is_observer(sp, reactionnet)
+    if ret == nothing
+        chemnet = reactionnet
+    else
+        chemnet = filter(x->!in(x, ret), reactionnet)        
+    end
+    
+    # Get the species production rate and loss rate by chemistry. These are obtained as vectors of reaction vectors
+    # in the form [[:R1, :R2], [:P1, :P2], :(rate)]
+    chem_prod_rate = production_rate(chemnet, sp, return_peqn_unmapped=true)
+    chem_loss_rate = loss_rate(chemnet, sp, return_leqn_unmapped=true)
+    
+    if linear_in_species_density(sp, chem_loss_rate)
+        # factors out the n_s so we can do n_s = P/L and converts to a big expression
+        Lcoef_val = make_net_change_expr(loss_coef(chem_loss_rate, sp)) 
+        P_val = make_net_change_expr(chem_prod_rate) # convert production to a big expression
+        short_lived_density_eqn[i, 1] = :($P_val / $Lcoef_val)
+        short_lived_density_eqn[i, 2] = :(0+0) # no second solution for linear.
 
-# These expressions which are evaluated below enable a more accurate assessment of M and E values
-# by calculating at the time of being called rather than only at each timestep.
+        equilibrium_eqn_terms[i, 1] = :($P_val - $sp*($Lcoef_val))
+    else # if it's quadratic in the species in question, i.e. the species appears twice on the LHS
+        # Get the quadratic coefficients A, B, C for P - L = A(n_s^2) + B(n_s) + C = 0
+        println("Note: $(sp) is not linear in density")
+        qc = construct_quadratic(sp, chem_prod_rate, chem_loss_rate)
+
+        # store the two solutions in the array. Warning: HORRIFYING!
+        short_lived_density_eqn[i, 1] = :((-$(qc["B"]) + sqrt($(qc["B"])^2 - 4*$(qc["A"])*$(qc["C"])))/(2*$(qc["A"])) )
+        short_lived_density_eqn[i, 2] = :((-$(qc["B"]) - sqrt($(qc["B"])^2 - 4*$(qc["A"])*$(qc["C"])))/(2*$(qc["A"])) )
+        
+        # Populate the array that lets us check if the densities give us 0
+        equilibrium_eqn_terms[i, 1] = :($(qc["A"])*(($sp)^2) + $(qc["B"])*($sp) + $(qc["C"]))
+    end
+end
+
+# Arguments for ratefn_local
+const ratefn_arglist = [active_longlived; active_longlived_above; active_longlived_below; active_shortlived; inactive_species; Jratelist; 
+                        :Tn; :Ti; :Te; local_transport_rates];
+const ratefn_arglist_typed = [:($s::Float64) for s in ratefn_arglist];
+
+# Arguments for set_concentrations (photochemical equilibrium)
+const set_concentration_arglist = [active_shortlived; active_longlived; inactive_species; Jratelist; :Tn; :Ti; :Te];
+const set_concentration_arglist_typed = [:($s::Float64) for s in set_concentration_arglist];
+
+# Expressions for more accurate values of M (total third-bodies) and E (total electrons)
 const Mexpr = Expr(:call, :+, all_species...)
 const Eexpr = Expr(:call, :+, ion_species...)
 
 # NOTE: These functions within @eval cannot be moved. Do not move them.
-
 @eval begin
-    function ratefn_local_original($(arglist_local_typed...))
+    function ratefn_local($(ratefn_arglist_typed...))
         #=
-        This accepts a splatted vector of the evaluated arguments in arglist_local_typed, i.e. it 
-        contains species densities at a given altitude and other arguments. 
-
-        It returns a vector (I think) of expressions for the net change in density of each species.
+        How this works is that every time ratefn_local is called, this block gets evaluated
+        and the contents of active_longlived_arglist_typed are evaluated numerically. All this does 
+        is provide numerical values for all the symbols such as :CO2, :CO2pl, :H_above, and 
+        etc. Then the symbolic expressions for production and loss of each species, which are 
+        contained in active_longlived_species_rates, are evaluated.
+        
+        Note that for a given species, this function only has information for a given atmospheric
+        layer, the layer above, and the layer below. So this function is called as part of a loop 
+        which is written out in ratefn(). 
+        
+        The return value is the net change (dndt) to the species concentrations. The order of the array
+        is the same as the order of arguments, so in that sense, "which altitude we are calculating for"
+        is encoded in the order of terms in the return array. 
         =#
 
         # M and E are calculated here to ensure that the right number of ions/electrons
+        # is used. It is for only the altitude at which this function was called 
+        # (i.e. all the arguments to the function, when it's called, are for only one altitude)
         M = $Mexpr
         E = $Eexpr
 
-        $rates_local # evaluates the rates_local expression
-    end
-end
-
-
-@eval begin
-    function ratefn_local($(arglist_local_typed...))
-        #=
-        This accepts a splatted vector of the evaluated arguments in arglist_local_typed, i.e. it 
-        contains species densities at a given altitude and other arguments. 
-
-        It returns an array of expressions for the net change in density of each species. 
-        The difference here from the old version is that this one will first collect all the 
-        contributing terms to production and loss, sort the terms by size, and then add element-wise the
-        sorted production and loss terms. This makes sure that smaller terms are not lost in floating point
-        precision problems due to the presence of a bunch of very large numbers. 
-        =#
-
-        # M and E are calculated here to ensure that the right number of ions/electrons
-        M = $Mexpr
-        E = $Eexpr
-
-        # The following code was written with the help of user https://stackoverflow.com/users/8118087/plopegg
-        # on stack exchange in: https://stackoverflow.com/questions/68353848/manually-unrolling-3-nested-loops-julia
+        # stack overflow - answer (Cite)
         # create a result array for evaluating the production and loss expressions
-        result = map(_ -> Float64[], $prod_loss_array) 
+        result = map(_ -> Float64[], $active_longlived_species_rates) 
 
         $( (quote
+            # i = row, j = vector, k = specific expression
                 push!(result[$i], $(expr))
             end 
-            for (i, expr_list) in enumerate(prod_loss_array)                                                                                                                 
+            for (i, expr_list) in enumerate(active_longlived_species_rates)                                                                                                                 
                 for expr in expr_list
             )...  
          )
@@ -912,19 +1030,79 @@ end
         net_chem_change = zeros(size(result, 1))
         net_trans_change = zeros(size(result, 1))
         
-        # Sorts by term size and subtracts loss from production, element-wise [(big term - big term) + (small term - small term)]
         for r in 1:size(result,1)
             net_chem_change[r] = subtract_difflength(sort(result[r, :][1], rev=true), sort(result[r, :][2], rev=true))
             net_trans_change[r] = subtract_difflength(sort(result[r, :][3], rev=true), sort(result[r, :][4], rev=true))
         end
 
-        # finally, add up element-wise the chemical and transport change terms.
         return net_chem_change .+ net_trans_change
+
     end
 end
 
 @eval begin
-    function chemJmat_local($(arglist_local_typed...))
+    function check_zero_distance($(set_concentration_arglist_typed...))
+
+        M = $Mexpr
+        E = $Eexpr
+        
+        # Make a result array in which to store evaluated expressions 
+        result = map(_ -> 0., $equilibrium_eqn_terms)
+
+        # then we evaluate the expressions in the unrolled loop as below 
+        $( (quote
+                result[$i] = $(expr)
+            end 
+            for (i, expr) in enumerate(equilibrium_eqn_terms)                                                                                                                 
+            )...  
+         )
+        
+        # Now return the distance from zero
+        return sqrt(sum(result .^ 2))
+    end
+end
+
+@eval begin
+    function set_concentrations_local($(set_concentration_arglist_typed...))
+        #=
+        Calculates the best possible solution for the new density of each short-lived species.
+        =#
+
+        M = $Mexpr
+        E = $Eexpr
+        
+        # Make a result array in which to store evaluated expressions 
+        result = map(_ -> 0., $short_lived_density_eqn)  # will hold evaluated expressions.
+
+        # then we evaluate the expressions in the unrolled loop as below and sum up each so we have total chem prod and total chem loss.
+        # (and also transport)
+        $( (quote
+                result[$i] = $(expr)
+            end 
+            for (i, expr) in enumerate(short_lived_density_eqn)                                                                                                                 
+            )...  
+         )
+        
+        # get the previous densities before we evaluated the expressions. They already exist as the first set of arguments to this
+        # function, but they're hard to pull out specifically. This makes it easier. Same logic as above.
+        prev_densities = zeros(size(active_shortlived))
+
+        $( (quote
+                prev_densities[$j] = $(ex)
+            end 
+            for (j, ex) in enumerate(active_shortlived)                                                                                                                 
+            )...  
+         )
+
+        # Handle negatives and quadratic cases and pick out one best density solution for each species
+        best_solutions = choose_solutions(result, prev_densities)
+
+        return best_solutions
+    end
+end
+
+@eval begin
+    function chemJmat_local($(ratefn_arglist_typed...))
         #=
         Generates a matrix of I, J, and V values for a sparse matrix, for the 
         local layer, for influences from the layer above, and influences 
@@ -952,7 +1130,6 @@ end
                 (belowchemJi, belowchemJj, belowchemJval))
     end
 end
-
 
 ################################################################################
 #                         PHOTOCHEMICAL CROSS SECTIONS                         #
@@ -1000,16 +1177,16 @@ xsect_dict = Dict("CO2"=>[co2file],
 
 # Log temperature and water parameters =========================================
 if args[1]=="temp"
-    input_string = "T_s=$(args[2]), T_tropo=$(args[3]), T_exo=$(args[4])" *
+    input_string = "T_surf=$(args[2]), T_tropo=$(args[3]), T_exo=$(args[4])" *
                    "\nwater init=$(MR)\nDH=5.5 \nOflux=1.2e8"
 elseif args[1]=="water"
-    input_string = "T_s=$(meanTs), T_tropo=$(meanTt), T_exo=$(meanTe)\n" *
+    input_string = "T_surf=$(meanTs), T_tropo=$(meanTt), T_exo=$(meanTe)\n" *
                    "water init=$(args[2])\nDH=5.5\nOflux=1.2e8\n"
 elseif args[1]=="dh"
-    input_string = "T_s=$(meanTs), T_tropo=$(meanTt), T_exo=$(meanTe)\nwater=(MR)\n" *
+    input_string = "T_surf=$(meanTs), T_tropo=$(meanTt), T_exo=$(meanTe)\nwater=(MR)\n" *
                    "DH=$(args[2]) \nOflux=1.2e8\n"
 elseif args[1]=="Oflux"
-    input_string = "T_s=$(meanTs), T_tropo=$(meanTt), T_exo=$(meanTe)\nwater=(MR)" *
+    input_string = "T_surf=$(meanTs), T_tropo=$(meanTt), T_exo=$(meanTe)\nwater=(MR)" *
                    "\nDH=5.5\nOflux=$(Of)\n"
 end
 
@@ -1019,19 +1196,22 @@ f = open(results_dir*sim_folder_name*"/simulation_params_"*FNext*".txt", "w")
 # Basic parameters written out 
 write(f, "$(args[1]) experiment: \n")
 write(f, input_string*"\n\n")
-write(f, "Initial atmosphere state: $(readfile)\n\n")
+write(f, "Initial atmosphere state: $(initial_atm_file)\n\n")
+write(f, "Final atmosphere state: $(final_atm_file)\n\n")
 write(f, "Mean temperatures used:\n")
 write(f, "Surface: $(meanTs) K, Tropopause: $(meanTt) K, Exobase: $(meanTe) K\n\n")
 write(f, "SVP fixed: $(fix_SVP)\n\n")
-write(f, "Solar cycle status: solar $(cycle)\n\n")
+write(f, "Solar cycle status: $(solarfile)\n\n")
 write(f, "Non-zero initial profiles used: $(use_nonzero_initial_profiles)\n\n")
-
 
 # which species are turned on
 write(f, "All species: $(join([string(i) for i in all_species], ", "))\n\n")
 write(f, "No-chem species: $(join([string(i) for i in no_chem_species], ", "))\n\n")
+write(f, "Chem species: $(join([string(i) for i in chem_species], ", "))\n\n")
 write(f, "No-transport species: $(join([string(i) for i in no_transport_species], ", "))\n\n")
-write(f, "Active species: $(join(sort([string(i) for i in active_species]), ", "))\n\n")
+write(f, "Transport species: $(join([string(i) for i in transport_species], ", "))\n\n")
+write(f, "Active long-lived species: $(join(sort([string(i) for i in active_longlived]), ", "))\n\n")
+write(f, "Active short-lived species: $(join(sort([string(i) for i in active_shortlived]), ", "))\n\n")
 
 # Water profile information
 write(f, "Water profile information: \n")
@@ -1054,19 +1234,20 @@ end
 write(f, "\n")
 
 # Which photodissociation reactions are turned on 
-write(f, "New J rates that are turned on: \n")
-for rxn in [string(i) for i in newJrates]
-    write(f, rxn*"\n")
-end
-write(f, "\n")
+# write(f, "New J rates that are turned on: \n")
+# for rxn in [string(i) for i in newJrates]
+#     write(f, rxn*"\n")
+# end
+# write(f, "\n")
 
 # gets just chemistry reactions with ions as reactants or products
-ion_chem_rxns = filter(x->(occursin("pl", string(x[1])) || occursin("pl", string(x[2]))), filter(x->!occursin("J", string(x[3])), reactionnet)) 
-write(f, "Ion chemistry reactions: \n")
-for rxn in [string(i) for i in ion_chem_rxns]
-    write(f, rxn*"\n")
-end
-write(f, "\n")
+# TODO: Write out the name of the reaction network spreadsheet, once network is stored in spreadsheets.
+# ion_chem_rxns = filter(x->(occursin("pl", string(x[1])) || occursin("pl", string(x[2]))), filter(x->!occursin("J", string(x[3])), reactionnet)) 
+# write(f, "Ion chemistry reactions: \n")
+# for rxn in [string(i) for i in ion_chem_rxns]
+#     write(f, rxn*"\n")
+# end
+# write(f, "\n")
 
 # cross sections
 write(f, "\nCROSS SECTIONS: \n")
@@ -1093,7 +1274,7 @@ println("Plotting the initial condition")
 plot_atm(n_current, [neutral_species, ion_species], results_dir*sim_folder_name*"/initial_atmosphere.png")
 
 # Create a list to keep track of stiffness ratio ===============================
-const stiffness = []
+# const stiffness = []
 
 # Record setup time
 t6 = time()
@@ -1103,9 +1284,19 @@ close(f)
 
 # do the convergence ===========================================================
 println("Beginning Convergence")
-ti = time()
+
+# Timesteps
+const mindt = dt_min_and_max[converge_which][1]
+const maxdt = dt_min_and_max[converge_which][2]
 times_to_save = [10.0^t for t in mindt:maxdt]
+timestorage = times_to_save[1] / 10  # This variable lets us periodically print the timestep being worked on for tracking purposes
+
+# Keep track of number of elements greater than 1 ppm change when calculating photochemical equilibrium
+num_beyond = 0
+num_times_called = 0
+
 # Pack the global variables and send them through for faster code!
+ti = time()
 atm_soln = evolve_atmosphere(n_current, mindt, maxdt, t_to_save=times_to_save) # dz, transport_species, alt, all_species, num_layers, Jratelist, non_bdy_layers, 
 tf = time() 
 
@@ -1123,35 +1314,31 @@ i = 1
 for (timestep, atm_state) in zip(atm_soln.t, atm_soln.u)
     # This is the contents of unflatten_atm.
 
-    nc = unflatten_atm(atm_state, active_species)
-    nc_inactive = unflatten_atm(inactive, inactive_species)
+    nc_all = merge(external_storage, unflatten_atm(atm_state, active_longlived))
     
-    # add back in the inactive species and Jrates
-    for isp in inactive_species
-        nc[isp] = nc_inactive[isp]
-    end
-
     if i == L
         for jsp in Jratelist  # TODO: This needs to be worked so Jrates are tracked for each timestep. right now, only the last one is kept. :/
-            nc[jsp] = Jrate_storage[jsp]
+            nc_all[jsp] = external_storage[jsp]
         end
-        plot_atm(nc, [neutral_species, ion_species], results_dir*sim_folder_name*"/final_atmosphere.png", t="final converged state")
+        plot_atm(nc_all, [neutral_species, ion_species], results_dir*sim_folder_name*"/final_atmosphere.png", t="final converged state")
+        write_ncurrent(nc_all, results_dir*sim_folder_name*"/"*final_atm_file)   # write out the final state to a specially named file
     end
     global i += 1
 
     filepath = results_dir*sim_folder_name*"/atm_state_t_$(timestep).h5"
-    write_ncurrent(nc, filepath)   
+    write_ncurrent(nc_all, filepath)   
 end
+
 t6 = time()
 
 println("Wrote all states to files")
 
 t9 = time()
 
-write(f, "Stiffness ratio evolution:\n")
-write(f, "$(stiffness)")
-write(f, "\n\n")
-write(f, "Total runtime $(format_sec_or_min(t9-t1))\n")
+# write(f, "Stiffness ratio evolution:\n")
+# write(f, "$(stiffness)")
+# write(f, "\n\n")
+# write(f, "Total runtime $(format_sec_or_min(t9-t1))\n")
 
 close(f)
 

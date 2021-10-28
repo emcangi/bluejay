@@ -1,13 +1,11 @@
 ################################################################################
-# PARAMETERS-conv2a.jl
+# PARAMETERS.jl
 # TYPE: (1) Model files - required
-# DESCRIPTION: Global constants, simulation parameters, reaction networks. 
-# USE: This takes a file where the minimal ionosphere has converged, then adds in
-# all the new neutrals and the rest of the ions and converges them all at once. 
-#
+# DESCRIPTION: Global constants, simulation parameters. Introduce new D ions.
+# 
 # Eryn Cangi
 # Created December 2019
-# Last edited: August 2021
+# Last edited: October 2021
 # Currently tested for Julia: 1.6.1
 ################################################################################
 
@@ -23,11 +21,11 @@
 # !!                      !!!!! SUPER IMPORTANT !!!!!                       !! #
 # !!     !!! Check the following every time you run the simulation !!!      !! #
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
-
-const sim_folder_name = "ions2a-QNDF"
-const readfile = "ions1-QNDF.h5"
+const sim_folder_name = "ions4-QNDF-NH"
+const initial_atm_file = "ions3-QNDF-1e9.h5"
+const final_atm_file = "ions4-QNDF"
 const converge_which = "both"
-const dt_min_and_max = Dict("neutrals"=>[-3, 14], "ions"=>[-4, 6], "both"=>[-4, 6])
+const dt_min_and_max = Dict("neutrals"=>[-3, 14], "ions"=>[-4, 6], "both"=>[-4, 14])
 const rel_tol = 1e-4
 
 # This stuff is mutable, but less likely to change.
@@ -41,45 +39,52 @@ const solarfile = "marssolarphotonflux_solarmean.dat" # you may replace 'mean' w
 # Sets whether photochemical equilibrium is assumed. Aids in converging ions and neutrals
 # together. Generally leave it as is so the code determines it, but you can change it
 # if need be
-const assume_photochem_eq = converge_which == false#"both" ? true : false
+const assume_photochem_eq = converge_which == "both" ? true : false
 
 # Some water stuff to control the general shape of the profile
 const upper_lower_bdy = 80e5 # the uppermost layer at which water will be fixed, in cm
 const hygropause_alt = 40e5
 const MR_mean_water = 1.38e-4
 
+# Timesteps and iterations =====================================================
+
 # Species name lists and Jrate symbol lists  ===================================
 
 # Neutrals --------------------------------------------------------------------
-const conv_neutrals = [:Ar, :CO, :CO2, :H, :H2, :H2O, :H2O2, :HO2, :HOCO, :N2, 
+const conv_neutrals = [:Ar, :C, :CH, :CN, :CO, :CO2, :H, :H2, :H2O, :H2O2, 
+                       :HCN, :HCO, :HNO, :HO2, :HOCO, 
+                       :N, :N2, #=:NH,=# :NH2, :N2O, :NO2, :NO,
                        :O, :O1D, :O2, :O3, :OH,
-                       :D, :DO2, :DOCO, :HD, :HDO, :HDO2, :OD,];
-const new_neutrals = [:C, :CH, :HCO, :N2O, :NO2, :CN, :HCN, :HNO, :N, :NH, :NH2, :NO];
+                       :D, :DO2, :DOCO, :HD, :HDO, :HDO2, :OD];
+const new_neutrals = [:DCO, :NH];
+
 const neutral_species = [];
 append!(neutral_species, conv_neutrals)
 append!(neutral_species, new_neutrals)
 
-
 # Ions -------------------------------------------------------------------------
-const conv_ions = [:CO2pl, :HCO2pl, :Opl, :O2pl]; # Nair minimal ionosphere 
-const new_ions = [:Arpl, :ArHpl, :Cpl, :CHpl, :CNpl, :COpl, 
-                  :Hpl, :H2pl, :H2Opl, :H3pl, :H3Opl,
-                  :HCNpl, :HCNHpl, :HCOpl, 
-                  :HNOpl, :HN2Opl, :HOCpl, :HO2pl, 
-                  :Npl,  :NHpl, :NH2pl, :NH3pl, :N2pl, :N2Hpl, :N2Opl, :NOpl, :NO2pl,
-                  :OHpl,
-                  # Deuterated ions
-                   :ArDpl, :Dpl, :DCOpl, :DOCpl, :DCO2pl, :HDpl, :HD2pl, :H2Dpl, :H2DOpl, :HDOpl, :N2Dpl, :ODpl
-                 ];
+const conv_ions = [:CO2pl, :HCO2pl, :Opl, :O2pl, # Nair minimal ionosphere 
+                   :Arpl, :ArHpl, :Cpl, :CHpl, :CNpl, :COpl, 
+                   :Hpl, :H2pl, :H2Opl, :H3pl, :H3Opl,
+                   :HCNpl, :HCNHpl, :HCOpl, 
+                   :HNOpl, :HN2Opl, :HOCpl, :HO2pl, 
+                   :Npl,  :NHpl, :NH2pl, :NH3pl, :N2pl, :N2Hpl, :N2Opl, :NOpl, :NO2pl,
+                   :OHpl,
+                   # Deuterated ions
+                   :ArDpl, :Dpl, :HDpl, :HD2pl, :H2Dpl,  :N2Dpl, ];
+const new_ions = [:DCOpl, :DOCpl, :DCO2pl, :H2DOpl, :HDOpl, :ODpl]; 
+
 
 const ion_species = [];
 append!(ion_species, conv_ions)
 append!(ion_species, new_ions)
 
- # Full species list -------------------------------------------------------------
+# Full species list -------------------------------------------------------------
 const all_species = [];
 append!(all_species, neutral_species)
 append!(all_species, ion_species)
+
+# Photolysis and Photoionization rate symbol lists ----------------------------
 
 const conv_Jrates = [# Original neutral photodissociation
                     :JCO2toCOpO,:JCO2toCOpO1D,:JO2toOpO,:JO2toOpO1D,
@@ -90,16 +95,14 @@ const conv_Jrates = [# Original neutral photodissociation
                     # Original deuterated neutral photodissociation
                     :JHDOtoHpOD, :JHDOtoDpOH, :JHDO2toOHpOD,
                     :JHDOtoHDpO1D, :JHDOtoHpDpO, :JODtoOpD, :JHDtoHpD, :JDO2toODpO,
-                    :JHDO2toDO2pH, :JHDO2toHO2pD, :JHDO2toHDOpO1D, :JODtoO1DpD, 
-
-                    # New photoionization/ion-involved photodissociation (Roger)
-                    :JCO2toCO2pl, :JCO2toOplpCO, :JOtoOpl, :JO2toO2pl, # Nair minimal ionosphere
+                    :JHDO2toDO2pH, :JHDO2toHO2pD, :JHDO2toHDOpO1D, :JODtoO1DpD,
                   ];
 const newJrates = [# New neutral photodissociation (from Roger)
                     :JCO2toCpOpO, :JCO2toCpO2, :JCOtoCpO,
                     :JN2OtoN2pO1D, :JNO2toNOpO, :JNOtoNpO,
 
                     # New photoionization/ion-involved photodissociation (Roger)
+                    :JCO2toCO2pl, :JCO2toOplpCO, :JOtoOpl, :JO2toO2pl, # Nair minimal ionosphere
                     :JCO2toCO2plpl, :JCO2toCplplpO2, :JCO2toCOplpOpl,:JCO2toOplpCplpO, :JCO2toCplpO2, :JCO2toCOplpO, 
                     :JCOtoCpOpl, :JCOtoCOpl,  :JCOtoOpCpl, 
                     :JHtoHpl, 
@@ -109,8 +112,7 @@ const newJrates = [# New neutral photodissociation (from Roger)
                     :JH2O2toH2O2pl, 
                     :JN2toN2pl, :JN2toNplpN, 
                     :JN2OtoN2Opl, :JNO2toNO2pl, :JNOtoNOpl, 
-                    :JO3toO3pl];
-
+                    :JO3toO3pl,];
 const Jratelist = [];
 append!(Jratelist, conv_Jrates)
 append!(Jratelist, newJrates)
@@ -142,9 +144,6 @@ elseif converge_which == "ions"
     append!(no_chem_species, setdiff(conv_neutrals, N_species))
     append!(no_transport_species, union(short_lived_species, setdiff(conv_neutrals, N_species)))
 elseif converge_which == "both"
-    # Next two lines are SPECIAL for this file because we are trying to work in ions, N-neutrals. 
-    append!(no_chem_species, setdiff(conv_neutrals, N_species))  # i.e. non-nitrogen bearing neutrals are inactive
-    append!(no_transport_species, setdiff(conv_neutrals, N_species))
     append!(no_transport_species, short_lived_species)
 end
 
@@ -184,7 +183,7 @@ const mH = 1.67e-24;            # g
 const marsM = 0.1075*5.972e27;  # g 
 const radiusM = 3396e5;         # cm
 const q = 4.8032e-10            # statcoulomb (cm^1.5 g^0.5 s^-1)
-const DH = 5.5 * 1.6e-4         # SMOW value from Yung 1988
+const DH = 5.5 * 1.6e-4               # SMOW value from Yung 1988
 
 # Altitude grid specifications =================================================
 const max_alt = 250e5
@@ -201,7 +200,7 @@ const zmax = alt[end];
 const dz = alt[2]-alt[1];
 const n_alt_index=Dict([z=>clamp((i-1),1, num_layers) for (i, z) in enumerate(alt)])
 
-# Temperatures and water stuff =================================================
+# Mean temperatures and simulation temperature parameters ======================
 const meanTs = 216.0
 const meanTt = 130.0
 const meanTe = 205.0
@@ -225,12 +224,13 @@ const highestTe = 350.0  # This is the highest exobase temperature considered.
                           # AFAIK this parameter is only used in making the 3-panel
                           # temperature profile plot.
 
+
 #  Useful dictionaries ==========================================================
 # List of D bearing species and their H analogues. INCOMPLETE, only has ions right now because we don't need the neutral analogue list.
-const D_H_analogues = Dict( :ArDpl=>:ArHpl, :Dpl=>:Hpl, :DCOpl=>:HCOpl, :HDpl=>:H2pl, :HD2pl=>:H3pl, :H2Dpl=>:H3pl, :N2Dpl=>:N2Hpl)
+const D_H_analogues = Dict(:ArDpl=>:ArHpl, :Dpl=>:Hpl, :DCOpl=>:HCOpl, :HDpl=>:H2pl, :HD2pl=>:H3pl, :H2Dpl=>:H3pl, :N2Dpl=>:N2Hpl,
+                           :DCO2pl=>:HCO2pl, :DOCpl=>:HOCpl, :H2DOpl=>:H3Opl, :HDOpl=>:H2Opl, :ODpl=>:OHpl,) # :HD2Opl=>:H3Opl, 
 
-const molmass = Dict(:Ar=>40, 
-                     :C=>12, :CH=>13, :CN=>26,
+const molmass = Dict(:Ar=>40, :C=>12, :CH=>13, :CN=>26,
                      :CO=>28, :CO2=>44, 
                      :H=>1, :H2=>2, :H2O=>18, :H2O2=>34, 
                      :HCN=>27, :HCO=>29, :HNO=>31, 
@@ -238,101 +238,177 @@ const molmass = Dict(:Ar=>40,
                      :N=>14, :N2=>28,
                      :N2O=>44, :NH=>15, :NH2=>16, :NO=>30, :NO2=>46, 
                      :O=>16, :O1D=>16, :O2=>32, :O3=>48, :OH=>17,
- 
+
                      # Neutrals .- deuterated
                      :D=>2, :DO2=>34, :DOCO=>46, :HD=>3, :HDO=>19, :HDO2=>35, :OD=>18, 
- 
+                     :DCO=>30, # NEW
+
                      # Ions
-                     :Arpl=>40, :ArHpl=>41, :ArDpl=>42,
-                     :Cpl=>12, :CHpl=>13, :CNpl=>26, 
-                     :COpl=>28, :CO2pl=>44,
-                     :Hpl=>1, :Dpl=>2, 
-                     :HCNpl=>27, :HCNHpl=>28, 
-                     :HCOpl=>29, :HOCpl=>29, :DCOpl=>30, :DOCpl=>30, 
-                     :HCO2pl=>45, :DCO2pl=>46, 
-                     :HNOpl=>31, :HN2Opl=>45, :HO2pl=>33, 
-                     :H2pl=>2, :HDpl=>3, 
-                     :H2Opl=>18, :HDOpl=>19, 
-                     :H3pl=>3, :H2Dpl=>4, :HD2pl=>5, 
-                     :H3Opl=>19,  :H2DOpl=>20,
+                     :Arpl=>40, :ArHpl=>41,    # Ar
+                     :Cpl=>12,   # C ions
+                     :CHpl=>13,          # -anes
+                     :CNpl=>26, # C and N
+                     :COpl=>28, :CO2pl=>44, # CO and stuff 
+                     :Hpl=>1, :HCNpl=>27, :HCNHpl=>28, :HCOpl=>29, 
+                     :HCO2pl=>45, :HNOpl=>31, :HN2Opl=>45, :HOCpl=>29, :HO2pl=>33, 
+                     :H2pl=>2, :H2Opl=>18,
+                     :H3pl=>3, :H3Opl=>19,   # H ions
                      :Npl=>14, :N2pl=>28, 
-                     :N2Hpl=>29, :N2Dpl=>30, 
-                     :N2Opl=>44, 
-                     :NHpl=>15, :NH2pl=>16, :NH3pl=>17,
+                     :N2Opl=>44, :N2Hpl=>29, :NHpl=>15, :NH2pl=>16, :NH3pl=>17,  # ammonia and such
                      :NOpl=>30, :NO2pl=>46,
-                     :Opl=>16, :O2pl=>32, :OHpl=>17, :ODpl=>18 
-                     )
- 
-# Polarizability from NIST. Experimental values from: https://cccbdb.nist.gov/pollistx.asp
-# Calculations for species not available ine xperiment from: https://cccbdb.nist.gov/polcalc2x.asp
-# Deuterated species not listed in either are estimated by me to be the same as their H-bearing analogue.
+                     :Opl=>16, :O2pl=>32, :OHpl=>17, # O ions 
+
+                     # Deuterated ions
+                     :ArDpl=>42, :Dpl=>2, :DCOpl=>30, :HDpl=>3, :HD2pl=>5, :H2Dpl=>4, :N2Dpl=>30,
+
+                     # NEW: 
+                     :DCO2pl=>46, :DOCpl=>30, :H2DOpl=>20, :HDOpl=>19, :ODpl=>18, # :HD2Opl=>21, 
+                    )
+
+# Polarizability from NIST. list: https://cccbdb.nist.gov/pollistx.asp
+# CH, CN, H2O2, HCO, HNO, HO2, HOCO, NH, NH2, O(1D), OH, D, DO2, DOCO, HDO, HDO2, and OD 
+# are not measured by experiment. Calculations from https://cccbdb.nist.gov/polcalc2x.asp
+# exist for CH, CN, H2O2, HCO, HNO, HO2, HOCO, NH, NH2, OH, D, HDO, and OD.
+# DCO, DO2, DOCO, HDO2 and O1D are not found and are estimated by me to be the same as their
+# hydrogen analogue.
 # I used the calcualtions that use "Density functional", "aug-cc-PVDZ", and "mPW1PW91" 
 # because that was the method that gave the closest answer for HD to the experimental value. 
 # I have no idea what any of it means or whether it's reasonable. I'm not a quantum chemist.
 # Values are given in cm^3
 const polarizability = Dict(# Values available from experiment
-                            :Ar=>1.664e-24, :C=>1.760e-24,  :CO=>1.953e-24,  :CO2=>2.507e-24, 
-                            :H=>0.667e-24,  :H2=>0.787e-24, :H2O=>1.501e-24, :HCN=>2.593e-24, :HD=>0.791e-24, 
-                            :N=>1.1e-24,    :N2=>1.710e-24, :N2O=>2.998e-24, :NO=>1.698e-24, :NO2=>2.910e-24, 
-                            :O=>0.802e-24,  :O2=>1.59e-24,  :O3=>3.079e-24, 
+                                    :Ar=>1.664e-24, :C=>1.760e-24,  :CO=>1.953e-24,  :CO2=>2.507e-24, 
+                                    :H=>0.667e-24,  :H2=>0.787e-24, :H2O=>1.501e-24, :HCN=>2.593e-24, :HD=>0.791e-24, 
+                                    :N=>1.1e-24,    :N2=>1.710e-24, :N2O=>2.998e-24, :NO=>1.698e-24, :NO2=>2.910e-24, 
+                                    :O=>0.802e-24,  :O2=>1.59e-24,  :O3=>3.079e-24, 
 
-                            # Values from calculation
-                            :CH=>2.108e-24,   :CN=>3.042e-24,   :D=>0.713e-24, 
-                            :H2O2=>2.143e-24, :HCO=>2.505e-24,  :HDO=>1.358e-24, :HNO=>2.123e-24, 
-                            :HO2=>1.858e-24,  :HOCO=>3.224e-24, :NH=>1.418e-24,  :NH2=>1.752e-24, 
-                            :OH=>1.020e-24,   :OD=>1.020e-24,
+                                    # Values from calculation
+                                    :CH=>2.108e-24,   :CN=>3.042e-24,   :D=>0.713e-24, 
+                                    :H2O2=>2.143e-24, :HCO=>2.505e-24,  :HDO=>1.358e-24, :HNO=>2.123e-24, 
+                                    :HO2=>1.858e-24,  :HOCO=>3.224e-24, :NH=>1.418e-24,  :NH2=>1.752e-24, 
+                                    :OH=>1.020e-24,   :OD=>1.020e-24,
 
-                            # Assumed same as hydrogen analogue
-                            :DCO=>2.505e-24, :DO2=>1.858e-24, :DOCO=>3.224e-24, :HDO2=>2.143e-24, :O1D=>0.802e-24, 
-                            )
+                                    # Assumed same as hydrogen analogue
+                                    :DCO=>2.505e-24, :DO2=>1.858e-24, :DOCO=>3.224e-24, :HDO2=>2.143e-24, :O1D=>0.802e-24, 
+                                    )
 
 # This dictionary could probably be replaced with some simple regular expression code, but I haven't done it yet.
-const absorber = Dict([x=>Symbol(match(r"(?<=J).+(?=to)", string(x)).match) for x in Jratelist]) 
+const absorber = Dict(:JCO2toCOpO =>:CO2,
+                      :JCO2toCOpO1D =>:CO2,
+                      :JO2toOpO =>:O2,
+                      :JO2toOpO1D =>:O2,
+                      :JO3toO2pO =>:O3,
+                      :JO3toO2pO1D =>:O3,
+                      :JO3toOpOpO =>:O3,
+                      :JH2toHpH =>:H2,
+                      :JHDtoHpD => :HD,
+                      :JOHtoOpH =>:OH,
+                      :JOHtoO1DpH =>:OH,
+                      :JODtoOpD =>:OD,
+                      :JODtoO1DpD => :OD,
+                      :JHO2toOHpO =>:HO2,
+                      :JDO2toODpO => :DO2,
+                      :JH2OtoHpOH =>:H2O,
+                      :JH2OtoH2pO1D =>:H2O,
+                      :JH2OtoHpHpO =>:H2O,
+                      :JH2O2to2OH =>:H2O2,
+                      :JH2O2toHO2pH =>:H2O2,
+                      :JH2O2toH2OpO1D =>:H2O2,
+                      :JHDO2toHDOpO1D => :HDO2,
+                      :JHDOtoHpOD=>:HDO,
+                      :JHDO2toOHpOD=>:HDO2,
+                      :JHDO2toDO2pH => :HDO2,
+                      :JHDO2toHO2pD => :HDO2,
+                      :JHDOtoDpOH=>:HDO,
+                      :JHDOtoHpDpO=>:HDO,
+                      :JHDOtoHDpO1D=>:HDO,
+                      # NEW: reactions from Roger's model. 
+                      :JH2OtoH2Opl=>:H2O,
+                      :JHDOtoHDOpl=>:HDO,
+                      :JH2OtoOplpH2=>:H2O,
+                      :JCOtoCpO=>:CO,
+                      :JCOtoCOpl=>:CO,
+                      :JN2OtoN2pO1D =>:N2O,
+                      :JH2toH2pl=>:H2,
+                      :JHDtoHDpl=>:HD,
+                      :JCOtoCpOpl=>:CO,
+                      :JNO2toNOpO=>:NO2,
+                      :JCO2toCpO2=>:CO2,
+                      :JCO2toCplplpO2=>:CO2,
+                      :JNOtoNOpl=>:NO,
+                      :JH2toHplpH=>:H2,
+                      :JH2OtoHplpOH=>:H2O,
+                      :JH2O2toH2O2pl=>:H2O2,
+                      :JN2toN2pl=>:N2,
+                      :JCO2toCOplpOpl=>:CO2,
+                      :JCOtoOpCpl=>:CO,
+                      :JCO2toOplpCplpO=>:CO2,
+                      :JNOtoNpO=>:NO,
+                      :JCO2toCplpO2=>:CO2,
+                      :JCO2toCO2pl=>:CO2,
+                      :JOtoOpl=>:O,
+                      :JH2OtoOHplpH=>:H2O,
+                      :JNO2toNO2pl=>:NO2,
+                      :JCO2toCOplpO=>:CO2,
+                      :JN2toNplpN=>:N2,
+                      :JCO2toCpOpO=>:CO2,
+                      :JCO2toCO2plpl=>:CO2,
+                      :JCO2toOplpCO=>:CO2,
+                      :JO2toO2pl=>:O2,
+                      :JHtoHpl=>:H,
+                      :JN2OtoN2Opl=>:N2O,
+                      :JO3toO3pl=>:O3);
+
 # Common plot specifications =======================================================
+const speciescolor = Dict(:H => "#ff0000", :D => "#ff0000", # red
+                           :H2 => "#e526d7", :HD =>  "#e526d7", # dark pink/magenta
 
-const speciescolor = Dict( # H group
-                :H => "#ff0000", :D => "#ff0000", # red
-                :H2 => "#e526d7", :HD =>  "#e526d7", # dark pink/magenta
+                           # hydroxides
+                           :OH => "#7700d5", :OD => "#7700d5", # purple
 
-                # hydroxides
-                :OH => "#7700d5", :OD => "#7700d5", # purple
+                           # water group (roughly, I ain't a chemist)
+                           :H2O => "#0083dc", :HDO => "#0083dc", # cornflower blue
+                           :H2O2 => "#0000ff", :HDO2 => "#0000ff", # true blue
+                           :HO2 => "#046868", :DO2 => "#046868",  # dark teal
 
-                # water group (roughly, I ain't a chemist)
-                :H2O => "#0083dc", :HDO => "#0083dc", # cornflower blue
-                :H2O2 => "#0000ff", :HDO2 => "#0000ff", # true blue
-                :HO2 => "#046868", :DO2 => "#046868",  # dark teal
+                           # O group
+                           :O1D => "#808000", # olive
+                           :O => "#1a6115",   # forest green
+                           :O2 => "#15da09",  # kelly/grass green
+                           :O3 => "#269e56",  # light green
 
-                # O group
-                :O1D => "#808000", # olive
-                :O => "#1a6115",   # forest green
-                :O2 => "#15da09",  # kelly/grass green
-                :O3 => "#269e56",  # light green
+                           # CO group
+                           :CO2 => "#000000",   # black
+                           :CO => "#ff6600",    # orange
+                           :HOCO => "#e8ba8c", :DOCO => "#e8ba8c",  #tannish
 
-                # CO group
-                :CO2 => "#000000",   # black
-                :CO => "#ff6600",    # orange
-                :HOCO => "#e8ba8c", :DOCO => "#e8ba8c",  #tannish
+                           # Other neutrals
+                           :Ar=>"#808080", :C=>"#d9c382", :CH=>"#cea3ce", :CN=>"#6d5000", :HCN=>"#479f5e", 
+                           :HCO=>"#94c6bf", :DCO=>"#94c6bf",
+                           :N=>"#6e748a", :N2=>"#cccccc", :N2O=>"#be8b65", :NCO=>"#633339", :NH=>"#FD8C9B", :NH2=>"#6ceb83", :NO=>"#a27fff", :NO2=>"#fe03cb", 
+                           :HNO=>"#76bcfd",
 
-                # Other neutrals
-                :Ar=>"#808080", :C=>"#d9c382", :CH=>"#cea3ce", :CN=>"#6d5000", :HCN=>"#479f5e", :HCO=>"#94c6bf", 
-                :N=>"#6e748a", :N2=>"#cccccc", :N2O=>"#be8b65", :NCO=>"#633339", :NH=>"#FD8C9B", :NH2=>"#6ceb83", :NO=>"#a27fff", :NO2=>"#fe03cb", 
-                :HNO=>"#76bcfd",
-
-                # ions
-                :Arpl=>"#808080", :ArHpl=>"#660000", :ArDpl=>"#660000",
-                :Cpl=>"#d9c382", :CHpl=>"#cea3ce", :CNpl=>"#6d5000", 
-                :COpl=>"#ff6600", :CO2pl=>"#000000",  
-                :Dpl=>"#ff0000", :DCOpl=>"#3366ff", :HDpl=>"#e526d7", :HD2pl=>"#b9675f", :H2Dpl=>"#b9675f",
-                :Hpl=>"#ff0000", :H2pl=>"#e526d7", :H3pl=>"#b9675f",
-                :H2Opl=>"#0083dc",  :H3Opl=>"#280041",
-                :HCNpl=>"#479f5e", :HCNHpl=>"#50455b", 
-                :HCOpl=>"#3366ff", :HOCpl=>"#5e90ff", :HCO2pl=>"#222222", 
-                :HNOpl=>"#eb0077", :HN2Opl=>"#a37bb3", :HOCOpl=>"#e8ba8c", :HO2pl=>"#046868", 
-                :Npl=>"#6e748a", :N2pl=>"#cccccc", :N2Dpl=>"#9a4700", :N2Hpl=>"#9a4700", :N2Opl=>"#be8b65", 
-                :NHpl=>"#cacdda", :NH2pl=>"#6ceb83", :NH3pl=>"#c8c400", 
-                :NOpl=>"#a27fff", :NO2pl=>"#fe03cb", 
-                :Opl=>"#1a6115", :O2pl=>"#15da09", :OHpl=>"#7700d5", 
-                );
+                           # ions
+                           :Arpl=>"#808080", :ArHpl=>"#660000", :ArDpl=>"#660000",
+                           :Cpl=>"#d9c382", :CHpl=>"#cea3ce", :CNpl=>"#6d5000", 
+                           :COpl=>"#ff6600", :CO2pl=>"#000000",  
+                           :Dpl=>"#ff0000", 
+                           :HDpl=>"#e526d7", :HD2pl=>"#b9675f", :H2Dpl=>"#b9675f",
+                           :Hpl=>"#ff0000", :H2pl=>"#e526d7", :H3pl=>"#b9675f",
+                           :H2Opl=>"#0083dc", :HDOpl=>"#0083dc",
+                           :H3Opl=>"#280041", :H2DOpl=>"#280041", #:HD2Opl=>"#280041",
+                           :HCNpl=>"#479f5e", :HCNHpl=>"#50455b", 
+                           :HCOpl=>"#3366ff", :DCOpl=>"#3366ff", 
+                           :HOCpl=>"#5e90ff", :DOCpl=>"#5e90ff", 
+                           :HCO2pl=>"#222222", :DCO2pl=>"#222222",
+                           :HNOpl=>"#eb0077", :HN2Opl=>"#a37bb3", :HOCOpl=>"#e8ba8c", :HO2pl=>"#046868", 
+                           :Npl=>"#6e748a", :N2pl=>"#cccccc", 
+                           :N2Hpl=>"#9a4700", :N2Dpl=>"#9a4700", 
+                           :N2Opl=>"#be8b65", 
+                           :NHpl=>"#cacdda", :NH2pl=>"#6ceb83", :NH3pl=>"#c8c400", 
+                           :NOpl=>"#a27fff", :NO2pl=>"#fe03cb", 
+                           :Opl=>"#1a6115", :O2pl=>"#15da09", 
+                           :OHpl=>"#7700d5", :ODpl=>"#7700d5"
+                           );
 
 # D group will have dashed lines; neutrals, solid (default)
 const speciesstyle = Dict([s=>"--" for s in D_bearing_species]);
@@ -340,6 +416,8 @@ const speciesstyle = Dict([s=>"--" for s in D_bearing_species]);
 const medgray = "#444444"
 
 # Crosssection filenames ======================================================
+# There's gotta be a better way to do this. Probably a dictionary of Jrates to strings.
+
 const co2file = "CO2.dat"
 const co2exfile = "binnedCO2e.csv" # added to shield short λ of sunlight in upper atmo
 const h2ofile = "h2oavgtbl.dat"
@@ -361,19 +439,19 @@ const odfile = "OD.csv"
 # Transport network ============================================================
 const upeqns = [Any[Any[[s], [Symbol(string(s)*"_above")],Symbol("t"*string(s)*"_up")],
                     Any[[Symbol(string(s)*"_above")],[s],Symbol("t"*string(s)*"_above_down")]]
-                    for s in transport_species]
+                    for s in transport_species];
 
 const downeqns = [Any[Any[[s], [Symbol(string(s)*"_below")],Symbol("t"*string(s)*"_down")],
                       Any[[Symbol(string(s)*"_below")],[s],Symbol("t"*string(s)*"_below_up")]]
-                      for s in transport_species]
+                      for s in transport_species];
 
 const local_transport_rates = [[[Symbol("t"*string(s)*"_up") for s in transport_species]
                                 [Symbol("t"*string(s)*"_down") for s in transport_species]
                                 [Symbol("t"*string(s)*"_above_down") for s in transport_species]
-                                [Symbol("t"*string(s)*"_below_up") for s in transport_species]]...;]
+                                [Symbol("t"*string(s)*"_below_up") for s in transport_species]]...;];
 
-const transportnet = [[upeqns...;]; [downeqns...;]]
+const transportnet = [[upeqns...;]; [downeqns...;]];
 
 # define names for all the species active in the coupled rates:
-const active_longlived_above = [Symbol(string(s)*"_above") for s in active_longlived]
-const active_longlived_below = [Symbol(string(s)*"_below") for s in active_longlived]
+const active_longlived_above = [Symbol(string(s)*"_above") for s in active_longlived];
+const active_longlived_below = [Symbol(string(s)*"_below") for s in active_longlived];

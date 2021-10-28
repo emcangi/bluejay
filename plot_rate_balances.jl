@@ -15,7 +15,7 @@ using PyPlot
 using PyCall
 
 user_input_paramfile = input("Enter a parameter file or press enter to use default (PARAMETERS.jl): ")
-paramfile = user_input_paramfile == "" ? "PARAMETERS.jl" : user_input_paramfile
+paramfile = user_input_paramfile == "" ? "PARAMETERS.jl" : user_input_paramfile*".jl"
 include(paramfile)
 
 parentfolder = input("Which folder? (no trailing slash please): ")
@@ -23,13 +23,15 @@ parentfolder = input("Which folder? (no trailing slash please): ")
 fnstr = input("Enter the exact name of the file you want to plot for (without .h5): ")
 
 
-#Set up the temperature stuff that will be used for boundary conditions and plotting.
-controltemps = [216., 130., 205.]#[parse(Float64, i) for i in split(match(r"\d+_\d+_\d+", parentfolder).match, "_")]
-println("FYI, controltemps=$(controltemps). You hard coded them in because you were lazy and wanted other folder names. Fix this if you use different temps later...")
-T_surf = controltemps[1]
-T_tropo = controltemps[2]
-T_exo = controltemps[3]
-Temp_n(z::Float64) = T_all(z, T_surf, T_tropo, T_exo, "neutral")
+# Set up the temperature stuff that will be used for boundary conditions and plotting.
+# Get the control temperatures from the simulation logfile
+simfile = search_subfolders(foldr, "simulation_params"; type="files")[1]
+logfile = open(foldr*simfile) do file
+             read(file, String)
+          end
+controltemps = [parse(Float64, x) for x in [match(r"(?<=T_s\=)\d+\.\d", logfile).match, match(r"(?<=T_tropo\=)\d+\.\d", logfile).match, match(r"(?<=T_exo\=)\d+\.\d", logfile).match]]
+
+Temp_n(z::Float64) = T_all(z, controltemps[1], controltemps[2], controltemps[3], "neutral")
 Temp_keepSVP(z::Float64) = T_all(z, meanTs, meanTt, meanTe, "neutral")
 
 
@@ -61,15 +63,17 @@ for f in filelist
                    );
 
     # Now plot the reactions ------------------------------------------------------------
-    dtmatch = match(r"\d+\.\d+e*\d*", f)
+    # looks for a pattern in the filename that looks like X{.XeX}, where curly braces are optional. 
+    # i.e. it will match "100", "100.0", "0.001", "1e2" or "1.0e2".
+    dtmatch = match(r"\d+\.*\d*e*\d*", f) 
     if typeof(dtmatch) != Nothing
         dtval = dtmatch.match
     else
-        dtval = "1e14"
+        dtval = "unknown"
     end
 
     println("Working on dt=$(dtval)")
-    for sp in fullspecieslist
+    for sp in all_species
         plot_rxns(sp, ncur, controltemps, speciesbclist; subfolder=parentfolder, plotsfolder="chemeq_plots", num=dtval, extra_title="dt=$(dtval)")
     end
 end
