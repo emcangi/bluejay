@@ -221,7 +221,7 @@ const reactionnet = [   #Photodissociation
              [[:O1D], [:O], :(5.10e-3)],
 
              # Type 2
-             [[:C, :C], [:C2], :(2.16e-11)],  # UMIST: 4.36e-18 .* ((Tn ./ 300) .^ 0.35) .* exp.(-161.30 ./ Tn)
+             # [[:C, :C], [:C2], :(2.16e-11)],  # UMIST: 4.36e-18 .* ((Tn ./ 300) .^ 0.35) .* exp.(-161.30 ./ Tn)
              [[:C, :H], [:CH], :(1.00e-17)],  # UMIST agrees
              [[:C, :N], [:CN], :((6.93e-20 .* Tn .^ 0.37) .* exp.(-51.0 ./ Tn))], # KIDA: :(7.76e-19 .* ((Tn ./ 300) .^ 0.14) .* exp.(-0.18 ./ Tn) ) for T=40-400K
              [[:CH, :C], [:C2, :H], :(6.59e-11)], # KIDA: 2.4e-10
@@ -270,7 +270,7 @@ const reactionnet = [   #Photodissociation
 
              [[:HCO, :O], [:CO, :OH], :(5.0e-11)],
              # NEW
-             [[:DCO, :O], [:CO, :OD], :(((30 ./ 29) .^ -0.5) .* 5.0e-11)], # TODO: DCO network?
+             [[:DCO, :O], [:CO, :OD], :(((30 ./ 29) .^ -0.5) .* 5.0e-11)],
 
              [[:HCO, :O], [:CO2, :H], :(5.0e-11)],
              # NEW
@@ -546,9 +546,9 @@ const reactionnet = [   #Photodissociation
              [[:CO2pl, :HD], [:HCO2pl, :D], :(0.5 .* ((3 ./ 2) .^ -0.5) .* 4.7e-10)], # factor of 0.5 to account for two branches.
 
              [[:CO2pl, :H2O], [:H2Opl, :CO2], :(2 .* 1.8e-9)],
-
              [[:CO2pl, :H2O], [:HCO2pl, :OH], :(2 .* 6.0e-10)],
              # NEW 
+             [[:CO2pl, :HDO], [:HDOpl, :CO2], :(((19 ./ 18) .^ -0.5) .* 2 .* 1.8e-9)],
              [[:CO2pl, :HDO], [:DCO2pl, :OH], :(0.5 .* ((19 ./ 18) .^ -0.5) .* 2 .* 6.0e-10)],
              [[:CO2pl, :HDO], [:HCO2pl, :OD], :(0.5 .* ((19 ./ 18) .^ -0.5) .* 2 .* 6.0e-10)],
 
@@ -896,9 +896,7 @@ const reactionnet = [   #Photodissociation
              [[:Hpl, :NO], [:NOpl, :H], :(2 .* 1.9e-9)],
              [[:Hpl, :NO2], [:NOpl, :OH], :(2 .* 1.9e-9)],
 
-             [[:Hpl, :O], [:Opl, :H], :(2 .* 3.75e-10)],
-             # NEW 
-             # [[:Dpl, :O], [:Opl, :D], :(((2 ./ 1) .^ -0.5) .* 2 .* 3.75e-10)],
+             
 
              [[:Hpl, :O2], [:O2pl, :H], :(2 .* 1.17e-9)],
              # NEW 
@@ -1179,10 +1177,7 @@ const reactionnet = [   #Photodissociation
              [[:HDOpl, :E], [:OH, :D], :(0.5 .* ((19 ./ 18) .^ -0.5) .* 2 .* 5.86e-6 .* (Te .^ -0.74))],
              [[:HDOpl, :E], [:OD, :H], :(0.5 .* ((19 ./ 18) .^ -0.5) .* 2 .* 5.86e-6 .* (Te .^ -0.74))],
 
-             [[:H2pl, :E], [:H, :H], :(2 .* 1.86e-7 .* (Te .^ -0.43))],
-             # NEW 
-             [[:HDpl, :E], [:H, :D], :(((3 ./ 2) .^ -0.5) .* 2 .* 1.86e-7 .* (Te .^ -0.43))],
-
+             
              [[:H3Opl, :E], [:H2, :O, :H], :(2 .* 9.68e-8 .* (Te .^ -0.5))],
              [[:H2DOpl, :E], [:HD, :O, :H], :(0.5 .* ((20 ./ 19) .^ -0.5) .* 2 .* 9.68e-8 .* (Te .^ -0.5))], # TODO: H2DO+ and HD2O+ network???
              [[:H2DOpl, :E], [:H2, :O, :D], :(0.5 .* ((20 ./ 19) .^ -0.5) .* 2 .* 9.68e-8 .* (Te .^ -0.5))],
@@ -1252,15 +1247,14 @@ const reactionnet = [   #Photodissociation
              [[:N2Opl, :E], [:N2, :O], :(2 .* 4.09e-6 .* (Te .^ -0.57))],
              [[:N2Opl, :E], [:NO, :N], :(2 .* 3.07e-6 .* (Te .^ -0.57))],
              [[:N2pl, :E], [:N, :N], :(2 .* 5.09e-7 .* (Te .^ -0.39))],
-             [[:N2pl, :E], [:N2D, :N2D], :(2 .* 1.42e-6 .* (Te .^ -0.39))],
+             [[:N2pl, :E], [:N, :N], :(2 .* 1.42e-6 .* (Te .^ -0.39))], # These are secretly N(²D) but I don't track that species. 
              [[:NH2pl, :E], [:N, :H, :H], :(2 .* 1.71e-5 .* (Te .^ -0.8) .* exp.(-17.1 ./ Te))],
              [[:NH2pl, :E], [:NH, :H], :(2 .* 8.34e-6 .* (Te .^ -0.79) .* exp.(-17.1 ./ Te))],
              [[:NH3pl, :E], [:NH, :H, :H], :(2 .* 2.68e-6 .* (Te .^ -0.5))],
              [[:NH3pl, :E], [:NH2, :H], :(2 .* 2.68e-6 .* (Te .^ -0.5))],
              [[:NHpl, :E], [:N, :H], :(2 .* 7.45e-7 .* (Te .^ -0.5))],
              [[:NO2pl, :E], [:NO, :O], :(2 .* 5.2e-6 .* (Te .^ -0.5))],
-             [[:NOpl, :E], [:O, :N], :(2 .* 8.52e-7 .* (Te .^ -0.37))],
-             [[:NOpl, :E], [:O, :N2D], :(2 .* 4.53e-9 .* (Te .^ 0.75))],
+             [[:NOpl, :E], [:O, :N], :(6.93e-6 .* (Te .^ -0.5))], # NEW rate from Fox+ 2015 ("Chemistry of protonated..."). Really, 95% BR to N(2D) and 5% to else. Roger's rate rom a '90 and '77 pub: 2 .* 8.52e-7 .* (Te .^ -0.37)
              [[:Npl, :E], [:N], :(2 .* 1.9e-10 .* (Te .^ -0.7))],
              [[:O2pl, :E], [:O, :O], :(6.6e-5 .* Te .^ -1.0)], # Nair minimal ionosphere.  # Vuitton: :(1.95e-7 .* (Te ./ 300) .^ (-0.7)) Roger: :(2 .* 8.15e-6 .* (Te .^ -0.65)) Nair: in use. BAD RATE?: 8.15e-6 .* ((300 ./ Te) .^ -0.65)
              
@@ -1286,7 +1280,7 @@ const reactionnet = [   #Photodissociation
              [[:CO2pl, :D], [:DCOpl, :O], :(0.76*8.4e-11)], # HAS DUPLICATE (COMPARE RATES)
              [[:CO2pl, :D], [:Dpl, :CO2], :(0.24*8.4e-11)], # HAS DUPLICATE (COMPARE RATES)
              [[:Dpl, :H2], [:Hpl, :HD], :(2.2e-9)],
-             [[:Dpl, :O], [:Opl, :D], :(2.8e-10)], # HAS DUPLICATE (COMPARE RATES)
+             
              [[:Dpl, :H2O], [:H2Opl, :D], :(5.2e-9)], # HAS DUPLICATE (COMPARE RATES)
              [[:Dpl, :O2], [:O2pl, :D], :(1.6e-9)], # HAS DUPLICATE (COMPARE RATES)
              [[:Dpl, :CO2], [:DCOpl, :O], :(2.6e-9)], # HAS DUPLICATE (COMPARE RATES)
@@ -1318,4 +1312,17 @@ const reactionnet = [   #Photodissociation
              [[:N2Dpl, :H], [:N2Hpl, :D], :(2.5e-11)],
              [[:Opl, :HD], [:OHpl, :D], :(0.54*1.25e-9)], # HAS DUPLICATE (COMPARE RATES)
              [[:Opl, :HD], [:ODpl, :H], :(0.46*1.25e-9)], # HAS DUPLICATE (COMPARE RATES)
+
+             # KEY NON-THERMAL MECHANISM REACTIONS
+
+             ## Molecular hydrogen/hydrogen deuteride ion recombination
+             [[:H2pl, :E], [:H, :H], :(2 .* 1.86e-7 .* (Te .^ -0.43))],
+             [[:HDpl, :E], [:H, :D], :(((3 ./ 2) .^ -0.5) .* 2 .* 1.86e-7 .* (Te .^ -0.43))], 
+
+             ## Charge exchange,
+             [[:Hpl, :H], [:H, :Hpl], :(6.5e-11 .* (Ti .^ 0.5))], # NEW - Yung 1989
+             [[:Hpl, :O], [:H, :Opl], :(2 .* 3.75e-10)], # Anicich 1993/Roger (factor of 2). Yung 1989 rate: :(0.8 .* 6.5e-11 .* (Ti .^ 0.5)
+             [[:Dpl, :H], [:D, :Hpl], :(0.87 .* 6.5e-11 .* (Ti .^ 0.5))], # NEW - Yung 1989
+             [[:Dpl, :O], [:D, :Opl], :(2.8e-10)], # Anicich 2003. Guesstimate by mass-scaling: :(((2 ./ 1) .^ -0.5) .* 2 .* 3.75e-10)
+
              ];
