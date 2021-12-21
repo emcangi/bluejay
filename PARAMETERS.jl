@@ -24,12 +24,12 @@
 
 # Basic simulation parameters
 const simtype = "temp"
-const controltemps = [216., 130., 206.]
-const problem_type = "ODE" #"SS" #  
+const controltemps = [216., 130., 205.]
+const problem_type = "SS" #"ODE" #  
 const converge_which = "both"
 
 # Folders and files 
-const sim_folder_name = "TEST!!!"#"$(simtype)_$(Int64(controltemps[1]))_$(Int64(controltemps[2]))_$(Int64(controltemps[3]))_$(problem_type)"
+const sim_folder_name = "$(simtype)_$(Int64(controltemps[1]))_$(Int64(controltemps[2]))_$(Int64(controltemps[3]))_$(problem_type)"
 const initial_atm_file = "converged_full_atmosphere.h5"
 # const initial_atm_file = results_dir*"$(simtype)_$(Int64(controltemps[1]))_$(Int64(controltemps[2]))_$(Int64(controltemps[3]))_$(problem_type)/final_atmosphere.h5"
 const final_atm_file = "$(simtype)_$(Int64(controltemps[1]))_$(Int64(controltemps[2]))_$(Int64(controltemps[3]))_$(problem_type).h5"
