@@ -120,7 +120,7 @@ append!(Jratelist, newJrates)
 
 # Other logical groupings -------------------------------------------------------
 const D_bearing_species = [s for s in union(neutral_species, ion_species) if occursin('D', string(s))];
-const N_species = [s for s in neutral_species if occursin('N', string(s))];
+const N_neutrals = [s for s in neutral_species if occursin('N', string(s))];
 
 # Short lived species, whose chemical lifetime is << diffusion timescale
 const short_lived_species = [];# technically shortlived but count as longlived: :CH, :HCO, :HO2, :O3, :OH, :O1D, :DO2, :OD...
@@ -139,15 +139,15 @@ const no_chem_species = [];
 const no_transport_species = [];
 
 if converge_which == "neutrals"
-    append!(no_chem_species, union(conv_ions, N_species)) # This is because the N chemistry is intimiately tied up with the ions.
-    append!(no_transport_species, union(conv_ions, N_species, short_lived_species))
+    append!(no_chem_species, union(conv_ions, N_neutrals)) # This is because the N chemistry is intimiately tied up with the ions.
+    append!(no_transport_species, union(conv_ions, N_neutrals, short_lived_species))
 elseif converge_which == "ions"
-    append!(no_chem_species, setdiff(conv_neutrals, N_species))
-    append!(no_transport_species, union(short_lived_species, setdiff(conv_neutrals, N_species)))
+    append!(no_chem_species, setdiff(conv_neutrals, N_neutrals))
+    append!(no_transport_species, union(short_lived_species, setdiff(conv_neutrals, N_neutrals)))
 elseif converge_which == "both"
     # Next two lines are SPECIAL for this file because we are trying to work in ions, N-neutrals. 
-    # append!(no_chem_species, setdiff(conv_neutrals, N_species))  # i.e. non-nitrogen bearing neutrals are inactive
-    # append!(no_transport_species, setdiff(conv_neutrals, N_species))
+    # append!(no_chem_species, setdiff(conv_neutrals, N_neutrals))  # i.e. non-nitrogen bearing neutrals are inactive
+    # append!(no_transport_species, setdiff(conv_neutrals, N_neutrals))
     append!(no_transport_species, short_lived_species)
 end
 
