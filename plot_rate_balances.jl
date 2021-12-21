@@ -10,66 +10,70 @@
 # Currently tested for Julia: 1.5.3
 ################################################################################
 
-using Photochemistry
+using Photochemistry: input, search_subfolders, T_all, create_folder, get_ncurrent, Psat, Psat_HDO, plot_rxns, effusion_velocity, charge_type, scaleH, meanmass
 using PyPlot
 using PyCall
 
+include("CONSTANTS.jl")
+include("CUSTOMIZATIONS.jl")
+
 user_input_paramfile = input("Enter a parameter file or press enter to use default (PARAMETERS.jl): ")
-paramfile = user_input_paramfile == "" ? "PARAMETERS.jl" : user_input_paramfile
+paramfile = user_input_paramfile == "" ? "PARAMETERS.jl" : user_input_paramfile*".jl"
 include(paramfile)
 
-parentfolder = input("Which folder? (no trailing slash please): ")
+# Load the new standard reaction network from file if it the parameter file doesn''t have its own network.
+if !@isdefined reactionnet 
+    include("/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/reaction_network.jl")
+end
 
-fnstr = input("Enter the exact name of the file you want to plot for (without .h5): ")
+println("Found the folder name: $(sim_folder_name)")
+simfolder = results_dir*sim_folder_name*"/"
 
+converged_file = final_atm_file == "" ? "final_atmosphere.h5" : final_atm_file
+if !isfile(converged_file)
+    converged_file = input("No file found, please enter file to use including .h5: ")
+end
 
-#Set up the temperature stuff that will be used for boundary conditions and plotting.
-controltemps = [216., 130., 205.]#[parse(Float64, i) for i in split(match(r"\d+_\d+_\d+", parentfolder).match, "_")]
-println("FYI, controltemps=$(controltemps). You hard coded them in because you were lazy and wanted other folder names. Fix this if you use different temps later...")
-T_surf = controltemps[1]
-T_tropo = controltemps[2]
-T_exo = controltemps[3]
-Temp_n(z::Float64) = T_all(z, T_surf, T_tropo, T_exo, "neutral")
-Temp_keepSVP(z::Float64) = T_all(z, meanTs, meanTt, meanTe, "neutral")
-
+println("Using final atmosphere file: $(converged_file)")
 
 # Do the actual plotting =====================================================================================
-create_folder("chemeq_plots", results_dir*parentfolder*"/")
+create_folder("chemeq_plots", simfolder)
 
-filelist = search_subfolders(results_dir*parentfolder, "$(fnstr).h5", type="files")#r"ncurrent_\d+\.\d+e*14\.h5", type="files")
+filelist = search_subfolders(simfolder, "$(converged_file)", type="files")
 println(filelist)
 for f in filelist
-
-    # Reload the boundary conditions for this file -------------------------------------
-    ncur = get_ncurrent(results_dir*parentfolder*"/"*f)
-
-    fix_SVP = true
-    H2Osat = map(x->Psat(x), map(Temp_keepSVP, alt))
-    HDOsat = map(x->Psat_HDO(x), map(Temp_keepSVP, alt))
-
-    global const speciesbclist=Dict(
-                    :CO2=>["n" 2.1e17; "f" 0.],
-                    :Ar=>["n" 2.0e-2*2.1e17; "f" 0.],
-                    :N2=>["n" 1.9e-2*2.1e17; "f" 0.],
-                    :H2O=>["n" H2Osat[1]; "f" 0.], # bc doesnt matter if H2O fixed
-                    :HDO=>["n" HDOsat[1]; "f" 0.],
-                    :O=>["f" 0.; "f" 1.2e8],
-                    :H2=>["f" 0.; "v" effusion_velocity(Temp_n(zmax), 2.0, zmax)],  # velocities are in cm/s
-                    :HD=>["f" 0.; "v" effusion_velocity(Temp_n(zmax), 3.0, zmax)],
-                    :H=>["f" 0.; "v" effusion_velocity(Temp_n(zmax), 1.0, zmax)],
-                    :D=>["f" 0.; "v" effusion_velocity(Temp_n(zmax), 2.0, zmax)],
-                   );
+    ncur = get_ncurrent(simfolder*f)
 
     # Now plot the reactions ------------------------------------------------------------
-    dtmatch = match(r"\d+\.\d+e*\d*", f)
+    # looks for a pattern in the filename that looks like X{.XeX}, where curly braces are optional. 
+    # i.e. it will match "100", "100.0", "0.001", "1e2" or "1.0e2".
+    dtmatch = match(r"\d+\.\d*e*\d*", f) 
     if typeof(dtmatch) != Nothing
         dtval = dtmatch.match
     else
-        dtval = "1e14"
+        dtval = input("Please enter dt: ")
     end
 
     println("Working on dt=$(dtval)")
-    for sp in fullspecieslist
-        plot_rxns(sp, ncur, controltemps, speciesbclist; subfolder=parentfolder, plotsfolder="chemeq_plots", num=dtval, extra_title="dt=$(dtval)")
+
+    # Plotting for the old version of the code
+    if @isdefined fullspecieslist
+        println("ALERT: You have to go back to the parameter file, $(paramfile), and change all the regular T's in the reaction network to Tn.")
+        println("Surely there is a better way to do this but for right now this is what I got.")
+        pritnln("If you've left them in as Tn, go back and change them to T later. For posterity and such.")
+        for sp in fullspecieslist
+            plot_rxns(sp, ncur, Tn_arr, Ti_arr, Te_arr, speciesbclist, reactionnet, fullspecieslist, [:CO2pl], transportspecies, speciesmolmasslist, alt, n_alt_index, dz, nothing, 
+                      num_layers, plot_grid, results_dir, Tprof_for_Hs, Tprof_for_diffusion, subfolder=sim_folder_name, plotsfolder="chemeq_plots", num=dtval, extra_title="dt=$(dtval)")
+        end
+    else  # The normal case, the new code, where we use all_species and not fullspecieslist. 
+        for sp in all_species
+            println("Working on $(sp)")
+            plot_rxns(sp, ncur, Tn_arr, Ti_arr, Te_arr, Tplasma_arr, speciesbclist, reactionnet, 
+                      all_species, ion_species, transport_species, chem_species, 
+                      molmass, alt, n_alt_index, dz, polarizability, 
+                      num_layers, plot_grid, results_dir, Tprof_for_Hs, Tprof_for_diffusion, 
+                      subfolder=sim_folder_name, plotsfolder="chemeq_plots", num=dtval, extra_title="dt=$(dtval)")
+        end
     end
+
 end

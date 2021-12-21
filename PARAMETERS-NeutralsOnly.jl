@@ -1,37 +1,32 @@
 ################################################################################
-# PARAMETERS-conv1.jl
+# PARAMETERS.jl
 # TYPE: (1) Model files - required
-# DESCRIPTION: Global constants, simulation parameters, reaction networks. 
-# USE: Converges the neutral ionosphere as defined by Nair+ 1994.
+# DESCRIPTION: Just some standard global constants that need to get used 
+# EVERYWHERE. Also the chemical reaction network.
 # 
 # Eryn Cangi
 # Created December 2019
-# Last edited: August 2021
-# Currently tested for Julia: 1.6.1
+# Last edited: 12 November 2021
+# Currently tested for Julia: 1.4.1
 ################################################################################
 
-# **************************************************************************** #
-# **************************************************************************** #
-# **************************************************************************** #
-#                      begin modifiable value zone                             #
-# **************************************************************************** #
-# **************************************************************************** #
 # **************************************************************************** #
 
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
 # !!                      !!!!! SUPER IMPORTANT !!!!!                       !! #
 # !!     !!! Check the following every time you run the simulation !!!      !! #
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
-const sim_folder_name = "TEST-IONS1"
+
+const sim_folder_name = "testing-neutrals-only"
 const initial_atm_file = "converged_neutral_atmosphere.h5"
-const final_atm_file = "test-no-allsp-in-fluxcoefs"
-const converge_which = "ions"
-const dt_min_and_max = Dict("neutrals"=>[-3, 14], "ions"=>[-4, 6], "both"=>[-4, 14])
-const rel_tol = 1e-4
+const final_atm_file = ""
+const converge_which = "neutrals"
+const dt_min_and_max = Dict("neutrals"=>[-1, 14], "ions"=>[-4, 6], "both"=>[-4, 14])
+const rel_tol = 1e-6
 
 # This stuff is mutable, but less likely to change.
 const make_new_alt_grid = false
-const use_nonzero_initial_profiles = false
+const use_nonzero_initial_profiles = true
 const do_chem = true 
 const do_trans = true 
 const solarfile = "marssolarphotonflux_solarmean.dat" # you may replace 'mean' with 'max' or 'min'
@@ -44,6 +39,7 @@ const assume_photochem_eq = converge_which == "both" ? true : false
 
 # Some water stuff to control the general shape of the profile
 const upper_lower_bdy = 80e5 # the uppermost layer at which water will be fixed, in cm
+const upper_lower_bdy_i = Int64(upper_lower_bdy / 2e5) # the uppermost layer at which water will be fixed, in cm
 const hygropause_alt = 40e5
 const MR_mean_water = 1.38e-4
 
@@ -52,17 +48,16 @@ const MR_mean_water = 1.38e-4
 # Neutrals --------------------------------------------------------------------
 const conv_neutrals = [:Ar, :CO, :CO2, :H, :H2, :H2O, :H2O2, :HO2, :HOCO, :N2, 
                        :O, :O1D, :O2, :O3, :OH,
-                       :D, :DO2, :DOCO, :HD, :HDO, :HDO2, :OD,];
-const new_neutrals = [];     
+                       :D, :DO2, :DOCO, :HD, :HDO, :HDO2, :OD];
+const new_neutrals = [];
 
 const neutral_species = [];
 append!(neutral_species, conv_neutrals)
 append!(neutral_species, new_neutrals)
 
 # Ions -------------------------------------------------------------------------
-const conv_ions = [];
-const new_ions = [:CO2pl, :HCO2pl, :Opl, :O2pl]; # Nair minimal ionosphere 
-
+const conv_ions = [:CO2pl];
+const new_ions = []; 
 const ion_species = [];
 append!(ion_species, conv_ions)
 append!(ion_species, new_ions)
@@ -82,11 +77,12 @@ const conv_Jrates = [# Original neutral photodissociation
                     # Original deuterated neutral photodissociation
                     :JHDOtoHpOD, :JHDOtoDpOH, :JHDO2toOHpOD,
                     :JHDOtoHDpO1D, :JHDOtoHpDpO, :JODtoOpD, :JHDtoHpD, :JDO2toODpO,
-                    :JHDO2toDO2pH, :JHDO2toHO2pD, :JHDO2toHDOpO1D, :JODtoO1DpD, 
+                    :JHDO2toDO2pH, :JHDO2toHO2pD, :JHDO2toHDOpO1D, :JODtoO1DpD,
+
+                    # New neutral photodissociation (from Roger)
+                    # :JCO2toCpOpO, :JCO2toCpO2, :JCOtoCpO, # TODO: Incorporate these to the neutral model.
                   ];
-
-const newJrates = [:JCO2toCO2pl, :JCO2toOplpCO, :JOtoOpl, :JO2toO2pl]; # Nair minimal ionosphere
-
+const newJrates = [];
 const Jratelist = [];
 append!(Jratelist, conv_Jrates)
 append!(Jratelist, newJrates)
@@ -94,9 +90,8 @@ append!(Jratelist, newJrates)
 # This dictionary specifies the species absorbing a photon for each J rate using regular expressions.
 const absorber = Dict([x=>Symbol(match(r"(?<=J).+(?=to)", string(x)).match) for x in Jratelist])
 
+
 # Other logical groupings -------------------------------------------------------
-const D_H_analogues = Dict(:ArDpl=>:ArHpl, :Dpl=>:Hpl, :DCOpl=>:HCOpl, :HDpl=>:H2pl, :HD2pl=>:H3pl, :H2Dpl=>:H3pl, :N2Dpl=>:N2Hpl,
-                           :DCO2pl=>:HCO2pl, :DOCpl=>:HOCpl, :H2DOpl=>:H3Opl, :HDOpl=>:H2Opl, :ODpl=>:OHpl)  
 const D_bearing_species = [s for s in union(neutral_species, ion_species) if occursin('D', string(s))];
 const D_ions = [s for s in ion_species if occursin('D', string(s))];
 const N_neutrals = [s for s in neutral_species if occursin('N', string(s))];
@@ -104,7 +99,7 @@ const N_neutrals = [s for s in neutral_species if occursin('N', string(s))];
 # Short lived species, whose chemical lifetime is << diffusion timescale
 const short_lived_species = [];# technically shortlived but count as longlived: :CH, :HCO, :HO2, :O3, :OH, :O1D, :DO2, :OD...
 if assume_photochem_eq
-    append!(short_lived_species, [:NO2, :CN, :HNO, :NH, :NH2])
+    append!(short_lived_species, [])
     append!(short_lived_species, ion_species)
 end
 
@@ -122,7 +117,7 @@ if converge_which == "neutrals"
     append!(no_transport_species, union(conv_ions, N_neutrals, short_lived_species))
 elseif converge_which == "ions"
     append!(no_chem_species, setdiff(conv_neutrals, N_neutrals))
-    append!(no_transport_species, union(short_lived_species, setdiff(conv_neutrals, N_neutrals)))
+    append!(no_transport_species, setdiff(conv_neutrals, N_neutrals))
 elseif converge_which == "both"
     append!(no_transport_species, short_lived_species)
 end
@@ -143,13 +138,14 @@ const H2Oi = findfirst(x->x==:H2O, active_longlived)
 const HDOi = findfirst(x->x==:HDO, active_longlived)
 
 # **************************************************************************** #
-
-# Annoyingly, this has to be here because D_bearing_species is defined in this file.
+# Annoyingly, this has to be here because D_bearing_species is only defined here.
 # D group will have dashed lines; neutrals, solid (default)
 const speciesstyle = Dict([s=>"--" for s in D_bearing_species]);
 
 # Chemistry ====================================================================
 # function to replace three body rates with the recommended expression
+# threebody(k0, kinf) = :($k0*M/(1+$k0*M/$kinf)*0.6^((1+(log10($k0*M/$kinf))^2)^-1))
+# threebodyca(k0, kinf) = :($k0/(1+$k0/($kinf/M))*0.6^((1+(log10($k0/($kinf*M)))^2)^-1))
 
 threebody(k0, kinf) = :($k0 .* M ./ (1 .+ $k0 .* M ./ $kinf).*0.6 .^ ((1 .+ (log10.($k0 .* M ./ $kinf)) .^2).^-1.0))
 threebodyca(k0, kinf) = :($k0 ./ (1 .+ $k0 ./ ($kinf ./ M)).*0.6 .^ ((1 .+ (log10.($k0 ./ ($kinf .* M))) .^2).^-1.0))
@@ -192,17 +188,12 @@ const reactionnet = [   #Photodissociation
                      [[:HDO2], [:HO2, :D], :JHDO2toHO2pD],
                      [[:HDO2], [:HDO, :O1D], :JHDO2toHDOpO1D],
 
-                     # NEW: photoionization from Roger's model
-                     [[:CO2], [:CO2pl], :JCO2toCO2pl],  # Nair minimal ionosphere
-                     [[:CO2], [:Opl, :CO], :JCO2toOplpCO], # Nair minimal ionosphere
-                     [[:O], [:Opl], :JOtoOpl],   # Nair minimal ionosphere
-                     [[:O2], [:O2pl], :JO2toO2pl],   # Nair minimal ionosphere
-
                      # recombination of O
                      [[:O, :O, :M], [:O2, :M], :(1.8 .* 3.0e-33 .* (300 ./ Tn) .^ 3.25)], # Deighan 2012 # Checked no dups 
                      [[:O, :O2, :N2], [:O3, :N2], :(5e-35 .* exp.(724 ./ Tn))], # Checked no dups 
                      [[:O, :O2, :CO2], [:O3, :CO2], :(2.5 .* 6.0e-34 .* (300 ./ Tn) .^ 2.4)], # Burkholder2020 # Checked no dups 
                      [[:O, :O3], [:O2, :O2], :(8.0e-12 .* exp.(-2060 ./ Tn))],  # Burkholder 2020
+                     [[:O, :CO, :M], [:CO2, :M], :(2.2e-33 .* exp.(-1780 ./ Tn))],  # DUPLICATE - commented out in favor of Roger's reaction
 
                      # O1D attack
                      [[:O1D, :O2], [:O, :O2], :(3.3e-11 .* exp.(55 ./ Tn))], # Burkholder 2020 (upd. 31 Dec 2020)
@@ -330,15 +321,5 @@ const reactionnet = [   #Photodissociation
 
                      # CO2+ attack on molecular hydrogen
                      [[:CO2pl, :H2], [:CO2, :H, :H], :(8.7e-10)], # from Kras 2010 ./ Scott 1997
-                     [[:CO2pl, :HD], [:CO2pl, :H, :D], :((2/5) .* 8.7e-10)],
-
-                     # NEW - reactions from Roger Yelle for the Nair minimal ionosphere. 
-                     [[:CO, :O], [:CO2], :(min.($:(1.0 .* exp.(-1509.0 ./ Tn)), $:(0.0 .+ (10 .^ ((log10.(0.4)) ./ (1 .+ ((log10.((1.7e-33 .* exp.(-1509.0 ./ Tn) .* M) ./ (1.0 .* exp.(-1509.0 ./ Tn))) .- 0.4 .- 0.67 .* log10.(0.4)) ./ (0.75 .- 1.27 .* log10.(0.4) .- 0.14 .* (log10.((1.7e-33 .* exp.(-1509.0 ./ Tn) .* M) ./ (1.0 .* exp.(-1509.0 ./ Tn))) .- 0.4 .- 0.67 .* log10.(0.4)))) .^ 2)) .* 1.7e-33 .* exp.(-1509.0 ./ Tn) .* 1.0 .* exp.(-1509.0 ./ Tn) .* M) ./ (1.7e-33 .* exp.(-1509.0 ./ Tn) .* M .+ 1.0 .* exp.(-1509.0 ./ Tn)))))],
-                     [[:CO2pl, :H2], [:HCO2pl, :H], :(4.7e-10)], # Nair minimal ionosphere. # Borodi2009: :(9.5e-10 .* ((Ti ./ 300) .^ -0.15)). Roger: :(2 .* 2.24e-9 .* (Ti .^ -0.15)). Nair: in use. BAD RATE? 2.24e-9 .* ((300 ./ Ti) .^ -0.15)
-                     [[:CO2pl, :O], [:O2pl, :CO], :(1.6e-10)], # Nair minimal ionosphere # Fehsenfeld1970: -in use-. Tenewitz 2018, sect 3b. 2e-11 * 0.98: :(1.96e-11). Roger: :(2 .* 1.6e-10). 
-                     [[:CO2pl, :O], [:Opl, :CO2], :(9.6e-11)], # Nair minimal ionosphere. # Fehsenfeld1970: -in use- Tenewitz 2018, sect 3b. 2e-11 * 0.02: :(4e-13). Nair: :(1.0e-10) Roger: :(2 .* 1.0e-10).
-                     [[:Opl, :CO2], [:O2pl, :CO], :(9.6e-10)], # Nair minimal ionosphere # Roger: :(2 .* 1.1e-9) # Nair: -in use-  
-                     [[:CO2pl, :E], [:CO, :O], :(3.8e-7)], # Nair minimal ionosphere # Vuitton: :(4.2e-7 .* (Te ./ 300) .^ -0.75) Roger: :(2 .* 3.03e-5 .* (Te .^ -0.75)) Nair: in use. BAD RATE?: 3.03e-5 .* ((300 ./ Te) .^ -0.75)
-                     [[:HCO2pl, :E], [:CO2, :H], :(3.0e-7)], # Nair minimal ionosphere # New: :(6e-8 .* (Te ./ 300) .^ -0.64) (where did I get this? probably Vuitton?) Roger: :(2 .* 1.7e-8) Nair: in use  
-                     [[:O2pl, :E], [:O, :O], :(6.6e-5 .* Te .^ -1.0)], # Nair minimal ionosphere.  # Vuitton: :(1.95e-7 .* (Te ./ 300) .^ (-0.7)) Roger: :(2 .* 8.15e-6 .* (Te .^ -0.65)) Nair: in use. BAD RATE?: 8.15e-6 .* ((300 ./ Te) .^ -0.65)
+                     [[:CO2pl, :HD], [:CO2pl, :H, :D], :((2/5) .* 8.7e-10)] 
                      ];
