@@ -25,13 +25,13 @@
 # Basic simulation parameters
 const simtype = "temp"
 const controltemps = [216., 130., 205.]
-const problem_type = "SS" #"ODE" #  
+const problem_type = "ODE" #  "SS" #
 const converge_which = "both"
 
 # Folders and files 
-const sim_folder_name = "$(simtype)_$(Int64(controltemps[1]))_$(Int64(controltemps[2]))_$(Int64(controltemps[3]))_$(problem_type)"
-const initial_atm_file = "converged_full_atmosphere.h5"
-# const initial_atm_file = results_dir*"$(simtype)_$(Int64(controltemps[1]))_$(Int64(controltemps[2]))_$(Int64(controltemps[3]))_$(problem_type)/final_atmosphere.h5"
+const sim_folder_name = "$(simtype)_$(Int64(controltemps[1]))_$(Int64(controltemps[2]))_$(Int64(controltemps[3]))_$(problem_type)_GwensTemps"
+# const initial_atm_file = "converged_full_atmosphere.h5"
+const initial_atm_file = results_dir*"$(simtype)_$(Int64(controltemps[1]))_$(Int64(controltemps[2]))_$(Int64(controltemps[3]))_SS_GwensTemps/final_atmosphere.h5"
 const final_atm_file = "$(simtype)_$(Int64(controltemps[1]))_$(Int64(controltemps[2]))_$(Int64(controltemps[3]))_$(problem_type).h5"
 
 # Water 
@@ -91,17 +91,17 @@ const T_surf = controltemps[1]
 const T_meso = controltemps[2]
 const T_exo = controltemps[3]
 
-const Tn_arr = [T_all(a, controltemps[1], controltemps[2], controltemps[3], "neutral") for a in alt];
-const Ti_arr = [T_all(a, controltemps[1], controltemps[2], controltemps[3], "ion") for a in alt];
-const Te_arr = [T_all(a, controltemps[1], controltemps[2], controltemps[3], "electron") for a in alt];
+const Tn_arr = [T_updated(a, controltemps[1], controltemps[2], controltemps[3], "neutral") for a in alt];
+const Ti_arr = [T_updated(a, controltemps[1], controltemps[2], controltemps[3], "ion") for a in alt];
+const Te_arr = [T_updated(a, controltemps[1], controltemps[2], controltemps[3], "electron") for a in alt];
 
-Temp_keepSVP(z::Float64) = T_all(z, meanTs, meanTm, meanTe, "neutral") # Needed for boundary conditions.
+Temp_keepSVP(z::Float64) = T_updated(z, meanTs, meanTm, meanTe, "neutral") # Needed for boundary conditions.
 
 const Tplasma_arr = Ti_arr .+ Te_arr;
 const Tprof_for_diffusion = Dict("neutral"=>Tn_arr, "ion"=>Tplasma_arr)
 const Tprof_for_Hs = Dict("neutral"=>Tn_arr, "ion"=>Ti_arr)
 const fix_SVP = true
-const T_top = T_all(zmax, controltemps[1], controltemps[2], controltemps[3], "neutral")
+const T_top = T_updated(zmax, controltemps[1], controltemps[2], controltemps[3], "neutral")
 
 # **************************************************************************** #
 #                                                                              #

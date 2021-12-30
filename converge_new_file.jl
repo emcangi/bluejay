@@ -1052,7 +1052,7 @@ end
 ################################################################################
 println("Populating cross section dictionary...")
 
-const crosssection = populate_xsect_dict(controltemps, alt)
+const crosssection = populate_xsect_dict(Tn_arr, alt)
 
 # Solar Input ==================================================================
 

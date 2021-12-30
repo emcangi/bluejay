@@ -10,7 +10,7 @@
 # Currently tested for Julia: 1.5.3
 ################################################################################
 
-using Photochemistry: input, search_subfolders, T_all, create_folder, get_ncurrent, Psat, Psat_HDO, plot_rxns, effusion_velocity, charge_type, scaleH, meanmass
+using Photochemistry: input, search_subfolders, T_updated, create_folder, get_ncurrent, Psat, Psat_HDO, plot_rxns, effusion_velocity, charge_type, scaleH, meanmass
 using PyPlot
 using PyCall
 
