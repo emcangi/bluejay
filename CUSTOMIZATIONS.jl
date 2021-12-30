@@ -16,6 +16,17 @@ const extra_plots_dir = code_dir*"../Auxiliary plots/"
 const results_dir = code_dir*"../Results/"
 const xsecfolder = code_dir*"uvxsect/";
 
+# Float types for calculations =================================================
+# needed by both Photochemistry.jl and converge_new_file so it has to go here
+using DoubleFloats
+# if problem_type == "Gear"
+ftype_ncur = Double64 # used to store n_current values
+ftype_chem = Double64 # used to compute chemical reaction rates and chemical jacobian
+# else
+#     ftype_ncur = Float64 # used to store n_current values
+#     ftype_chem = Float64 # used to compute chemical reaction rates and chemical jacobian
+# end
+
 # Altitude grid specifications =================================================
 const max_alt = 250e5
 const alt = convert(Array, (0:2e5:max_alt)) # TODO: Figure out how to get this without being hard-coded
