@@ -11,10 +11,9 @@
 # Currently tested for Julia: 1.6.1
 ################################################################################
 
-const basepath = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/"
-const extra_plots_dir = basepath*"Auxiliary plots/"
-const code_dir = basepath*"Code/"
-const results_dir = basepath*"Results/"
+const code_dir = "$(@__DIR__)/"
+const extra_plots_dir = code_dir*"../Auxiliary plots/"
+const results_dir = code_dir*"../Results/"
 const xsecfolder = code_dir*"uvxsect/";
 
 # Altitude grid specifications =================================================

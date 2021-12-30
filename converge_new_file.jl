@@ -24,6 +24,9 @@ using LaTeXStrings
 using DelimitedFiles
 using SparseArrays
 using LinearAlgebra
+photochemistry_source_dir = "$(@__DIR__)/Photochemistry/src/"
+println("loading Photochemistry.jl from $photochemistry_source_dir")
+push!(LOAD_PATH, photochemistry_source_dir)
 using Photochemistry  # custom module
 using DifferentialEquations
 

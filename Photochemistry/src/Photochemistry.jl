@@ -37,7 +37,8 @@ export # Basic utility functions
        # Water profile functions  
        Psat, Psat_HDO         
 
-code_loc = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/"
+code_loc = "$(@__DIR__)/../../"
+println("Photochemistry.jl code_loc = $code_loc")
 include(code_loc*"CUSTOMIZATIONS.jl") 
 include(code_loc*"CONSTANTS.jl")
                                                                                 
