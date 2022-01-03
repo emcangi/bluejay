@@ -25,8 +25,15 @@
 # Basic simulation parameters
 const simtype = "temp"
 const controltemps = [216., 130., 205.]
-const problem_type = "SS" #"ODE" #  
+const problem_type = "Gear" # "ODE" # "SS" # 
 const converge_which = "both"
+
+# Check that float type is properly set
+if problem_type == "Gear" && (ftype_ncur == Float64 || ftype_chem == Float64)
+    throw("If problem_type = 'Gear' in PARAMETERS, both ftype_ncur and ftype_chem must = Double64 in CUSTOMIZATIONS.jl")
+elseif problem_type != "Gear" && (ftype_ncur == Double64 || ftype_chem == Double64)
+    println("problem_type != Gear but using Double64 in CUSTOMIZATIONS.jl")
+end
 
 # Folders and files 
 const sim_folder_name = "$(simtype)_$(Int64(controltemps[1]))_$(Int64(controltemps[2]))_$(Int64(controltemps[3]))_$(problem_type)"
@@ -56,8 +63,8 @@ const excess_peak_alt = 42 # altitude at which to add the extra water
 #                       Simulation time and tolerances                         #
 #                                                                              #
 # **************************************************************************** #
-const dt_min_and_max = Dict("neutrals"=>[-3, 14], "ions"=>[-4, 6], "both"=>[-4, 14])
-const rel_tol = 1e-4
+const dt_min_and_max = Dict("neutrals"=>[-3, 14], "ions"=>[-4, 6], "both"=>[-4, 16])
+const rel_tol = 1e-4 # relative tolerance
 
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
 # !!                                                                        !! #
@@ -78,7 +85,11 @@ const use_nonzero_initial_profiles = true
 # Sets whether photochemical equilibrium is assumed. Aids in converging ions and neutrals
 # together. Generally leave it as is so the code determines it, but you can change it
 # if need be
-const assume_photochem_eq = converge_which == "both" ? true : false
+if problem_type == "Gear"
+    const assume_photochem_eq = false
+else
+    const assume_photochem_eq = converge_which == "both" ? true : false
+end
 
 # **************************************************************************** #
 #                                                                              #

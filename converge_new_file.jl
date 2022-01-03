@@ -37,8 +37,10 @@ t2 = time()
 
 println("Time to load modules: $(format_sec_or_min(t2-t1))")
 
-user_input_paramfile = input("Enter a parameter file or press enter to use default (PARAMETERS.jl): ")
-paramfile = user_input_paramfile == "" ? "PARAMETERS.jl" : user_input_paramfile*".jl"
+# user_input_paramfile = input("Enter a parameter file or press enter to use default (PARAMETERS.jl): ")
+# paramfile = user_input_paramfile == "" ? "PARAMETERS.jl" : user_input_paramfile*".jl"
+println("Using default parameter file PARAMETERS.jl .")
+paramfile = "PARAMETERS.jl"
 t3 = time()
 include(paramfile)
 
@@ -86,7 +88,7 @@ function chemJmat(n_active_longlived, n_active_shortlived, n_inactive, activells
 
     check_eigen: Will check the eigenvalues of the jacobian for non-real or real/positive values if true. Code currently commented out.
 
-    dt: Can be specified to manually control the timestep by which the derivatives are multiplied.
+    dt: UNUSED! Can be specified to manually control the timestep by which the derivatives are multiplied.
         If not supplied, then dt=1 so that the external solver can manage the multiplication by time.
     =#              
 
@@ -326,7 +328,7 @@ function make_jacobian(n, p, t)
                                                                n_cur_all, activellsp, Tn, Tp, D_arr, Hs_dict, speciesbclist, 
                                                                all_species, neutral_species, transport_species, molmass, n_alt_index, polarizability, alt, num_layers, dz, Tprof_for_diffusion)
     
-    return chemJmat(n, n_short, n_inactive, activellsp, activeslsp, inactivesp, Jrates, Tn, Ti, Te, tup, tdown, tlower, tupper; dt=t)
+    return chemJmat(n, n_short, n_inactive, activellsp, activeslsp, inactivesp, Jrates, Tn, Ti, Te, tup, tdown, tlower, tupper; dt=t) # dt unused in chemJmat
 end
 
 function jacobian_wrapper(J, n, p, t)
@@ -416,7 +418,7 @@ function PnL_eqn(dndt, n, p, t)
         
         # write out the current atmospheric state to a file 
         ncur = merge(external_storage, unflatten_atm(n, activellsp, num_layers))
-
+        
         plot_atm(ncur, [neutral_species, ion_species], results_dir*sim_folder_name*"/atm_peek_$(plotnum).png", plot_grid, speciescolor, speciesstyle, zmax, abs_tol_for_plot,
                  t="$(round(t, sigdigits=2))")
         write_atmosphere(ncur, results_dir*sim_folder_name*"/atm_dt=$(round(t, sigdigits=2)).h5", alt, num_layers)
@@ -529,7 +531,7 @@ function evolve_atmosphere(atm_init::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_s
     params_exjac = deepcopy(params)  # I think this is so the Dcoef doesn't get filled in with the wrong info?
 
     # Set up an example Jacobian and its preconditioner
-    example_jacobian = make_jacobian(nstart, params_exjac, tspan[1])
+    dndt, example_jacobian = get_rates_and_jacobian(nstart, params_exjac, 0.0)
     find_nonfinites(example_jacobian, collec_name="example_jacobian")
     println("Finished the example jacobian")
 
@@ -549,27 +551,245 @@ function evolve_atmosphere(atm_init::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_s
         
     println("Starting the solver...")  
 
+    solver = QNDF
+    
     if problem_type == "SS"
-        write(f, "\nODE solver: DynamicSS/QNDF\n\n")
+        write(f, "\nODE solver: DynamicSS/$solver\n\n")
         close(f)
         probSS = SteadyStateProblem{isinplace}(odefunc, nstart, params)
         sol = solve(probSS, DynamicSS(QNDF(), abstol=abs_tol, reltol=rel_tol), saveat=t_to_save, progress=true, save_everystep=false, dt=startdt,
-                #=abstol=abs_tol, reltol=rel_tol,=# isoutofdomain=(u,p,t)->any(x->x<0,u))
+                    #=abstol=abs_tol, reltol=rel_tol,=# isoutofdomain=(u,p,t)->any(x->x<0,u))
 
     elseif problem_type == "ODE"
-        write(f, "\nODE solver: QNDF\n\n")
+        write(f, "\nODE solver: $solver\n\n")
         close(f)
         probODE = ODEProblem(odefunc, nstart, tspan, params)
         sol = solve(probODE, QNDF(), saveat=t_to_save, progress=true, save_everystep=false, dt=startdt,
                 abstol=abs_tol, reltol=rel_tol, isoutofdomain=(u,p,t)->any(x->x<0,u))
+    elseif problem_type == "Gear"
+        write(f, "\nODE solver: Custom First Order Gear\n\n")
+        close(f)
+        sol = converge(atm_init, log_t_start, log_t_end)
     else
         throw("Invalid problem_type")
     end 
-   
 
     return sol 
 end
 
+################################################################################
+#                           NEW ROUTINES FROM MIKE                             #
+################################################################################
+
+function get_rates_and_jacobian(n, p, t)
+    # get the chemical rates and jacobian in a single call
+    
+    # Unpack the parameters ---------------------------------------------------------------
+    n_inactive, inactivesp, activesp, activellsp, activeslsp, Tn, Ti, Te, Tp, D_arr, = p 
+
+    if t / timestorage >= 10
+        f = open(results_dir*sim_folder_name*"/simulation_params_"*FNext*".txt", "a")
+        progress_alert = "reached timestep $(t) in $(format_sec_or_min(time() - ti))\n"
+        write(f, progress_alert)
+        close(f)
+        println(progress_alert) # prints present timestep, but only if it's a factor of 10 greater than the last stored timestep (so we don't get a trillion outputs)
+        global timestorage = t # updates the last stored timestep to repeat process
+        
+        # write out the current atmospheric state to a file 
+        ncur = merge(external_storage, unflatten_atm(n, activellsp, num_layers))
+        
+        plot_atm(ncur, [neutral_species, ion_species],
+                 results_dir*sim_folder_name*"/atm_peek_$(plotnum).png",
+                 plot_grid, speciescolor, speciesstyle, zmax, abs_tol_for_plot,
+                 t="$(round(t, sigdigits=2))")
+        write_atmosphere(ncur,
+                         results_dir*sim_folder_name*"/atm_dt=$(round(t, sigdigits=2)).h5",
+                         alt, num_layers)
+        global plotnum += 1
+    end
+
+    # retrieve the shortlived species from their storage and flatten them
+    n_short = flatten_atm(external_storage, activeslsp, num_layers)
+
+    # Update Jrates
+    n_cur_all = compile_ncur_all(n, n_short, n_inactive, activellsp, activeslsp, inactivesp)
+
+    update_Jrates!(n_cur_all)
+    # copy all the Jrates into an external dictionary for storage
+    for jr in Jratelist                # time for this is ~0.000005 s
+        global external_storage[jr] = n_cur_all[jr]
+    end
+
+    # Retrieve Jrates 
+    Jrates = deepcopy(ftype_ncur[external_storage[jr][ialt] for jr in Jratelist, ialt in 1:length(non_bdy_layers)])
+
+    # set the concentrations of species assumed to be in photochemical equilibrium. 
+    n_short_updated = set_concentrations!(external_storage, n, n_short, n_inactive, activellsp, activeslsp, inactivesp, Jrates, Tn, Ti, Te)
+    # for i in 1:2
+    #     n_short_updated = set_concentrations!(external_storage, n, n_short_updated, n_inactive, activellsp, activeslsp, inactivesp, Jrates, Tn, Ti, Te)
+    # end
+
+    # Get the updated transport coefficients, taking into account short-lived species update
+    updated_ncur_all = compile_ncur_all(n, n_short_updated, n_inactive, activellsp, activeslsp, inactivesp)
+    tlower, tup, tdown, tupper = update_transport_coefficients(transport_species, updated_ncur_all, activellsp, Tn, Tp, D_arr, Hs_dict, speciesbclist,
+                                                               all_species, neutral_species, transport_species, molmass, n_alt_index, polarizability, alt, num_layers, dz, Tprof_for_diffusion)
+
+    return (ratefn(n, n_short_updated, inactive, activellsp, activeslsp, inactivesp, Jrates, Tn, Ti, Te, tup, tdown, tlower, tupper),
+            chemJmat(n, n_short, n_inactive, activellsp, activeslsp, inactivesp, Jrates, Tn, Ti, Te, tup, tdown, tlower, tupper; dt=t) )# dt unused in chemJmat
+end
+
+using IterativeSolvers, IncompleteLU
+
+function solve_sparse(A, b)
+    LU = ilu(A, τ = 0.1) # get incomplete LU preconditioner
+    x = bicgstabl(A, b, 2, Pl = LU, reltol=1e-25)
+    return x
+end
+
+struct TooManyIterationsException <: Exception end
+
+function next_timestep(nstart, # concentrations before the timestep
+                       params, # parameters needed by ratefn and chemical jacobian at each timestep
+                       t,  # current time (only used to print output)
+                       dt; # timestep to be taken
+                       reltol = rel_tol, abstol = abs_tol_ppm #= relative and absolute tolerances on solution =#)
+    # moves to the next timestep using Newton's method on the linearized
+    # coupled transport and chemical reaction network.
+
+    # absolute and relative tolerance on rate update
+    f_abstol = 1e-2 #sqrt(abstol)
+    #    f_reltol = sqrt(reltol)
+    
+    # assume concentrations after timestep are similar to those before
+    nthis = deepcopy(nstart)
+    dndt = 0.0*deepcopy(nthis)
+    
+    converged = false
+    iter = 0
+    while !converged
+        println("iter = $iter")
+        if iter>10; throw(TooManyIterationsException); end;
+        
+        nold = deepcopy(nthis)
+        
+        # we perform an update using newton's method on
+        #     f = nthis - nstart - dt*dndt
+        
+        # to do this we need the rates, dndt, and the jacobian of fval,
+        #     d(fval)/d(nthis) = I - dt*chemJ
+        dndt, chemJ = get_rates_and_jacobian(nthis, params, t)
+
+        # we want fval = 0, corresponding to a good update
+        fval = nthis - nstart - dt*dndt
+
+        # construct the update matrix
+        identity = sparse(I, length(nthis), length(nthis))
+        updatemat = identity - dt*chemJ
+
+        # now we can update using newton's mehod,
+        # n_i+1 = n_i - f(n_i)/f'(n_i)
+        nthis = nthis - solve_sparse(updatemat, fval)
+
+        # restrict values to be positive definite
+        nthis[nthis .< 0.] .= 0.
+        
+        # check for convergence
+        check_n_abserr = (nthis .<= abstol) .|| (nold .<= abstol) .|| (abs.(nthis - nold) .<= abstol)
+        n_relerr = abs.(nthis-nold)./nold
+        println("max(n_relerr) = $(max(n_relerr[.!check_n_abserr]...))")
+        check_n_relerr = n_relerr .< reltol
+
+        # check_f_abserr = (abs.(fval) .<= f_abstol)
+        # println("max(fval) = $(max(fval...))\n")
+        # f_relerr = abs.(fval./(dt*dndt)) # maybe should measure relative to nstart
+        # if length(f_relerr[.!check_f_abserr]) > 0
+        #     println("max(f_relerr) = $(max(f_relerr[.!check_f_abserr]...))\n")
+        # else
+        #     println("max(f_relerr) = 0.0\n")
+        # end
+        # check_f_relerr = f_relerr .< f_reltol
+        
+        converged = all(check_n_relerr .|| check_n_abserr) # && all(check_f_abserr[.!check_n_abserr])# .|| check_f_relerr))
+        
+        iter += 1
+    end
+
+    return nthis
+end
+
+
+function update(n_current::Dict{Symbol, Array{ftype_ncur, 1}}, t, dt)
+    # update n_current using the coupled reaction network, moving to
+    # the next timestep
+
+    # println("n_current[:O] = $(n_current[:O])")
+
+    # global params for simulation
+    params = [inactive,
+              inactive_species,
+              active_species,
+              active_longlived, active_shortlived,
+              Tn_arr, Ti_arr, Te_arr, Tplasma_arr,
+              Dcoef_arr_template]
+
+    # get current long-lived species concentrations
+    nstart = flatten_atm(n_current, active_longlived, num_layers)
+
+    # update to next timestep
+    nend = next_timestep(nstart, params, t, dt)
+    #    println("max(nend-nstart) = $(max((nend-nstart)...))")
+
+    # retrieve the shortlived species from their storage and flatten them
+    n_short = flatten_atm(external_storage, active_shortlived, num_layers)  
+
+    n_current = compile_ncur_all(nend, n_short, inactive, active_longlived, active_shortlived, inactive_species)
+    # ensure Jrates are included in n_current
+    update_Jrates!(n_current)
+
+    # println("n_current[:O] = $(n_current[:O])")
+
+    return n_current
+end
+
+
+function converge(n_current::Dict{Symbol, Array{ftype_ncur, 1}},
+                  log_t_start=-3, log_t_end=16, n_steps=800)
+    # # update in logarithmiclly spaced timesteps until convergence, returning converged atmosphere
+    # log_time_steps = 10. .^(range(log_t_start, stop=log_t_end, length=n_steps))
+
+    dt = 10.0^log_t_start
+    
+    total_time = 0.0
+    goodsteps = 0
+    goodstep_limit = 1
+    goodfactor = 2.0
+    failfactor = 10.0
+    while dt < 10.0^log_t_end
+        total_time += dt
+        println("t  = $total_time")
+        println("dt = $dt")
+        n_old = deepcopy(n_current)
+        try
+            n_current = update(n_current, total_time, dt)
+            goodsteps += 1
+            if goodsteps >= goodstep_limit
+                dt *= goodfactor
+                goodsteps = 0
+            end
+        catch e
+            if e == TooManyIterationsException
+                total_time -= dt
+                dt = dt/failfactor
+                goodsteps = 0
+            else
+                rethrow(e)
+            end
+        end
+        println("max(n_current-n_old) = $(max([max((abs.(n_current[sp] - n_old[sp]))...) for sp in all_species]...))\n\n")
+    end
+    
+    return n_current
+end
 
 ################################################################################
 #                                  MAIN SETUP                                  #
@@ -1199,25 +1419,24 @@ plot_water_profile(H2Oinitfrac, HDOinitfrac, n_current[:H2O], n_current[:HDO], r
 
 # Absolute tolerance
 # calculates 1 ppt of the total density at each altitude.
-const abs_tol_vec = 1e-12 .* [[n_tot(n_current, a, all_species) for sp in active_longlived, a in non_bdy_layers]...] 
-const abs_tol_for_plot = 1e-12 .* n_tot(n_current, all_species)
+const abs_tol_ppm = 1e-12 # absolute tolerance in ppm, used by Gear solver
+const abs_tol_rel = 1e-12 # absolute tolerance relative to total atmosphere density, used by DifferentialEquations.jl solvers
+const abs_tol_vec = abs_tol_rel .* [[n_tot(n_current, a, all_species) for sp in active_longlived, a in non_bdy_layers]...] 
 
+if problem_type == "Gear"
+    const abs_tol_for_plot = fill(1e-12, length(n_tot(n_current, all_species)))
+else
+    const abs_tol_for_plot = 1e-12 .* n_tot(n_current, all_species)
+end
+    
 # Plot initial atmosphere condition  ===========================================
 println("Plotting the initial condition")
-plot_atm(n_current, [neutral_species, ion_species], results_dir*sim_folder_name*"/initial_atmosphere.png", plot_grid, speciescolor, speciesstyle, zmax, abs_tol_for_plot)
+plot_atm(n_current, [neutral_species, ion_species],
+         results_dir*sim_folder_name*"/initial_atmosphere.png", plot_grid, speciescolor, speciesstyle, zmax, abs_tol_for_plot,
+         t="initial state")
 
 # Create a list to keep track of stiffness ratio ===============================
 # const stiffness = []
-
-# Record setup time
-t6 = time()
-
-f = open(results_dir*sim_folder_name*"/simulation_params_"*FNext*".txt", "a")
-write(f, "Setup time $(format_sec_or_min(t6-t5))\n")
-close(f)
-
-# do the convergence ===========================================================
-println("Beginning Convergence")
 
 # Timesteps
 const mindt = dt_min_and_max[converge_which][1]
@@ -1226,8 +1445,51 @@ times_to_save = [10.0^t for t in mindt:maxdt]
 timestorage = times_to_save[1] / 10  # This variable lets us periodically print the timestep being worked on for tracking purposes
 plotnum = 1 # To order the plots for each timestep correctly in the folder so it's easy to page through them.
 
+# Record setup time
+t6 = time()
+
+f = open(results_dir*sim_folder_name*"/simulation_params_"*FNext*".txt", "a")
+write(f, "Setup time $(format_sec_or_min(t6-t5))\n")
+close(f)
+
+# compile and call the jacobian =================================================
+# This takes a long time (~30 min) when running with Double64, move the first call outside evolve_atmosphere
+if problem_type == "Gear"
+    println("Compiling and calling the chemical jacobian outside evolve_atmosphere (this will take ~45 min)...")
+
+    # Set up the initial state and check for any problems 
+    nstart = flatten_atm(n_current, active_longlived, num_layers)
+    find_nonfinites(nstart, collec_name="nstart")
+
+    # Set up parameters    
+    Dcoef_arr_template = zeros(size(Tn_arr))  # For making diffusion coefficient calculation go faster 
+    params = [inactive, inactive_species, active_species, active_longlived, active_shortlived, Tn_arr, Ti_arr, Te_arr, 
+              Tplasma_arr, Dcoef_arr_template]
+    params_exjac = deepcopy(params)  # I think this is so the Dcoef doesn't get filled in with the wrong info?
+
+    # Call the expensive rate function
+    t_before_jac = time()
+    dndt, example_jacobian = get_rates_and_jacobian(nstart, params_exjac, 0.0)
+    t_after_jac = time()
+    println("...finished.\n")
+    println("First jacobian compile+call took $(format_sec_or_min(t_after_jac-t_before_jac))\n")
+
+    find_nonfinites(dndt, collec_name="example_rates")
+    find_nonfinites(example_jacobian, collec_name="example_jacobian")
+
+    println("Time to beginning convergence is $(format_sec_or_min(time()-t_before_jac))\n\n")
+end
+
+# Usually I split everthing below this out into a separate file and
+# load the above into an interactive session -Mike
+
+# do the convergence ===========================================================
+println("Beginning Convergence")
+
 # Pack the global variables and send them through for faster code!
 ti = time()
+timestorage = times_to_save[1] / 10  # This variable lets us periodically print the timestep being worked on for tracking purposes
+plotnum = 1 # To order the plots for each timestep correctly in the folder so it's easy to page through them.
 atm_soln = evolve_atmosphere(n_current, mindt, maxdt, t_to_save=times_to_save)
 tf = time() 
 
@@ -1287,6 +1549,15 @@ elseif problem_type == "ODE"
         end
         global i += 1 
     end
+elseif problem_type == "Gear"
+    nc_all = atm_soln # this solver returns a standard dictionary rather than a matrix like the other solvers
+
+    plot_atm(nc_all, [neutral_species, ion_species], results_dir*sim_folder_name*"/final_atmosphere.png", t="final converged state", plot_grid, 
+             speciescolor, speciesstyle, zmax, abs_tol_for_plot)
+
+    # Write out final atmosphere
+    write_atmosphere(nc_all, results_dir*sim_folder_name*"/"*final_atm_file, alt, num_layers)   # write out the final state to a specially named file
+
 else
     throw("Invalid problem_type")
 end 
@@ -1303,5 +1574,11 @@ write(f, "Simulation total runtime $(format_sec_or_min(t7-t1))\n")
 
 close(f)
 
+n_converged = get_ncurrent("/home/mike/Documents/Mars/Photochemistry/eryn_ions_2021Dec/Code/converged_gear_20211231.h5")
 
-
+# Pack the global variables and send them through for faster code!
+ti = time()
+timestorage = times_to_save[1] / 10  # This variable lets us periodically print the timestep being worked on for tracking purposes
+plotnum = 1 # To order the plots for each timestep correctly in the folder so it's easy to page through them.
+atm_soln = evolve_atmosphere(n_converged, mindt, maxdt, t_to_save=times_to_save)
+tf = time() 
