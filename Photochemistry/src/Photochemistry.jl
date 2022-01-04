@@ -37,7 +37,8 @@ export # Basic utility functions
        # Water profile functions  
        Psat, Psat_HDO         
 
-code_loc = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/"
+code_loc = "$(@__DIR__)/../../"
+println("Photochemistry.jl code_loc = $code_loc")
 include(code_loc*"CUSTOMIZATIONS.jl") 
 include(code_loc*"CONSTANTS.jl")
                                                                                 
@@ -89,7 +90,7 @@ function delete_old_h5file(filename::String)
     end
 end
 
-function deletefirst(A::Array, v)
+function deletefirst(A, v)
     #=
     returns: list A with its first element equal to v removed. Used to make the derivative for 
     the chemical jacboian 
@@ -124,14 +125,14 @@ function format_chemistry_string(reactants::Array{Symbol}, products::Array{Symbo
     return string(join(reactants, " + ")) * " --> " * string(join(products, " + "))
 end
 
-function format_sec_or_min(t::Float64) 
+function format_sec_or_min(t) 
     #=
     Takes a time value t in seconds and formats it to read as H,M,S.
     =#
 
-    thehour = div(t, 3600)
-    themin = div(t%3600, 60)
-    thesec = round(t%3600 - (themin*60), digits=1)
+    thehour = div(t, 3600.)
+    themin = div(t%3600., 60.)
+    thesec = round(t%3600. - (themin*60.), digits=1)
 
     return "$(thehour) hours, $(themin) minutes, $(thesec) seconds"
 end
@@ -169,7 +170,7 @@ function input(prompt::String="")::String
     return chomp(readline())
 end
 
-function logrange(x1::Float64, x2::Float64, n::Int64)
+function logrange(x1, x2, n::Int64)
     #=
     Equivalent to python's logspace, returns a generator with entries that
     are powers of 10.
@@ -282,7 +283,7 @@ end
 #                                                                              #
 # **************************************************************************** #
 
-function atm_dict_to_matrix(atmdict::Dict{Symbol, Vector{Float64}}, species_list::Array)
+function atm_dict_to_matrix(atmdict::Dict{Symbol, Vector{ftype_ncur}}, species_list)
     #=
     Converts atmospheric state dictionary atmdict to a matrix,
     such that rows correspond to species in the order listed in species_list
@@ -299,19 +300,19 @@ function atm_dict_to_matrix(atmdict::Dict{Symbol, Vector{Float64}}, species_list
     return n_mat
 end
 
-function atm_matrix_to_dict(n_matrix::Array, species_list::Array)
+function atm_matrix_to_dict(n_matrix, species_list)
     #=
     Input:
         n_matrix: matrix of the atmospheric state
     Output:
         dictionary for only the species in species_list
     =#
-    atmdict = Dict{Symbol, Vector{Float64}}([species_list[k]=>n_matrix[k, :] for k in 1:length(species_list)])
+    atmdict = Dict{Symbol, Vector{ftype_ncur}}([species_list[k]=>n_matrix[k, :] for k in 1:length(species_list)])
     
     return atmdict
 end
 
-function column_density(n::Vector{Float64})
+function column_density(n)
     #=
     Input
         n: species number density (#/cm³) by altitude
@@ -321,7 +322,7 @@ function column_density(n::Vector{Float64})
     return sum(n .* dz)
 end
 
-function flatten_atm(atmdict::Dict{Symbol, Vector{Float64}}, species_list::Array, numlyrs::Int64) # params to pass
+function flatten_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, species_list, numlyrs::Int64) # params to pass
     #=
     Input:
         atmdict: atmospheric densities by altitude
@@ -332,7 +333,7 @@ function flatten_atm(atmdict::Dict{Symbol, Vector{Float64}}, species_list::Array
     This function is the reverse of unflatten_atm. 
     =#
 
-    return deepcopy(Float64[[atmdict[sp][ialt] for sp in species_list, ialt in 1:numlyrs]...])
+    return deepcopy(ftype_ncur[[atmdict[sp][ialt] for sp in species_list, ialt in 1:numlyrs]...])
 end
 
 function get_ncurrent(readfile::String)
@@ -352,7 +353,7 @@ function get_ncurrent(readfile::String)
         global n_current_mat = h5read(readfile,"ncur/ncur_mat");
     end
     
-    n_current = Dict{Symbol, Array{Float64, 1}}()
+    n_current = Dict{Symbol, Array{ftype_ncur, 1}}()
 
     for ispecies in [1:length(n_current_tag_list);]
         n_current[n_current_tag_list[ispecies]] = reshape(n_current_mat[:,ispecies], length(n_current_mat[:, ispecies]))
@@ -360,12 +361,12 @@ function get_ncurrent(readfile::String)
     return n_current
 end
 
-function meanmass(atmdict::Dict{Symbol, Vector{Float64}}, z::Float64, allsp::Array)   # params to pass
+function meanmass(atmdict::Dict{Symbol, Vector{ftype_ncur}}, z, allsp)   # params to pass
     #= 
     find the mean molecular mass at a given altitude z
 
     atmdict: species number density by altitude
-    z: Float64; altitude in atmosphere in cm
+    z: float; altitude in atmosphere in cm
 
     return: mean molecular mass in amu
     =#
@@ -375,7 +376,7 @@ function meanmass(atmdict::Dict{Symbol, Vector{Float64}}, z::Float64, allsp::Arr
     return sum(c.*m)/sum(c)
 end
 
-function meanmass(atmdict::Dict{Symbol, Vector{Float64}}, allsp::Array, mmass::Dict{Symbol, Int64}) # params to pass
+function meanmass(atmdict::Dict{Symbol, Vector{ftype_ncur}}, allsp, mmass::Dict{Symbol, Int64}) # params to pass
     #= 
     Override for vector form. Calculates mean molecular mass at all atmospheric layers.
 
@@ -397,7 +398,7 @@ function meanmass(atmdict::Dict{Symbol, Vector{Float64}}, allsp::Array, mmass::D
     return weighted_mm ./ n_tot(atmdict, allsp)
 end
 
-function ncur_with_boundary_layers(atmdict_no_bdys::Dict{Symbol, Vector{Float64}}, allsp::Array) # params to pass
+function ncur_with_boundary_layers(atmdict_no_bdys::Dict{Symbol, Vector{ftype_ncur}}, allsp) # params to pass
     #=
     Here's a weird one. The atmospheric density matrix stores values for each
     species (column of the matrix) at each altitude (row of the matrix) of the atmosphere. 
@@ -422,7 +423,7 @@ function ncur_with_boundary_layers(atmdict_no_bdys::Dict{Symbol, Vector{Float64}
     # This gets a sorted list of the clamped indices, so it's [1, 1, 2, 3...end-1, end, end].
     clamped_n_alt_index = sort(collect(values(n_alt_index)))
     
-    atmdict_with_bdy_layers = Dict{Symbol, Vector{Float64}}()
+    atmdict_with_bdy_layers = Dict{Symbol, Vector{ftype_ncur}}()
     
     # Fill the dictionary with the profile. This duplicates the lowest and highest altitude values.
     for i in 1:length(allsp)
@@ -431,7 +432,7 @@ function ncur_with_boundary_layers(atmdict_no_bdys::Dict{Symbol, Vector{Float64}
     return atmdict_with_bdy_layers
 end
 
-function n_tot(atmdict::Dict{Symbol, Vector{Float64}}, z::Float64, allsp::Array) # params to pass
+function n_tot(atmdict::Dict{Symbol, Vector{ftype_ncur}}, z, allsp) # params to pass
     #= 
     Calculates total atmospheric density at altitude z.
 
@@ -445,7 +446,7 @@ function n_tot(atmdict::Dict{Symbol, Vector{Float64}}, z::Float64, allsp::Array)
     return sum( [atmdict[s][thisaltindex] for s in allsp] )
 end
 
-function n_tot(atmdict::Dict{Symbol, Vector{Float64}}, allsp::Array) # params to pass
+function n_tot(atmdict::Dict{Symbol, Vector{ftype_ncur}}, allsp) # params to pass
     #= 
     Override to calculate total atmospheric density at all altitudes.
 
@@ -468,7 +469,7 @@ function n_tot(atmdict::Dict{Symbol, Vector{Float64}}, allsp::Array) # params to
     return vec(sum(ndensities, dims=1)) 
 end
 
-function precip_microns(sp, sp_profile, allsp::Array, dz::Float64, alts::Array, mmass::Dict{Symbol, Int64})
+function precip_microns(sp, sp_profile, allsp, dz, alts, mmass::Dict{Symbol, Int64})
     #=
     Calculates precipitable microns of a species in the atmosphere.
     I guess you could use this for anything but it's probably only correct for H2O and HDO.
@@ -488,7 +489,7 @@ function precip_microns(sp, sp_profile, allsp::Array, dz::Float64, alts::Array, 
     return pr_microns
 end
 
-function unflatten_atm(n_vec::Vector, species_list::Array, numlyrs::Int64) # params to pass
+function unflatten_atm(n_vec, species_list, numlyrs) # params to pass
     #=
     Input:
         n_vec: flattened density vector for the species in species_list: [n_sp1(z=0), n_sp2(z=0)...n_sp1(z=250)...n_spN(z=250)] 
@@ -502,7 +503,7 @@ function unflatten_atm(n_vec::Vector, species_list::Array, numlyrs::Int64) # par
     return atm_matrix_to_dict(n_matrix, species_list)
 end
 
-function write_atmosphere(atmdict::Dict{Symbol, Vector{Float64}}, filename::String, alts::Vector{Float64}, numlyrs::Int64) # params to pass 
+function write_atmosphere(atmdict::Dict{Symbol, Vector{ftype_ncur}}, filename::String, alts, numlyrs::Int64) # params to pass 
     #=
     Writes out the current atmospheric state to an .h5 file
 
@@ -514,7 +515,7 @@ function write_atmosphere(atmdict::Dict{Symbol, Vector{Float64}}, filename::Stri
     atm_mat = Array{Float64}(undef, numlyrs, length(collect(keys(atmdict))));
     for ispecies in [1:length(collect(keys(atmdict)));]
         for ialt in [1:numlyrs;]
-            atm_mat[ialt, ispecies] = atmdict[collect(keys(atmdict))[ispecies]][ialt]
+            atm_mat[ialt, ispecies] = convert(Float64, atmdict[collect(keys(atmdict))[ispecies]][ialt])
         end
     end
     delete_old_h5file(filename)
@@ -581,8 +582,8 @@ function get_grad_colors(L::Int64, cmap; strt=0, stp=1)
     return c
 end
 
-function plot_atm(atmdict::Dict{Symbol, Vector{Float64}}, species_lists::Vector{Vector{Any}}, savepath::String, # params to pass
-                  plotalts::Vector{Float64}, scolor::Dict{Symbol, String}, sstyle::Dict{Symbol, String}, zmax::Float64, atol::Vector{Float64}; 
+function plot_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, species_lists::Vector{Vector{Any}}, savepath::String, # params to pass
+                  plotalts, scolor::Dict{Symbol, String}, sstyle::Dict{Symbol, String}, zmax, atol; 
                   t="", showonly=false, xlab="", xlim_1=(1e-12, 1e18), xlim_2=(1e-5, 1e5))
     #=
     Makes a "spaghetti plot" of the species concentrations by altitude in the
@@ -686,13 +687,13 @@ function plot_atm(atmdict::Dict{Symbol, Vector{Float64}}, species_lists::Vector{
         
         # plot the neutrals according to logical groups -------------------------------------------------------
         for sp in species_lists[1]
-            atm_ax[axes_by_sp[sp], 1].plot(atmdict[sp], plotalts, color=get(scolor, sp, "black"),
+            atm_ax[axes_by_sp[sp], 1].plot(convert(Array{Float64}, atmdict[sp]), plotalts, color=get(scolor, sp, "black"),
                                            linewidth=2, label=sp, linestyle=get(sstyle, sp, "-"), zorder=10)
         end
         
         # plot the ions according to logical groups ------------------------------------------------------------
         for sp in species_lists[2]
-            atm_ax[axes_by_sp[sp], 2].plot(atmdict[sp], plotalts, color=get(scolor, sp, "black"),
+            atm_ax[axes_by_sp[sp], 2].plot(convert(Array{Float64}, atmdict[sp]), plotalts, color=get(scolor, sp, "black"),
                                            linewidth=2, label=sp, linestyle=get(sstyle, sp, "-"), zorder=10)
         end
 
@@ -711,7 +712,7 @@ function plot_atm(atmdict::Dict{Symbol, Vector{Float64}}, species_lists::Vector{
         atm_fig, atm_ax = subplots(figsize=(16,6))
         tight_layout()
         for sp in species_lists[1]
-            atm_ax.plot(atmdict[sp], plotalts, color=get(scolor, sp, "black"),
+            atm_ax.plot(convert(Array{Float64}, atmdict[sp]), plotalts, color=get(scolor, sp, "black"),
                         linewidth=2, label=sp, linestyle=get(sstyle, sp, "-"), zorder=1)
             atm_ax.set_xlim(xlim_1[1], xlim_1[2])
             atm_ax.set_ylabel("Altitude [km]")
@@ -750,7 +751,7 @@ function plot_bg(axob)
     end
 end
 
-function plot_extinction(solabs, path::String, dt::Float64, iter::Int64, zmax=zmax; # Not currently called. params to pass
+function plot_extinction(solabs, path::String, dt, iter::Int64, zmax=zmax; # Not currently called. params to pass
                          tauonly=false, xsect_info=nothing, solflux=nothing) 
     #=
     Used to plot the extinction in the atmosphere by wavelength and altitude
@@ -838,8 +839,8 @@ function plot_extinction(solabs, path::String, dt::Float64, iter::Int64, zmax=zm
     close(fig)
 end
 
-function plot_Jrates(sp, atmdict::Dict{Symbol, Vector{Float64}}, Tn::Vector{Float64}, Ti::Vector{Float64}, Te::Vector{Float64}, bcdict::Dict{Symbol, Matrix{Any}}, # Not currently called. params to pass
-                     allsp::Array, ionsp::Array, rxnnet::Array, numlyrs::Int64, plotalts::Array, results_dir::String; 
+function plot_Jrates(sp, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Ti, Te, bcdict::Dict{Symbol, Matrix{Any}}, # Not currently called. params to pass
+                     allsp, ionsp, rxnnet, numlyrs::Int64, plotalts, results_dir::String; 
                      filenameext="")
     #=
     Plots the Jrates for each photodissociation or photoionizaiton reaction. Override for small groups of species.
@@ -900,11 +901,11 @@ function plot_Jrates(sp, atmdict::Dict{Symbol, Vector{Float64}}, Tn::Vector{Floa
     show()
 end
 
-function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{Float64}}, Tn::Vector{Float64}, Ti::Vector{Float64}, Te::Vector{Float64}, Tp::Vector{Float64}, # params to pass
-                   bcdict::Dict{Symbol, Matrix{Any}}, rxnnet::Array, 
-                   allsp::Array, ionsp::Array, transsp::Array, chemsp::Array, mmass::Dict{Symbol, Int64}, alts::Array, n_alt_index::Dict, dz::Float64, 
-                   polar::Dict{Symbol, Float64}, numlyrs::Int64, plotalts::Vector{Float64}, 
-                   results_dir::String, T_for_Hs::Dict{String, Vector{Float64}}, T_for_diff::Dict{String, Vector{Float64}}; 
+function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Ti, Te, Tp, # params to pass
+                   bcdict::Dict{Symbol, Matrix{Any}}, rxnnet, 
+                   allsp, ionsp, transsp, chemsp, mmass::Dict{Symbol, Int64}, alts, n_alt_index::Dict, dz, 
+                   polar::Dict{Symbol, Float64}, numlyrs::Int64, plotalts, 
+                   results_dir::String, T_for_Hs::Dict{String, Vector{Any}}, T_for_diff::Dict{String, Vector{Any}}; 
                    shown_rxns=nothing, subfolder="", plotsfolder="", dt=nothing, num="", extra_title="", 
                    plot_timescales=false, plot_total_rate_coefs=false, showonly=false)
     #=
@@ -1173,7 +1174,7 @@ function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{Float64}}, Tn::Vecto
     end
 end
 
-function plot_temp_prof(n_temps::Vector{Float64}, alts::Vector{Float64}; # params to pass
+function plot_temp_prof(n_temps, alts; # params to pass
                         i_temps=nothing, e_temps=nothing, savepath=nothing, showonly=false) 
     #=
     Creates a .png image of the tepmeratures plotted by altitude in the atmosphere
@@ -1245,8 +1246,8 @@ function plot_temp_prof(n_temps::Vector{Float64}, alts::Vector{Float64}; # param
     end
 end
 
-function plot_water_profile(H2Oinitf::Vector{Float64}, HDOinitf::Vector{Float64}, nH2O::Vector{Float64}, nHDO::Vector{Float64}, savepath::String, # params to pass
-                            plotalts::Vector{Float64}; 
+function plot_water_profile(H2Oinitf, HDOinitf, nH2O, nHDO, savepath::String, # params to pass
+                            plotalts; 
                             showonly=false, watersat=nothing) 
     #=
     Plots the water profile in mixing ratio and number densities, in two panels.
@@ -1271,8 +1272,8 @@ function plot_water_profile(H2Oinitf::Vector{Float64}, HDOinitf::Vector{Float64}
     ax1col = "#88527F"
     
     # mixing ratio in PPM axis
-    ax.semilogx(H2Oinitf/1e-6, plotalts, color=ax1col, linewidth=2)
-    ax.semilogx(HDOinitf/1e-6, plotalts, color=ax1col, linestyle="--", linewidth=2)
+    ax.semilogx(convert(Array{Float64}, H2Oinitf)/1e-6, plotalts, color=ax1col, linewidth=2)
+    ax.semilogx(convert(Array{Float64}, HDOinitf)/1e-6, plotalts, color=ax1col, linestyle="--", linewidth=2)
     ax.set_xlabel("Volume Mixing Ratio [ppm]", color=ax1col)
     ax.set_ylabel("Altitude [km]")
     ax.tick_params(axis="x", labelcolor=ax1col)
@@ -1287,8 +1288,8 @@ function plot_water_profile(H2Oinitf::Vector{Float64}, HDOinitf::Vector{Float64}
     ax2 = ax.twiny()
     ax2col = "#429EA6" 
     ax2.tick_params(axis="x", labelcolor=ax2col)
-    ax2.semilogx(nH2O, plotalts, color=ax2col, linewidth=2, label=L"H$_2$O")
-    ax2.semilogx(nHDO, plotalts, color=ax2col, linestyle="--", linewidth=2, label="HDO")
+    ax2.semilogx(convert(Array{Float64}, nH2O), plotalts, color=ax2col, linewidth=2, label=L"H$_2$O")
+    ax2.semilogx(convert(Array{Float64}, nHDO), plotalts, color=ax2col, linestyle="--", linewidth=2, label="HDO")
     ax2.set_xlabel(L"Number density [cm$^{-3}$]", color=ax2col, y=1.07)
     ax2.set_xticks(collect(logrange(1e-4, 1e16, 6)))
     for side in ["top", "bottom", "left", "right"]
@@ -1307,8 +1308,8 @@ function plot_water_profile(H2Oinitf::Vector{Float64}, HDOinitf::Vector{Float64}
     if watersat != nothing
         fig, ax = subplots(figsize=(6,9))
         plot_bg(ax)
-        semilogx(H2Oinitf, plotalts, color=ax1col, linewidth=3, label=L"H$_2$O initial fraction")
-        semilogx(watersat[2:end-1], plotalts, color="black", alpha=0.5, linewidth=3, label=L"H$_2$O saturation")
+        semilogx(convert(Array{Float64}, H2Oinitf), plotalts, color=ax1col, linewidth=3, label=L"H$_2$O initial fraction")
+        semilogx(convert(Array{Float64}, watersat[2:end-1]), plotalts, color="black", alpha=0.5, linewidth=3, label=L"H$_2$O saturation")
         xlabel("Mixing ratio", fontsize=18)
         ylabel("Altitude [km]", fontsize=18)
         title(L"H$_2$O saturation fraction", fontsize=20)
@@ -1323,11 +1324,11 @@ end
 #                        Boundary condition functions                          #
 #                                                                              #
 # **************************************************************************** #
-function boundaryconditions(fluxcoef_dict::Dict, bcdict::Dict{Symbol, Matrix{Any}}, allsp::Array, notranssp::Array, dz::Float64) # params to pass
+function boundaryconditions(fluxcoef_dict::Dict, bcdict::Dict{Symbol, Matrix{Any}}, allsp, notranssp, dz) # params to pass
     #= 
     Inputs:
         fluxcoef_dict: a dictionary containing the K and D flux coefficients for every species throughout
-                       the atmosphere. Format species=>Array{Float64}(length(all_species), length(alt)).
+                       the atmosphere. Format species=>Array(length(all_species), length(alt)).
         bcdict: Boundary conditions dictionary specified in parameters file
     Outputs:
         boundary conditions for species in the format:
@@ -1338,7 +1339,7 @@ function boundaryconditions(fluxcoef_dict::Dict, bcdict::Dict{Symbol, Matrix{Any
     
     # This is where we will store all the boundary condition numbers in the format that the code
     # understands.
-    bc_dict = Dict{Symbol, Array{Float64}}([s=>[0 0; 0 0] for s in allsp])
+    bc_dict = Dict{Symbol, Array{ftype_ncur}}([s=>[0 0; 0 0] for s in allsp])
 
     for s in allsp
         # retrieves user-supplied boundary conditions. When unsupplied, falls back to flux = 0 at both boundaries.
@@ -1354,7 +1355,7 @@ function boundaryconditions(fluxcoef_dict::Dict, bcdict::Dict{Symbol, Matrix{Any
         # n_b  -> NULL (first rate, depends on species concentration)
         # NULL -> n_b  (second rate, independent of species concentration)
         # note these are chemical equations not indicating atmospheric layers!
-        bcvec = Float64[0 0; 0 0]
+        bcvec = ftype_ncur[0 0; 0 0]
         # the signs on these are the opposite of what you expect because it is necessary to 
         # encode loss in production equations and vice versa.
         # in first element, negative means you're adding something, and vice versa.
@@ -1402,7 +1403,7 @@ function boundaryconditions(fluxcoef_dict::Dict, bcdict::Dict{Symbol, Matrix{Any
     return bc_dict
 end
 
-function effusion_velocity(Texo::Float64, m::Float64, zmax::Float64) # params to pass
+function effusion_velocity(Texo, m, zmax) # params to pass
     #=
     Returns effusion velocity for a species in cm/s
 
@@ -1466,8 +1467,8 @@ These coefficients then describe the diffusion velocity at the top
 and bottom of the atmosphere.
 =#
 
-function Dcoef!(D_arr::Array, T_arr::Vector{Float64}, sp::Symbol, atmdict::Dict{Symbol, Vector{Float64}}, bcdict::Dict{Symbol, Matrix{Any}}, # params to pass
-                allsp::Array, mmass::Dict{Symbol, Int64}, polarizability::Dict{Symbol, Float64}, neutralsp::Array) 
+function Dcoef!(D_arr, T_arr, sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, bcdict::Dict{Symbol, Matrix{Any}}, # params to pass
+                allsp, mmass::Dict{Symbol, Int64}, polarizability::Dict{Symbol, Float64}, neutralsp) 
     #=
     Calculates the molecular diffusion coefficient for an atmospheric layer.
     For neutrals, returns D = AT^s/n, from Banks and Kockarts Aeronomy, part B, pg 41, eqn 
@@ -1545,8 +1546,8 @@ diffparams(s) = get(Dict(:H=>[8.4, 0.597], :H2=>[2.23, 0.75],
                              :Dpl=>[5.98, 0.597], :HDpl=>[1.84, 0.75]),
                         s,[1.0, 0.75])
 
-function fluxcoefs(sp::Symbol, z::Array, dz, Kv::Array, Dv::Dict{Symbol, Vector{Float64}}, Tv_n::Array, Tv_p::Array, # Checked - global free
-                       Hsv::Dict{Symbol, Vector{Float64}}, H0v::Dict{String, Vector{Float64}}) 
+function fluxcoefs(sp::Symbol, z, dz, Kv, Dv, Tv_n, Tv_p, # Checked - global free
+                   Hsv, H0v) 
     #= 
     base function to generate flux coefficients of the transport network. 
     
@@ -1555,7 +1556,7 @@ function fluxcoefs(sp::Symbol, z::Array, dz, Kv::Array, Dv::Dict{Symbol, Vector{
     Inputs:
         sp: species symbol 
         z: altitude in cm.
-        dz: Float64; altitude layer thickness ("resolution")
+        dz: altitude layer thickness ("resolution")
         for all the following, length = num_layers 
         Kv: eddy diffusion coefficient
         Dv: molecular diffusion coefficient
@@ -1665,8 +1666,8 @@ function fluxcoefs(sp::Symbol, z::Array, dz, Kv::Array, Dv::Dict{Symbol, Vector{
             sumeddyu .- gravthermalu # up; negative because gravity points down. I think that's why.
 end
 
-function fluxcoefs(species_list::Array, T_neutral::Vector{Float64}, T_plasma::Vector{Float64}, K::Vector{Float64}, D::Dict{Symbol, Vector{Float64}}, # params to pass
-                   H0::Dict{String, Vector{Float64}}, Hs::Dict{Symbol, Vector{Float64}}, alts::Array, dz::Float64) 
+function fluxcoefs(species_list::Vector{Any}, T_neutral, T_plasma, K, D, # params to pass
+                   H0, Hs, alts, dz) 
     #=
     New optimized version of fluxcoefs that calls the lower level version of fluxcoefs,
     producing a dictionary that contains both up and down flux coefficients for each layer of
@@ -1695,7 +1696,7 @@ function fluxcoefs(species_list::Array, T_neutral::Vector{Float64}, T_plasma::Ve
     =#
     
     # the return dictionary: Each species has 2 entries for every layer of the atmosphere.
-    fluxcoef_dict = Dict{Symbol, Array{Float64}}([s=>fill(0., length(alts), 2) for s in species_list])
+    fluxcoef_dict = Dict{Symbol, Array{ftype_ncur}}([s=>fill(0., length(alts), 2) for s in species_list])
 
     for s in species_list
         layer_below_coefs, layer_above_coefs = fluxcoefs(s, alts, dz, K, D, T_neutral, T_plasma, Hs, H0) 
@@ -1730,10 +1731,10 @@ function flux_pos_and_neg(fluxarr)
     return pos, abs_val_neg
 end
 
-function get_flux(sp::Symbol, atmdict::Dict{Symbol, Vector{Float64}}, Tn::Vector{Float64}, Ti::Vector{Float64}, Te::Vector{Float64}, Tp::Vector{Float64},  # params to pass
+function get_flux(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Ti, Te, Tp,  # params to pass
                   bcdict::Dict{Symbol, Matrix{Any}}, 
-                  allsp::Array, neutralsp::Array, transsp::Array, mmass::Dict{Symbol,Int64}, alts::Vector{Float64}, n_alt_index::Dict, 
-                  polar::Dict{Symbol,Float64}, numlyrs::Int64, dz::Float64, T_for_Hs::Dict{String,Vector{Float64}}, T_for_diff::Dict{String,Vector{Float64}}) 
+                  allsp, neutralsp, transsp, mmass::Dict{Symbol,Int64}, alts, n_alt_index::Dict, 
+                  polar::Dict{Symbol,Float64}, numlyrs::Int64, dz, T_for_Hs::Dict{String,Vector{Any}}, T_for_diff::Dict{String,Vector{Any}}) 
     #=
 
     TODO: Having problems calling this? You moved sp to the first argument, that's probably why. 
@@ -1756,8 +1757,7 @@ function get_flux(sp::Symbol, atmdict::Dict{Symbol, Vector{Float64}}, Tn::Vector
     D_arr = zeros(size(Tn))
     Keddy_arr, H0_dict, Dcoef_dict = update_diffusion_and_scaleH(allsp, atmdict, Tn, Tp, D_arr, bcdict, allsp, neutralsp, 
                                                                  mmass, alts, n_alt_index, polar, T_for_diff)
-    Hs_dict = Dict{Symbol, Vector{Float64}}([sp=>scaleH(alts, sp, T_for_Hs[charge_type(sp)], molmass) for sp in allsp])  
-
+    Hs_dict = Dict{Symbol, Vector{ftype_ncur}}([sp=>scaleH(alts, sp, T_for_Hs[charge_type(sp)], molmass) for sp in allsp])  
     fluxcoefs_all = fluxcoefs(allsp, Tn, Tp, Keddy_arr, Dcoef_dict, H0_dict, Hs_dict, alts, dz)
     bc_dict = boundaryconditions(fluxcoefs_all, bcdict, allsp, setdiff(allsp, transsp), dz)
 
@@ -1766,7 +1766,7 @@ function get_flux(sp::Symbol, atmdict::Dict{Symbol, Vector{Float64}}, Tn::Vector
 
     bcs = bc_dict[sp]
     
-    net_bulk_flow = fill(convert(Float64, NaN), length(alt)-1)  # units #/cm^3/s; tracks the cell boundaries, of which there are length(alt)-1
+    net_bulk_flow = fill(convert(ftype_ncur, NaN), length(alt)-1)  # units #/cm^3/s; tracks the cell boundaries, of which there are length(alt)-1
 
     # We will calculate the net flux across each boundary, with sign indicating direction of travel.
     # First boundary is the boundary between the surface layer and the first atmospheric layer (alt = 1 km)
@@ -1785,9 +1785,9 @@ function get_flux(sp::Symbol, atmdict::Dict{Symbol, Vector{Float64}}, Tn::Vector
     return net_bulk_flow .* dz # now it is a flux. hurrah.
 end
 
-function get_transport_PandL_rate(sp::Symbol, atmdict::Dict{Symbol, Vector{Float64}}, Tn::Array, Ti::Array, Te::Array, Tp::Array, bcdict::Dict{Symbol, Matrix{Any}}, # params to pass
-                                  allsp::Array, neutralsp::Array, transsp::Array, mmass::Dict{Symbol,Int64}, alts::Array, n_alt_index::Dict, polar::Dict{Symbol,Float64}, dz::Float64, 
-                                  T_for_Hs, T_for_diff::Dict{String,Vector{Float64}}) 
+function get_transport_PandL_rate(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Ti, Te, Tp, bcdict::Dict{Symbol, Matrix{Any}}, # params to pass
+                                  allsp, neutralsp, transsp, mmass::Dict{Symbol,Int64}, alts, n_alt_index::Dict, polar::Dict{Symbol,Float64}, dz, 
+                                  T_for_Hs, T_for_diff::Dict{String,Vector{Any}}) 
     #=
     Input:
         sp: species for which to return the transport production and loss
@@ -1805,9 +1805,7 @@ function get_transport_PandL_rate(sp::Symbol, atmdict::Dict{Symbol, Vector{Float
     Keddy_arr, H0_dict, Dcoef_dict = update_diffusion_and_scaleH(allsp, atmdict, Tn, Tp, D_arr, bcdict, allsp, neutralsp, 
                                                                  mmass, alts, n_alt_index, polar, T_for_diff)
 
-    Hs_dict = Dict{Symbol, Vector{Float64}}([sp=>scaleH(alts, sp, T_for_Hs[charge_type(sp)], molmass) for sp in allsp]) 
-
-
+    Hs_dict = Dict{Symbol, Vector{ftype_ncur}}([sp=>scaleH(alts, sp, T_for_Hs[charge_type(sp)], molmass) for sp in allsp]) 
     fluxcoefs_all = fluxcoefs(allsp, Tn, Tp, Keddy_arr, Dcoef_dict, H0_dict, Hs_dict, alts, dz)
 
     # For the bulk layers only to make the loops below more comprehendable: 
@@ -1819,7 +1817,7 @@ function get_transport_PandL_rate(sp::Symbol, atmdict::Dict{Symbol, Vector{Float
     thesebcs = bc_dict[sp]
 
     # Fill array 
-    transport_PL = fill(convert(Float64, NaN), length(alts)-2)
+    transport_PL = fill(convert(ftype_ncur, NaN), length(alts)-2)
 
     # These are the derivatives, which should be what we want (check math)
     transport_PL[1] = ((atmdict[sp][2]*fluxcoefs_bulk_layers[sp][2, 1]  # in from layer above
@@ -1846,7 +1844,7 @@ function get_transport_PandL_rate(sp::Symbol, atmdict::Dict{Symbol, Vector{Float
     return transport_PL
 end
 
-function Keddy(z::Array, nt::Array)
+function Keddy(z, nt)
     #=
     Input:
         z: Altitude in cm
@@ -1894,7 +1892,7 @@ function scaleH(z::Vector{Float64}, sp::Symbol, T::Array, mmass) # params to pas
     return @. kB*T/(mm*mH*marsM*bigG)*(((z+radiusM))^2)
 end
 
-function scaleH(z::Vector{Float64}, atmdict::Dict{Symbol, Vector{Float64}}, T::Vector{Float64}, allsp::Array, mmass) # params to pass
+function scaleH(z::Vector{Float64}, atmdict::Dict{Symbol, Vector{ftype_ncur}}, T::Vector{Any}, allsp::Array, mmass) # params to pass
     #= 
     Input:
         z: altitudes in cm
@@ -1914,9 +1912,9 @@ thermaldiff(sp) = get(Dict(:H=>-0.25, :H2=>-0.25, :D=>-0.25, :HD=>-0.25,
                                 :Hpl=>-0.25, :H2pl=>-0.25, :Dpl=>-0.25, :HDpl=>-0.25,
                                 :Hepl=>-0.25), sp, 0)
 
-function update_diffusion_and_scaleH(species_list::Array, atmdict::Dict{Symbol, Vector{Float64}}, Tn::Vector{Float64}, Tp::Vector{Float64}, # params to pass
-                                     D_coefs, bcdict::Dict{Symbol, Matrix{Any}}, 
-                                     allsp::Array, neutralsp::Array, mmass::Dict{Symbol,Int64},alts::Array,n_alt_index::Dict, polar::Dict{Symbol,Float64}, T_for_diff::Dict{String,Vector{Float64}}) 
+function update_diffusion_and_scaleH(species_list, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Tp, # params to pass
+                                     D_coefs, bcdict, 
+                                     allsp, neutralsp, mmass, alts, n_alt_index, polar, T_for_diff) 
     #=
     Input:
         atmdict: Atmospheric state dictionary without boundary layers
@@ -1936,19 +1934,19 @@ function update_diffusion_and_scaleH(species_list::Array, atmdict::Dict{Symbol, 
     ncur_with_bdys = ncur_with_boundary_layers(atmdict, allsp)
     
     K = Keddy(alts, n_tot(ncur_with_bdys, allsp))
-    H0_dict = Dict{String, Vector{Float64}}("neutral"=>scaleH(alts, ncur_with_bdys, Tn, allsp, mmass),
+    H0_dict = Dict{String, Vector{ftype_ncur}}("neutral"=>scaleH(alts, ncur_with_bdys, Tn, allsp, mmass),
                                             "ion"=>scaleH(alts, ncur_with_bdys, Tp, allsp, mmass))
     
     # Molecular diffusion is only needed for transport species, though.  
-    Dcoef_dict = Dict{Symbol, Vector{Float64}}([s=>deepcopy(Dcoef!(D_coefs, T_for_diff[charge_type(s)], s, ncur_with_bdys, bcdict, 
+    Dcoef_dict = Dict{Symbol, Vector{ftype_ncur}}([s=>deepcopy(Dcoef!(D_coefs, T_for_diff[charge_type(s)], s, ncur_with_bdys, bcdict, 
                                                                    allsp, mmass, polar, neutralsp)) for s in species_list])
 
     return K, H0_dict, Dcoef_dict
 end
 
-function update_transport_coefficients(species_list::Array, atmdict::Dict{Symbol, Vector{Float64}}, activellsp::Vector{Any}, Tn::Vector{Float64}, Tp::Vector{Float64}, # params to pass
-                                       D_coefs::Vector{Float64}, Hs, bcdict::Dict{Symbol, Matrix{Any}}, 
-                                       allsp::Array, neutralsp::Array, transsp::Array, mmass::Dict{Symbol,Int64}, n_alt_index::Dict, polar::Dict{Symbol,Float64}, alts::Array, numlyrs::Int64, dz::Float64, T_for_diff::Dict{String,Vector{Float64}}) 
+function update_transport_coefficients(species_list, atmdict::Dict{Symbol, Vector{ftype_ncur}}, activellsp, Tn, Tp, # params to pass
+                                       D_coefs, Hs, bcdict, 
+                                       allsp, neutralsp, transsp, mmass, n_alt_index, polar, alts, numlyrs, dz, T_for_diff) 
     #=
     Input:
         species_list: Species which will have transport coefficients updated
@@ -2007,7 +2005,7 @@ function calculate_stiffness(J)
         r: stiffness r = max(|Re(λ)|) / min(|Re(λ)), where λ is the matrix of eigenvalues of J.
     =#
 
-    if typeof(J) == SparseMatrixCSC{Float64, Int64}
+    if typeof(J) == SparseMatrixCSC{ftype_chem, Int64}
         J = Array(J)
     end
 
@@ -2034,7 +2032,7 @@ function check_jacobian_eigenvalues(J, path)
     =#
 
     # Warning: This tends to take a long time.
-    if typeof(J) == SparseMatrixCSC{Float64, Int64}
+    if typeof(J) == SparseMatrixCSC{ftype_chem, Int64}
         J_nonsparse = Array(J)
     end
 
@@ -2073,7 +2071,7 @@ function check_jacobian_eigenvalues(J, path)
     end
 end
 
-function chemical_jacobian(chemnet::Array, transportnet::Array, specieslist::Array, dspecieslist::Array, chemsp::Array, transportsp::Array; chem_on=true, trans_on=true)
+function chemical_jacobian(chemnet, transportnet, specieslist, dspecieslist, chemsp, transportsp; chem_on=true, trans_on=true)
     #= 
     Compute the symbolic chemical jacobian of a supplied chemnet and transportnet
     for the specified specieslist. 
@@ -2151,8 +2149,8 @@ function chemical_jacobian(chemnet::Array, transportnet::Array, specieslist::Arr
     return (ivec, jvec, tvec) # Expr(:vcat, tvec...))  # 
 end
 
-function eval_rate_coef(atmdict::Dict{Symbol, Vector{Float64}}, krate::Expr, tn::Vector{Float64}, ti::Vector{Float64}, te::Vector{Float64}, # params to pass 
-                        allsp::Array, ionsp::Array, numlyrs::Int64) 
+function eval_rate_coef(atmdict::Dict{Symbol, Vector{ftype_ncur}}, krate::Expr, tn, ti, te, # params to pass 
+                        allsp, ionsp, numlyrs::Int64) 
     #=
     Evaluates a chemical reaction rate coefficient, krate, for all levels of the atmosphere. 
 
@@ -2174,8 +2172,8 @@ function eval_rate_coef(atmdict::Dict{Symbol, Vector{Float64}}, krate::Expr, tn:
     return rate_coefficient
 end 
 
-function get_column_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{Float64}}, Tn::Vector{Float64}, Ti::Vector{Float64}, Te::Vector{Float64}, bcdict::Dict{Symbol, Matrix{Any}}, # params to pass
-                          allsp::Array, ionsp::Array, dz::Float64, rxnnet::Array, numlyrs::Int64; 
+function get_column_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Ti, Te, bcdict::Dict{Symbol, Matrix{Any}}, # params to pass
+                          allsp, ionsp, dz, rxnnet, numlyrs::Int64; 
                           which="all", sp2=nothing, role="product", startalt_i=1) 
     #=
     Input:
@@ -2223,8 +2221,8 @@ function get_column_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{Float64}}, Tn
     return sorted
 end
 
-function get_volume_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{Float64}}, Tn::Vector{Float64}, Ti::Vector{Float64}, Te::Vector{Float64}, bcdict::Dict{Symbol, Matrix{Any}}, 
-                           allsp::Array, ionsp::Array, rxnnet::Array, numlyrs::Int64; 
+function get_volume_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Ti, Te, bcdict::Dict{Symbol, Matrix{Any}}, 
+                           allsp, ionsp, rxnnet, numlyrs::Int64; 
                            species_role="both", which="all") 
     #=
     Input:
@@ -2241,8 +2239,8 @@ function get_volume_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{Float64}}, Tn
     =#
 
     # Fill in the rate x density dictionary ------------------------------------------------------------------------------
-    rxn_dat =  Dict{String, Array{Float64, 1}}()
-    rate_coefs = Dict{String, Array{Float64, 1}}()
+    rxn_dat =  Dict{String, Array{ftype_ncur, 1}}()
+    rate_coefs = Dict{String, Array{ftype_ncur, 1}}()
 
     # Select either photodissociation or bi-/tri-molecular reactions
     if which=="Jrates"
@@ -2298,7 +2296,7 @@ function get_volume_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{Float64}}, Tn
     return rxn_dat, rate_coefs
 end
 
-function getrate(sp::Symbol, chemnet::Array, transportnet::Array, chemsp::Array, transportsp::Array; chemistry_on=true, transport_on=true, sepvecs=false) 
+function getrate(sp::Symbol, chemnet, transportnet, chemsp, transportsp; chemistry_on=true, transport_on=true, sepvecs=false) 
     #=
     Creates a symbolic expression for the rate at which a given species is
     either produced or lost due to chemical reactions or transport.
@@ -2356,7 +2354,7 @@ function getrate(sp::Symbol, chemnet::Array, transportnet::Array, chemsp::Array,
     end
 end
 
-function loss_equations(sp::Symbol, network::Array)
+function loss_equations(sp::Symbol, network)
     #=  
     Input:
         sp: Species for which to construct a loss equation
@@ -2393,7 +2391,7 @@ function loss_equations(sp::Symbol, network::Array)
     losseqns = map(x->vcat(Any[network[x][1]...,network[x][3]]), lhspos)
 end
 
-function loss_rate(sp::Symbol, network::Array; return_leqn_unmapped=false, sepvecs=false) 
+function loss_rate(sp::Symbol, network; return_leqn_unmapped=false, sepvecs=false) 
     #=  
     Input:
         sp: Species for which to calculate the loss rate
@@ -2471,7 +2469,7 @@ function make_net_change_expr(network_vectors)
     return net_change
 end
 
-function production_equations(sp::Symbol, network::Array) 
+function production_equations(sp::Symbol, network) 
     #=  
     Input:
         sp: Species for which to construct a production equation
@@ -2499,7 +2497,7 @@ function production_equations(sp::Symbol, network::Array)
     return prodeqns
 end
 
-function production_rate(sp::Symbol, network::Array; return_peqn_unmapped=false, sepvecs=false) 
+function production_rate(sp::Symbol, network; return_peqn_unmapped=false, sepvecs=false) 
     #= 
     Same as loss_rate but for production.
     =#
@@ -2522,8 +2520,8 @@ function production_rate(sp::Symbol, network::Array; return_peqn_unmapped=false,
     end
 end
 
-function reactant_density_product(atmdict::Dict{Symbol, Vector{Float64}}, reactants::Array, 
-                                  allsp::Array, ionsp::Array, numlyrs::Int64)
+function reactant_density_product(atmdict::Dict{Symbol, Vector{ftype_ncur}}, reactants, 
+                                  allsp, ionsp, numlyrs::Int64)
     #=
     Calculates the product of all reactant densities for a chemical reaction for the whole atmosphere, 
     i.e. for A + B --> C + D, return n_A * n_B.
@@ -2636,7 +2634,7 @@ function choose_solutions(possible_solns, prev_densities)
     return accepted_solns[:, 1]
 end
 
-function construct_quadratic(sp::Symbol, prod_rxn_list::Array, loss_rxn_list::Array)
+function construct_quadratic(sp::Symbol, prod_rxn_list, loss_rxn_list)
     #=
     Input:
         sp: Species with a quadratic reaction (where it reacts with itself)
@@ -2680,7 +2678,7 @@ function construct_quadratic(sp::Symbol, prod_rxn_list::Array, loss_rxn_list::Ar
     quad_coef_dict = group_terms(prod_rxn_list, loss_rxn_list)
 end
 
-function group_terms(prod_rxn_arr::Array, loss_rxn_arr::Array)
+function group_terms(prod_rxn_arr, loss_rxn_arr)
     #=
     Input:
         prod_rxn_arr: Production reactions 
@@ -2824,7 +2822,7 @@ function binupO2(list)
     return transpose(reshape(ret, 4, 203-176+1))
 end
 
-function co2xsect(co2xdata, T::Float64)
+function co2xsect(co2xdata, T)
     #=
     Makes an array of CO2 cross sections at temperature T, of format 
     [wavelength in nm, xsect]. 
@@ -2841,7 +2839,7 @@ function co2xsect(co2xdata, T::Float64)
     reshape(arr, length(co2xdata[:,1]),2)
 end
 
-function h2o2xsect_l(l::Float64, T::Float64) 
+function h2o2xsect_l(l, T) 
     #=
     from 260-350 the following analytic calculation fitting the
     temperature dependence is recommended by Sander 2011.
@@ -2866,7 +2864,7 @@ function h2o2xsect_l(l::Float64, T::Float64)
     return 1e-21*(expfac*reduce(+, map(*, A, lpowA))+(1-expfac)*reduce(+, map(*, B, lpowB)))
 end
 
-function h2o2xsect(h2o2xdata, T::Float64) 
+function h2o2xsect(h2o2xdata, T) 
     #=
     stitches together H2O2 cross sections, some from Sander 2011 table and some
     from the analytical calculation recommended for 260-350nm recommended by the
@@ -2881,7 +2879,7 @@ function h2o2xsect(h2o2xdata, T::Float64)
     return reshape([retl; retx], length(retl), 2)
 end
 
-function hdo2xsect(hdo2xdata, T::Float64) 
+function hdo2xsect(hdo2xdata, T) 
     #=
     Currently this is a direct copy of h2o2xsect because no HDO2 crosssections
     exist. In the future this could be expanded if anyone ever makes those
@@ -2895,7 +2893,7 @@ function hdo2xsect(hdo2xdata, T::Float64)
     reshape([retl; retx], length(retl), 2)
 end
 
-function ho2xsect_l(l::Float64) 
+function ho2xsect_l(l) 
     #= 
     compute HO2 cross-section as a function of wavelength l in nm, as given by 
     Sander 2011 JPL Compilation 
@@ -2912,7 +2910,7 @@ function ho2xsect_l(l::Float64)
     end
 end
 
-function o2xsect(o2xdata, o2schr130K, o2schr190K, o2schr280K, T::Float64)
+function o2xsect(o2xdata, o2schr130K, o2schr190K, o2schr280K, T)
     #=
     For O2, used in quantum yield calculations,
     including temperature-dependent Schumann-Runge bands.
@@ -3391,7 +3389,7 @@ function populate_xsect_dict(Tn_array::Array, alts::Array; ion_xsects=true) # TO
     return xsect_dict
 end
 
-function quantumyield(xsect::Array, arr) # Checked - global free
+function quantumyield(xsect, arr) # Checked - global free
     #= 
     function to assemble cross-sections for a given pathway. 
 
@@ -3421,7 +3419,7 @@ end
 #                                                                              #
 # **************************************************************************** #
 
-function T_updated(z::Float64, Tsurf::Float64, Tmeso::Float64, Texo::Float64, sptype::String)
+function T_updated(z, Tsurf, Tmeso, Texo, sptype::String)
     #= 
     Input:
         z: altitude above surface in cm
@@ -3496,7 +3494,7 @@ function T_updated(z::Float64, Tsurf::Float64, Tmeso::Float64, Texo::Float64, sp
     end
 end
 
-function T_all(z::Float64, Tsurf::Float64, Tmeso::Float64, Texo::Float64, sptype::String)
+function T_all(z, Tsurf, Tmeso, Texo, sptype::String)
     #= 
     Input:
         z: altitude above surface in cm
@@ -3581,7 +3579,7 @@ function T_all(z::Float64, Tsurf::Float64, Tmeso::Float64, Texo::Float64, sptype
     end
 end
 
-function Tpiecewise(z::Float64, Tsurf::Float64, Tmeso::Float64, Texo::Float64) # Checked - global-free
+function Tpiecewise(z, Tsurf, Tmeso, Texo) # Checked - global-free
     #= 
     FOR USE WITH FRACTIONATION FACTOR PROJECT ONLY.
 
@@ -3618,10 +3616,10 @@ function Tpiecewise(z::Float64, Tsurf::Float64, Tmeso::Float64, Texo::Float64) #
 end
 
 # 1st term is a conversion factor to convert to (#/cm^3) from Pa. Source: Marti & Mauersberger 1993
-Psat(T::Float64) = (1e-6/(kB_MKS * T))*(10^(-2663.5/T + 12.537))
+Psat(T) = (1e-6/(kB_MKS * T))*(10^(-2663.5/T + 12.537))
 
 # It doesn't matter to get the exact SVP of HDO because we never saturate. 
 # However, this function is defined on the offchance someone studies HDO.
-Psat_HDO(T::Float64) = (1e-6/(kB_MKS * T))*(10^(-2663.5/T + 12.537))
+Psat_HDO(T) = (1e-6/(kB_MKS * T))*(10^(-2663.5/T + 12.537))
 
 end

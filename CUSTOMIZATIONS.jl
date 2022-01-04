@@ -11,11 +11,21 @@
 # Currently tested for Julia: 1.6.1
 ################################################################################
 
-const basepath = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/"
-const extra_plots_dir = basepath*"Auxiliary plots/"
-const code_dir = basepath*"Code/"
-const results_dir = basepath*"Results/"
+const code_dir = "$(@__DIR__)/"
+const extra_plots_dir = code_dir*"../Auxiliary plots/"
+const results_dir = code_dir*"../Results/"
 const xsecfolder = code_dir*"uvxsect/";
+
+# Float types for calculations =================================================
+# needed by both Photochemistry.jl and converge_new_file so it has to go here
+using DoubleFloats
+# if problem_type == "Gear"
+ftype_ncur = Double64 # used to store n_current values
+ftype_chem = Double64 # used to compute chemical reaction rates and chemical jacobian
+# else
+#     ftype_ncur = Float64 # used to store n_current values
+#     ftype_chem = Float64 # used to compute chemical reaction rates and chemical jacobian
+# end
 
 # Altitude grid specifications =================================================
 const max_alt = 250e5
