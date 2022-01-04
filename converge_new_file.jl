@@ -24,6 +24,9 @@ using LaTeXStrings
 using DelimitedFiles
 using SparseArrays
 using LinearAlgebra
+photochemistry_source_dir = "$(@__DIR__)/Photochemistry/src/"
+println("loading Photochemistry.jl from $photochemistry_source_dir")
+push!(LOAD_PATH, photochemistry_source_dir)
 using Photochemistry  # custom module
 using DifferentialEquations
 
@@ -34,8 +37,10 @@ t2 = time()
 
 println("Time to load modules: $(format_sec_or_min(t2-t1))")
 
-user_input_paramfile = input("Enter a parameter file or press enter to use default (PARAMETERS.jl): ")
-paramfile = user_input_paramfile == "" ? "PARAMETERS.jl" : user_input_paramfile*".jl"
+# user_input_paramfile = input("Enter a parameter file or press enter to use default (PARAMETERS.jl): ")
+# paramfile = user_input_paramfile == "" ? "PARAMETERS.jl" : user_input_paramfile*".jl"
+println("Using default parameter file PARAMETERS.jl .")
+paramfile = "PARAMETERS.jl"
 t3 = time()
 include(paramfile)
 
@@ -83,7 +88,7 @@ function chemJmat(n_active_longlived, n_active_shortlived, n_inactive, activells
 
     check_eigen: Will check the eigenvalues of the jacobian for non-real or real/positive values if true. Code currently commented out.
 
-    dt: Can be specified to manually control the timestep by which the derivatives are multiplied.
+    dt: UNUSED! Can be specified to manually control the timestep by which the derivatives are multiplied.
         If not supplied, then dt=1 so that the external solver can manage the multiplication by time.
     =#              
 
@@ -94,18 +99,21 @@ function chemJmat(n_active_longlived, n_active_shortlived, n_inactive, activells
     # For storing the jacobian indices and values
     chemJi = Int64[]
     chemJj = Int64[]
-    chemJval = Float64[]
+    chemJval = ftype_chem[]
 
     # tc___ are the coordinate tuples containing (I, J, V) to be used to fill a sparse matrix.
-    (tclocal, tcupper, tclower) = chemJmat_local([nmat_llsp[:, 1];  # active_longlived; 
-                                                  nmat_llsp[:, 2]; # active_longlived_above; 
-                                                  fill(1.0, length(activellsp)); # active_longlived_below;
-                                                  nmat_slsp[:, 1]; # active_shortlived; 
-                                                  nmat_inactive[:,1];  # inactive_species; 
-                                                  Jrates[:,1]; # Jratelist; 
-                                                  Tn[1]; Ti[1]; Te[1];  #:Tn; :Ti; :Te; 
-                                                  tup[:,1]; tlower[:,1]; # local_transport_rates
-                                                  tdown[:,2]; tlower[:,2]]...) 
+    argvec = [nmat_llsp[:, 1];  # active_longlived;
+              nmat_llsp[:, 2]; # active_longlived_above;
+              fill(1.0, length(activellsp)); # active_longlived_below;
+              nmat_slsp[:, 1]; # active_shortlived;
+              nmat_inactive[:,1];  # inactive_species;
+              Jrates[:,1]; # Jratelist;
+              Tn[1]; Ti[1]; Te[1];  #:Tn; :Ti; :Te;
+              tup[:,1]; tlower[:,1]; # local_transport_rates
+              tdown[:,2]; tlower[:,2]]
+    argvec = convert(Array{ftype_chem}, argvec)
+
+    (tclocal, tcupper, tclower) = chemJmat_local(argvec...) 
 
 
     # add the influence of the local densities
@@ -119,18 +127,20 @@ function chemJmat(n_active_longlived, n_active_shortlived, n_inactive, activells
     append!(chemJval, tcupper[3])
 
     for ialt in 2:(num_layers-1)
-        (tclocal, tcupper, tclower) = chemJmat_local([nmat_llsp[:, ialt];
-                                                      nmat_llsp[:, ialt+1];
-                                                      nmat_llsp[:, ialt-1];
-                                                      nmat_slsp[:, ialt];
-                                                      nmat_inactive[:, ialt];
-                                                      Jrates[:, ialt]; 
-                                                      Tn[ialt]; Ti[ialt]; Te[ialt];
-                                                      tup[:, ialt];
-                                                      tdown[:, ialt];
-                                                      tdown[:, ialt+1];
-                                                      tup[:, ialt-1]]...)
+        argvec = [nmat_llsp[:, ialt];
+                  nmat_llsp[:, ialt+1];
+                  nmat_llsp[:, ialt-1];
+                  nmat_slsp[:, ialt];
+                  nmat_inactive[:, ialt];
+                  Jrates[:, ialt];
+                  Tn[ialt]; Ti[ialt]; Te[ialt];
+                  tup[:, ialt];
+                  tdown[:, ialt];
+                  tdown[:, ialt+1];
+                  tup[:, ialt-1]]
+        argvec = convert(Array{ftype_chem}, argvec)        
 
+        (tclocal, tcupper, tclower) = chemJmat_local(argvec...)
 
         # add the influence of the local densities
         append!(chemJi, tclocal[1].+(ialt-1)*length(activellsp))
@@ -146,15 +156,18 @@ function chemJmat(n_active_longlived, n_active_shortlived, n_inactive, activells
         append!(chemJval, tclower[3])
     end
 
-    (tclocal, tcupper, tclower) = chemJmat_local([nmat_llsp[:,end];
-                                                 fill(1.0, length(activellsp));
-                                                 nmat_llsp[:,end-1];
-                                                 nmat_slsp[:, end];
-                                                 nmat_inactive[:,end];
-                                                 Jrates[:,end];
-                                                 Tn[end]; Ti[end]; Te[end]; 
-                                                 tupper[:,1]; tdown[:,end];
-                                                 tupper[:,2]; tup[:,end-1]]...)
+    argvec = [nmat_llsp[:,end];
+              fill(1.0, length(activellsp));
+              nmat_llsp[:,end-1];
+              nmat_slsp[:, end];
+              nmat_inactive[:,end];
+              Jrates[:,end];
+              Tn[end]; Ti[end]; Te[end];
+              tupper[:,1]; tdown[:,end];
+              tupper[:,2]; tup[:,end-1]]
+    argvec = convert(Array{ftype_chem}, argvec)
+    
+    (tclocal, tcupper, tclower) = chemJmat_local(argvec...)
 
     # add the influence of the local densities
     append!(chemJi, tclocal[1].+(num_layers-1)*length(activellsp))
@@ -204,42 +217,50 @@ function ratefn(n_active_longlived, n_active_shortlived, n_inactive, activellsp,
     returnrates = zeros(size(nmat_llsp))
     
     # fill the first altitude entry with information for all species
-    returnrates[:,1] .= ratefn_local([nmat_llsp[:,1]; # densities for active_longlived;
-                                      nmat_llsp[:,2]; # active_longlived_above; 
-                                      fill(1.0, length(activellsp)); #active_longlived_below;
-                                      nmat_slsp[:, 1]; # active_shortlived;
-                                      nmat_inactive[:,1];  # inactive_species; 
-                                      Jrates[:,1];  # Jratelist; 
-                                      Tn[1]; Ti[1]; Te[1];  # :Tn; :Ti; :Te;
-                                      tup[:,1]; tlower[:,1]; tdown[:,2]; tlower[:,2]]...) # local_transport_rates
+    argvec = [nmat_llsp[:,1]; # densities for active_longlived;
+              nmat_llsp[:,2]; # active_longlived_above;
+              fill(1.0, length(activellsp)); #active_longlived_below;
+              nmat_slsp[:, 1]; # active_shortlived;
+              nmat_inactive[:,1];  # inactive_species;
+              Jrates[:,1];  # Jratelist;
+              Tn[1]; Ti[1]; Te[1];  # :Tn; :Ti; :Te;
+              tup[:,1]; tlower[:,1]; tdown[:,2]; tlower[:,2]]
+    argvec = convert(Array{ftype_chem}, argvec)
+    
+    returnrates[:,1] .= ratefn_local(argvec...) # local_transport_rates
 
     # iterate through other altitudes in the lower atmosphere
     for ialt in 2:(num_layers-1)
-        returnrates[:,ialt] .= ratefn_local([nmat_llsp[:, ialt]; # active_longlived;
-                                            nmat_llsp[:, ialt+1];
-                                            nmat_llsp[:, ialt-1];
-                                            nmat_slsp[:, ialt]; # active_shortlived;
-                                            nmat_inactive[:,ialt];
-                                            Jrates[:,ialt];
-                                            Tn[ialt]; Ti[ialt]; Te[ialt];
-                                            tup[:, ialt]; 
-                                            tdown[:, ialt];
-                                            tdown[:, ialt+1]; 
-                                            tup[:, ialt-1]]...)
+        argvec = [nmat_llsp[:, ialt]; # active_longlived;
+                  nmat_llsp[:, ialt+1];
+                  nmat_llsp[:, ialt-1];
+                  nmat_slsp[:, ialt]; # active_shortlived;
+                  nmat_inactive[:,ialt];
+                  Jrates[:,ialt];
+                  Tn[ialt]; Ti[ialt]; Te[ialt];
+                  tup[:, ialt];
+                  tdown[:, ialt];
+                  tdown[:, ialt+1];
+                  tup[:, ialt-1]]
+        argvec = convert(Array{ftype_chem}, argvec)
+        
+        returnrates[:,ialt] .= ratefn_local(argvec...)
     end
 
     # fill in the last level of altitude
-    returnrates[:,end] .= ratefn_local([nmat_llsp[:, end];
-                                       fill(1.0, length(activellsp));
-                                       nmat_llsp[:, end-1];
-                                       nmat_slsp[:, end]; # active_shortlived;
-                                       nmat_inactive[:,end];
-                                       Jrates[:,end];
-                                       Tn[end]; Ti[end]; Te[end];
-                                       tupper[:,1]; 
-                                       tdown[:,end];
-                                       tupper[:,2]; 
-                                       tup[:,end-1]]...)
+    argvec = [nmat_llsp[:, end];
+              fill(1.0, length(activellsp));
+              nmat_llsp[:, end-1];
+              nmat_slsp[:, end]; # active_shortlived;
+              nmat_inactive[:,end];
+              Jrates[:,end];
+              Tn[end]; Ti[end]; Te[end];
+              tupper[:,1];
+              tdown[:,end];
+              tupper[:,2];
+              tup[:,end-1]]
+    argvec = convert(Array{ftype_chem}, argvec)
+    returnrates[:,end] .= ratefn_local(argvec...)
 
 
     # NEW: Overwrite the entries for water in the lower atmosphere with 0s so that it will behave as fixed.
@@ -284,7 +305,7 @@ function make_jacobian(n, p, t)
     =#
 
     # Unpack the parameters ---------------------------------------------------------------
-    n_inactive, inactivesp, activesp, activellsp, activeslsp, Tn::Vector{Float64}, Ti::Vector{Float64}, Te::Vector{Float64}, Tp::Vector{Float64}, D_arr::Vector{Float64}, = p 
+    n_inactive, inactivesp, activesp, activellsp, activeslsp, Tn, Ti, Te, Tp, D_arr, = p 
 
     # get the concentrations of species assumed to be in photochemical equilibrium. 
     n_short = flatten_atm(external_storage, activeslsp, num_layers)  # retrieve the shortlived species from their storage and flatten them
@@ -299,7 +320,7 @@ function make_jacobian(n, p, t)
     end
 
     # Retrieve Jrates 
-    Jrates = deepcopy(Float64[external_storage[jr][ialt] for jr in Jratelist, ialt in 1:length(non_bdy_layers)])
+    Jrates = deepcopy(ftype_ncur[external_storage[jr][ialt] for jr in Jratelist, ialt in 1:length(non_bdy_layers)])
 
     # and update the shortlived species with the new Jrates - assuming not needed to be done in this function
     # n_short_updated = set_concentrations!(external_storage, n, n_short, n_inactive, activellsp, activeslsp, inactivesp, Jrates, Tn, Ti, Te)
@@ -307,7 +328,7 @@ function make_jacobian(n, p, t)
                                                                n_cur_all, activellsp, Tn, Tp, D_arr, Hs_dict, speciesbclist, 
                                                                all_species, neutral_species, transport_species, molmass, n_alt_index, polarizability, alt, num_layers, dz, Tprof_for_diffusion)
     
-    return chemJmat(n, n_short, n_inactive, activellsp, activeslsp, inactivesp, Jrates, Tn, Ti, Te, tup, tdown, tlower, tupper; dt=t)
+    return chemJmat(n, n_short, n_inactive, activellsp, activeslsp, inactivesp, Jrates, Tn, Ti, Te, tup, tdown, tlower, tupper; dt=t) # dt unused in chemJmat
 end
 
 function jacobian_wrapper(J, n, p, t)
@@ -343,17 +364,23 @@ function set_concentrations!(external_storage, n_active_long, n_active_short, n_
     # dist_zero = zeros(length(nmat_shortlived)) # TODO: Figure out how to make useful
 
     # fill the first altitude entry with information for all species   
-    new_densities[:,1] .= set_concentrations_local([nmat_shortlived[:,1]; nmat_longlived[:, 1]; nmat_inactive[:, 1]; Jrates[:, 1]; Tn[1]; Ti[1]; Te[1]]...)
+    argvec = [nmat_shortlived[:,1]; nmat_longlived[:, 1]; nmat_inactive[:, 1]; Jrates[:, 1]; Tn[1]; Ti[1]; Te[1]]
+    argvec = convert(Array{ftype_chem}, argvec)
+    new_densities[:,1] .= set_concentrations_local(argvec...)
     # dist_zero[1] = check_zero_distance([nmat_shortlived[:,1]; nmat_longlived[:, 1]; nmat_inactive[:, 1]; Jrates[:, 1]; Tn[1]; Ti[1]; Te[1]]...)
 
     # iterate through other altitudes in the lower atmosphere
     for ialt in 2:(num_layers-1)
-        new_densities[:,ialt] .= set_concentrations_local([nmat_shortlived[:,ialt]; nmat_longlived[:, ialt]; nmat_inactive[:, ialt]; Jrates[:, ialt]; Tn[ialt]; Ti[ialt]; Te[ialt]]...)
+        argvec = [nmat_shortlived[:,ialt]; nmat_longlived[:, ialt]; nmat_inactive[:, ialt]; Jrates[:, ialt]; Tn[ialt]; Ti[ialt]; Te[ialt]]
+        argvec = convert(Array{ftype_chem}, argvec)
+        new_densities[:,ialt] .= set_concentrations_local(argvec...)
         # dist_zero[ialt] = check_zero_distance([nmat_shortlived[:,ialt]; nmat_longlived[:, ialt]; nmat_inactive[:, ialt]; Jrates[:, ialt]; Tn[ialt]; Ti[ialt]; Te[ialt]]...)
     end
 
     # fill in the last level of altitude
-    new_densities[:,end] .= set_concentrations_local([nmat_shortlived[:, end]; nmat_longlived[:, end]; nmat_inactive[:, end]; Jrates[:, end]; Tn[end]; Ti[end]; Te[end]]...)
+    argvec = [nmat_shortlived[:, end]; nmat_longlived[:, end]; nmat_inactive[:, end]; Jrates[:, end]; Tn[end]; Ti[end]; Te[end]]
+    argvec = convert(Array{ftype_chem}, argvec)
+    new_densities[:,end] .= set_concentrations_local(argvec...)
     # dist_zero[end] = check_zero_distance([nmat_shortlived[:, end]; nmat_longlived[:, end]; nmat_inactive[:, end]; Jrates[:, end]; Tn[end]; Ti[end]; Te[end]]...)
     
     # write out the new densities for shortlived species to the external storage
@@ -379,7 +406,7 @@ function PnL_eqn(dndt, n, p, t)
     =#
 
     # Unpack the parameters needed to call ratefn 
-    n_inactive, inactivesp, activesp, activellsp, activeslsp, Tn::Vector{Float64}, Ti::Vector{Float64}, Te::Vector{Float64}, Tp::Vector{Float64}, D_arr::Vector{Float64} = p 
+    n_inactive, inactivesp, activesp, activellsp, activeslsp, Tn, Ti, Te, Tp, D_arr = p 
 
     if t / timestorage >= 10
         f = open(results_dir*sim_folder_name*"/simulation_params_"*FNext*".txt", "a")
@@ -391,7 +418,7 @@ function PnL_eqn(dndt, n, p, t)
         
         # write out the current atmospheric state to a file 
         ncur = merge(external_storage, unflatten_atm(n, activellsp, num_layers))
-
+        
         plot_atm(ncur, [neutral_species, ion_species], results_dir*sim_folder_name*"/atm_peek_$(plotnum).png", plot_grid, speciescolor, speciesstyle, zmax, abs_tol_for_plot,
                  t="$(round(t, sigdigits=2))")
         write_atmosphere(ncur, results_dir*sim_folder_name*"/atm_dt=$(round(t, sigdigits=2)).h5", alt, num_layers)
@@ -402,7 +429,7 @@ function PnL_eqn(dndt, n, p, t)
     n_short = flatten_atm(external_storage, activeslsp, num_layers)
 
     # Retrieve the Jrates
-    Jrates = deepcopy(Float64[external_storage[jr][ialt] for jr in Jratelist, ialt in 1:length(non_bdy_layers)])
+    Jrates = deepcopy(ftype_ncur[external_storage[jr][ialt] for jr in Jratelist, ialt in 1:length(non_bdy_layers)])
 
     # set the concentrations of species assumed to be in photochemical equilibrium. 
     n_short_updated = set_concentrations!(external_storage, n, n_short, n_inactive, activellsp, activeslsp, inactivesp, Jrates, Tn, Ti, Te)
@@ -418,7 +445,7 @@ function PnL_eqn(dndt, n, p, t)
     dndt .= ratefn(n, n_short_updated, inactive, activellsp, activeslsp, inactivesp, Jrates, Tn, Ti, Te, tup, tdown, tlower, tupper)
 end
 
-function update_Jrates!(n_cur_densities::Dict{Symbol, Array{Float64, 1}})
+function update_Jrates!(n_cur_densities::Dict{Symbol, Array{ftype_ncur, 1}})
     #=
     this function updates the photolysis rates stored in n_current to
     reflect the altitude distribution of absorbing species
@@ -437,10 +464,10 @@ function update_Jrates!(n_cur_densities::Dict{Symbol, Array{Float64, 1}})
     for jspecies in Jratelist
         species = absorber[jspecies]
 
-        jcolumn = 0.
+        jcolumn = convert(Float64, 0.)
         for ialt in [nalt:-1:1;]
             #get the vertical column of the absorbing constituient
-            jcolumn += n_cur_densities[species][ialt]*dz
+            jcolumn += convert(Float64, n_cur_densities[species][ialt])*dz
 
             # add the total extinction to solarabs:
             # multiplies air column density (N, #/cm^2) at all wavelengths by crosssection (σ)
@@ -472,13 +499,13 @@ function update_Jrates!(n_cur_densities::Dict{Symbol, Array{Float64, 1}})
     for j in Jratelist
         n_cur_densities[j] = zeros(size(n_cur_densities[:CO2]))
         for ialt in [1:nalt;]
-            n_cur_densities[j][ialt] = BLAS.dot(nlambda, solarabs[ialt], 1, crosssection[j][ialt+1], 1)
+            n_cur_densities[j][ialt] = ftype_ncur(BLAS.dot(nlambda, solarabs[ialt], 1, crosssection[j][ialt+1], 1))
         end
     end
 end
 
 # The equation that actually calls the ODE solver ==============================
-function evolve_atmosphere(atm_init::Dict{Symbol, Array{Float64, 1}}, log_t_start, log_t_end; t_to_save=[], abs_tol=1e-6)
+function evolve_atmosphere(atm_init::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_start, log_t_end; t_to_save=[], abs_tol=1e-6)
     #=
     Sets up the initial conditions for the simulation and calls the ODE solver. 
 
@@ -499,12 +526,12 @@ function evolve_atmosphere(atm_init::Dict{Symbol, Array{Float64, 1}}, log_t_star
 
     # Set up parameters    
     Dcoef_arr_template = zeros(size(Tn_arr))  # For making diffusion coefficient calculation go faster 
-    params = [inactive, inactive_species, active_species, active_longlived, active_shortlived, Tn_arr::Vector{Float64}, Ti_arr::Vector{Float64}, Te_arr::Vector{Float64}, 
-              Tplasma_arr::Vector{Float64}, Dcoef_arr_template::Vector{Float64}]
+    params = [inactive, inactive_species, active_species, active_longlived, active_shortlived, Tn_arr, Ti_arr, Te_arr, 
+              Tplasma_arr, Dcoef_arr_template]
     params_exjac = deepcopy(params)  # I think this is so the Dcoef doesn't get filled in with the wrong info?
 
     # Set up an example Jacobian and its preconditioner
-    example_jacobian = make_jacobian(nstart, params_exjac, tspan[1])
+    dndt, example_jacobian = get_rates_and_jacobian(nstart, params_exjac, 0.0)
     find_nonfinites(example_jacobian, collec_name="example_jacobian")
     println("Finished the example jacobian")
 
@@ -524,27 +551,245 @@ function evolve_atmosphere(atm_init::Dict{Symbol, Array{Float64, 1}}, log_t_star
         
     println("Starting the solver...")  
 
+    solver = QNDF
+    
     if problem_type == "SS"
-        write(f, "\nODE solver: DynamicSS/QNDF\n\n")
+        write(f, "\nODE solver: DynamicSS/$solver\n\n")
         close(f)
         probSS = SteadyStateProblem{isinplace}(odefunc, nstart, params)
         sol = solve(probSS, DynamicSS(QNDF(), abstol=abs_tol, reltol=rel_tol), saveat=t_to_save, progress=true, save_everystep=false, dt=startdt,
-                #=abstol=abs_tol, reltol=rel_tol,=# isoutofdomain=(u,p,t)->any(x->x<0,u))
+                    #=abstol=abs_tol, reltol=rel_tol,=# isoutofdomain=(u,p,t)->any(x->x<0,u))
 
     elseif problem_type == "ODE"
-        write(f, "\nODE solver: QNDF\n\n")
+        write(f, "\nODE solver: $solver\n\n")
         close(f)
         probODE = ODEProblem(odefunc, nstart, tspan, params)
         sol = solve(probODE, QNDF(), saveat=t_to_save, progress=true, save_everystep=false, dt=startdt,
                 abstol=abs_tol, reltol=rel_tol, isoutofdomain=(u,p,t)->any(x->x<0,u))
+    elseif problem_type == "Gear"
+        write(f, "\nODE solver: Custom First Order Gear\n\n")
+        close(f)
+        sol = converge(atm_init, log_t_start, log_t_end)
     else
         throw("Invalid problem_type")
     end 
-   
 
     return sol 
 end
 
+################################################################################
+#                           NEW ROUTINES FROM MIKE                             #
+################################################################################
+
+function get_rates_and_jacobian(n, p, t)
+    # get the chemical rates and jacobian in a single call
+    
+    # Unpack the parameters ---------------------------------------------------------------
+    n_inactive, inactivesp, activesp, activellsp, activeslsp, Tn, Ti, Te, Tp, D_arr, = p 
+
+    if t / timestorage >= 10
+        f = open(results_dir*sim_folder_name*"/simulation_params_"*FNext*".txt", "a")
+        progress_alert = "reached timestep $(t) in $(format_sec_or_min(time() - ti))\n"
+        write(f, progress_alert)
+        close(f)
+        println(progress_alert) # prints present timestep, but only if it's a factor of 10 greater than the last stored timestep (so we don't get a trillion outputs)
+        global timestorage = t # updates the last stored timestep to repeat process
+        
+        # write out the current atmospheric state to a file 
+        ncur = merge(external_storage, unflatten_atm(n, activellsp, num_layers))
+        
+        plot_atm(ncur, [neutral_species, ion_species],
+                 results_dir*sim_folder_name*"/atm_peek_$(plotnum).png",
+                 plot_grid, speciescolor, speciesstyle, zmax, abs_tol_for_plot,
+                 t="$(round(t, sigdigits=2))")
+        write_atmosphere(ncur,
+                         results_dir*sim_folder_name*"/atm_dt=$(round(t, sigdigits=2)).h5",
+                         alt, num_layers)
+        global plotnum += 1
+    end
+
+    # retrieve the shortlived species from their storage and flatten them
+    n_short = flatten_atm(external_storage, activeslsp, num_layers)
+
+    # Update Jrates
+    n_cur_all = compile_ncur_all(n, n_short, n_inactive, activellsp, activeslsp, inactivesp)
+
+    update_Jrates!(n_cur_all)
+    # copy all the Jrates into an external dictionary for storage
+    for jr in Jratelist                # time for this is ~0.000005 s
+        global external_storage[jr] = n_cur_all[jr]
+    end
+
+    # Retrieve Jrates 
+    Jrates = deepcopy(ftype_ncur[external_storage[jr][ialt] for jr in Jratelist, ialt in 1:length(non_bdy_layers)])
+
+    # set the concentrations of species assumed to be in photochemical equilibrium. 
+    n_short_updated = set_concentrations!(external_storage, n, n_short, n_inactive, activellsp, activeslsp, inactivesp, Jrates, Tn, Ti, Te)
+    # for i in 1:2
+    #     n_short_updated = set_concentrations!(external_storage, n, n_short_updated, n_inactive, activellsp, activeslsp, inactivesp, Jrates, Tn, Ti, Te)
+    # end
+
+    # Get the updated transport coefficients, taking into account short-lived species update
+    updated_ncur_all = compile_ncur_all(n, n_short_updated, n_inactive, activellsp, activeslsp, inactivesp)
+    tlower, tup, tdown, tupper = update_transport_coefficients(transport_species, updated_ncur_all, activellsp, Tn, Tp, D_arr, Hs_dict, speciesbclist,
+                                                               all_species, neutral_species, transport_species, molmass, n_alt_index, polarizability, alt, num_layers, dz, Tprof_for_diffusion)
+
+    return (ratefn(n, n_short_updated, inactive, activellsp, activeslsp, inactivesp, Jrates, Tn, Ti, Te, tup, tdown, tlower, tupper),
+            chemJmat(n, n_short, n_inactive, activellsp, activeslsp, inactivesp, Jrates, Tn, Ti, Te, tup, tdown, tlower, tupper; dt=t) )# dt unused in chemJmat
+end
+
+using IterativeSolvers, IncompleteLU
+
+function solve_sparse(A, b)
+    LU = ilu(A, τ = 0.1) # get incomplete LU preconditioner
+    x = bicgstabl(A, b, 2, Pl = LU, reltol=1e-25)
+    return x
+end
+
+struct TooManyIterationsException <: Exception end
+
+function next_timestep(nstart, # concentrations before the timestep
+                       params, # parameters needed by ratefn and chemical jacobian at each timestep
+                       t,  # current time (only used to print output)
+                       dt; # timestep to be taken
+                       reltol = rel_tol, abstol = abs_tol_ppm #= relative and absolute tolerances on solution =#)
+    # moves to the next timestep using Newton's method on the linearized
+    # coupled transport and chemical reaction network.
+
+    # absolute and relative tolerance on rate update
+    f_abstol = 1e-2 #sqrt(abstol)
+    #    f_reltol = sqrt(reltol)
+    
+    # assume concentrations after timestep are similar to those before
+    nthis = deepcopy(nstart)
+    dndt = 0.0*deepcopy(nthis)
+    
+    converged = false
+    iter = 0
+    while !converged
+        println("iter = $iter")
+        if iter>10; throw(TooManyIterationsException); end;
+        
+        nold = deepcopy(nthis)
+        
+        # we perform an update using newton's method on
+        #     f = nthis - nstart - dt*dndt
+        
+        # to do this we need the rates, dndt, and the jacobian of fval,
+        #     d(fval)/d(nthis) = I - dt*chemJ
+        dndt, chemJ = get_rates_and_jacobian(nthis, params, t)
+
+        # we want fval = 0, corresponding to a good update
+        fval = nthis - nstart - dt*dndt
+
+        # construct the update matrix
+        identity = sparse(I, length(nthis), length(nthis))
+        updatemat = identity - dt*chemJ
+
+        # now we can update using newton's mehod,
+        # n_i+1 = n_i - f(n_i)/f'(n_i)
+        nthis = nthis - solve_sparse(updatemat, fval)
+
+        # restrict values to be positive definite
+        nthis[nthis .< 0.] .= 0.
+        
+        # check for convergence
+        check_n_abserr = (nthis .<= abstol) .|| (nold .<= abstol) .|| (abs.(nthis - nold) .<= abstol)
+        n_relerr = abs.(nthis-nold)./nold
+        println("max(n_relerr) = $(max(n_relerr[.!check_n_abserr]...))")
+        check_n_relerr = n_relerr .< reltol
+
+        # check_f_abserr = (abs.(fval) .<= f_abstol)
+        # println("max(fval) = $(max(fval...))\n")
+        # f_relerr = abs.(fval./(dt*dndt)) # maybe should measure relative to nstart
+        # if length(f_relerr[.!check_f_abserr]) > 0
+        #     println("max(f_relerr) = $(max(f_relerr[.!check_f_abserr]...))\n")
+        # else
+        #     println("max(f_relerr) = 0.0\n")
+        # end
+        # check_f_relerr = f_relerr .< f_reltol
+        
+        converged = all(check_n_relerr .|| check_n_abserr) # && all(check_f_abserr[.!check_n_abserr])# .|| check_f_relerr))
+        
+        iter += 1
+    end
+
+    return nthis
+end
+
+
+function update(n_current::Dict{Symbol, Array{ftype_ncur, 1}}, t, dt)
+    # update n_current using the coupled reaction network, moving to
+    # the next timestep
+
+    # println("n_current[:O] = $(n_current[:O])")
+
+    # global params for simulation
+    params = [inactive,
+              inactive_species,
+              active_species,
+              active_longlived, active_shortlived,
+              Tn_arr, Ti_arr, Te_arr, Tplasma_arr,
+              Dcoef_arr_template]
+
+    # get current long-lived species concentrations
+    nstart = flatten_atm(n_current, active_longlived, num_layers)
+
+    # update to next timestep
+    nend = next_timestep(nstart, params, t, dt)
+    #    println("max(nend-nstart) = $(max((nend-nstart)...))")
+
+    # retrieve the shortlived species from their storage and flatten them
+    n_short = flatten_atm(external_storage, active_shortlived, num_layers)  
+
+    n_current = compile_ncur_all(nend, n_short, inactive, active_longlived, active_shortlived, inactive_species)
+    # ensure Jrates are included in n_current
+    update_Jrates!(n_current)
+
+    # println("n_current[:O] = $(n_current[:O])")
+
+    return n_current
+end
+
+
+function converge(n_current::Dict{Symbol, Array{ftype_ncur, 1}},
+                  log_t_start=-3, log_t_end=16, n_steps=800)
+    # # update in logarithmiclly spaced timesteps until convergence, returning converged atmosphere
+    # log_time_steps = 10. .^(range(log_t_start, stop=log_t_end, length=n_steps))
+
+    dt = 10.0^log_t_start
+    
+    total_time = 0.0
+    goodsteps = 0
+    goodstep_limit = 1
+    goodfactor = 2.0
+    failfactor = 10.0
+    while dt < 10.0^log_t_end
+        total_time += dt
+        println("t  = $total_time")
+        println("dt = $dt")
+        n_old = deepcopy(n_current)
+        try
+            n_current = update(n_current, total_time, dt)
+            goodsteps += 1
+            if goodsteps >= goodstep_limit
+                dt *= goodfactor
+                goodsteps = 0
+            end
+        catch e
+            if e == TooManyIterationsException
+                total_time -= dt
+                dt = dt/failfactor
+                goodsteps = 0
+            else
+                rethrow(e)
+            end
+        end
+        println("max(n_current-n_old) = $(max([max((abs.(n_current[sp] - n_old[sp]))...) for sp in all_species]...))\n\n")
+    end
+    
+    return n_current
+end
 
 ################################################################################
 #                                  MAIN SETUP                                  #
@@ -874,11 +1119,11 @@ end
 # Arguments for ratefn_local
 const ratefn_arglist = [active_longlived; active_longlived_above; active_longlived_below; active_shortlived; inactive_species; Jratelist; 
                         :Tn; :Ti; :Te; local_transport_rates];
-const ratefn_arglist_typed = [:($s::Float64) for s in ratefn_arglist];
+const ratefn_arglist_typed = [:($s::ftype_chem) for s in ratefn_arglist];
 
 # Arguments for set_concentrations (photochemical equilibrium)
 const set_concentration_arglist = [active_shortlived; active_longlived; inactive_species; Jratelist; :Tn; :Ti; :Te];
-const set_concentration_arglist_typed = [:($s::Float64) for s in set_concentration_arglist];
+const set_concentration_arglist_typed = [:($s::ftype_chem) for s in set_concentration_arglist];
 
 # Expressions for more accurate values of M (total third-bodies) and E (total electrons)
 const Mexpr = Expr(:call, :+, all_species...)
@@ -911,7 +1156,7 @@ const Eexpr = Expr(:call, :+, ion_species...)
 
         # stack overflow - answer (Cite)
         # create a result array for evaluating the production and loss expressions
-        result = map(_ -> Float64[], $active_longlived_species_rates) 
+        result = map(_ -> ftype_chem[], $active_longlived_species_rates) 
 
         $( (quote
             # i = row, j = vector, k = specific expression
@@ -931,7 +1176,9 @@ const Eexpr = Expr(:call, :+, ion_species...)
             net_trans_change[r] = subtract_difflength(sort(result[r, :][3], rev=true), sort(result[r, :][4], rev=true))
         end
 
-        return net_chem_change .+ net_trans_change
+        rates_local = net_chem_change .+ net_trans_change
+        
+        return convert(Array{ftype_ncur}, rates_local)
 
     end
 end
@@ -1013,7 +1260,7 @@ end
         # Handle negatives and quadratic cases and pick out one best density solution for each species
         best_solutions = choose_solutions(density_result, prev_densities)
 
-        return best_solutions
+        return convert(Vector{ftype_ncur}, best_solutions)
     end
 end
 
@@ -1030,15 +1277,15 @@ end
 
         localchemJi = $(chemJ_local[1])
         localchemJj = $(chemJ_local[2])
-        localchemJval = $(Expr(:vcat, chemJ_local[3]...)) 
+        localchemJval = convert(Array{ftype_ncur}, $(Expr(:vcat, chemJ_local[3]...)))
 
         abovechemJi = $(chemJ_above[1])
         abovechemJj = $(chemJ_above[2])
-        abovechemJval = $(Expr(:vcat, chemJ_above[3]...))
+        abovechemJval = convert(Array{ftype_ncur}, $(Expr(:vcat, chemJ_above[3]...)))
 
         belowchemJi = $(chemJ_below[1])
         belowchemJj = $(chemJ_below[2])
-        belowchemJval = $(Expr(:vcat, chemJ_below[3]...))
+        belowchemJval = convert(Array{ftype_ncur}, $(Expr(:vcat, chemJ_below[3]...)))
 
         # return the actual values of I, J, and V (indices and numerical value):
         return ((localchemJi, localchemJj, localchemJval),
@@ -1173,25 +1420,24 @@ plot_water_profile(H2Oinitfrac, HDOinitfrac, n_current[:H2O], n_current[:HDO], r
 
 # Absolute tolerance
 # calculates 1 ppt of the total density at each altitude.
-const abs_tol_vec = 1e-12 .* [[n_tot(n_current, a, all_species) for sp in active_longlived, a in non_bdy_layers]...] 
-const abs_tol_for_plot = 1e-12 .* n_tot(n_current, all_species)
+const abs_tol_ppm = 1e-12 # absolute tolerance in ppm, used by Gear solver
+const abs_tol_rel = 1e-12 # absolute tolerance relative to total atmosphere density, used by DifferentialEquations.jl solvers
+const abs_tol_vec = abs_tol_rel .* [[n_tot(n_current, a, all_species) for sp in active_longlived, a in non_bdy_layers]...] 
 
+if problem_type == "Gear"
+    const abs_tol_for_plot = fill(1e-12, length(n_tot(n_current, all_species)))
+else
+    const abs_tol_for_plot = 1e-12 .* n_tot(n_current, all_species)
+end
+    
 # Plot initial atmosphere condition  ===========================================
 println("Plotting the initial condition")
-plot_atm(n_current, [neutral_species, ion_species], results_dir*sim_folder_name*"/initial_atmosphere.png", plot_grid, speciescolor, speciesstyle, zmax, abs_tol_for_plot)
+plot_atm(n_current, [neutral_species, ion_species],
+         results_dir*sim_folder_name*"/initial_atmosphere.png", plot_grid, speciescolor, speciesstyle, zmax, abs_tol_for_plot,
+         t="initial state")
 
 # Create a list to keep track of stiffness ratio ===============================
 # const stiffness = []
-
-# Record setup time
-t6 = time()
-
-f = open(results_dir*sim_folder_name*"/simulation_params_"*FNext*".txt", "a")
-write(f, "Setup time $(format_sec_or_min(t6-t5))\n")
-close(f)
-
-# do the convergence ===========================================================
-println("Beginning Convergence")
 
 # Timesteps
 const mindt = dt_min_and_max[converge_which][1]
@@ -1200,8 +1446,51 @@ times_to_save = [10.0^t for t in mindt:maxdt]
 timestorage = times_to_save[1] / 10  # This variable lets us periodically print the timestep being worked on for tracking purposes
 plotnum = 1 # To order the plots for each timestep correctly in the folder so it's easy to page through them.
 
+# Record setup time
+t6 = time()
+
+f = open(results_dir*sim_folder_name*"/simulation_params_"*FNext*".txt", "a")
+write(f, "Setup time $(format_sec_or_min(t6-t5))\n")
+close(f)
+
+# compile and call the jacobian =================================================
+# This takes a long time (~30 min) when running with Double64, move the first call outside evolve_atmosphere
+if problem_type == "Gear"
+    println("Compiling and calling the chemical jacobian outside evolve_atmosphere (this will take ~45 min)...")
+
+    # Set up the initial state and check for any problems 
+    nstart = flatten_atm(n_current, active_longlived, num_layers)
+    find_nonfinites(nstart, collec_name="nstart")
+
+    # Set up parameters    
+    Dcoef_arr_template = zeros(size(Tn_arr))  # For making diffusion coefficient calculation go faster 
+    params = [inactive, inactive_species, active_species, active_longlived, active_shortlived, Tn_arr, Ti_arr, Te_arr, 
+              Tplasma_arr, Dcoef_arr_template]
+    params_exjac = deepcopy(params)  # I think this is so the Dcoef doesn't get filled in with the wrong info?
+
+    # Call the expensive rate function
+    t_before_jac = time()
+    dndt, example_jacobian = get_rates_and_jacobian(nstart, params_exjac, 0.0)
+    t_after_jac = time()
+    println("...finished.\n")
+    println("First jacobian compile+call took $(format_sec_or_min(t_after_jac-t_before_jac))\n")
+
+    find_nonfinites(dndt, collec_name="example_rates")
+    find_nonfinites(example_jacobian, collec_name="example_jacobian")
+
+    println("Time to beginning convergence is $(format_sec_or_min(time()-t_before_jac))\n\n")
+end
+
+# Usually I split everthing below this out into a separate file and
+# load the above into an interactive session -Mike
+
+# do the convergence ===========================================================
+println("Beginning Convergence")
+
 # Pack the global variables and send them through for faster code!
 ti = time()
+timestorage = times_to_save[1] / 10  # This variable lets us periodically print the timestep being worked on for tracking purposes
+plotnum = 1 # To order the plots for each timestep correctly in the folder so it's easy to page through them.
 atm_soln = evolve_atmosphere(n_current, mindt, maxdt, t_to_save=times_to_save)
 tf = time() 
 
@@ -1261,6 +1550,15 @@ elseif problem_type == "ODE"
         end
         global i += 1 
     end
+elseif problem_type == "Gear"
+    nc_all = atm_soln # this solver returns a standard dictionary rather than a matrix like the other solvers
+
+    plot_atm(nc_all, [neutral_species, ion_species], results_dir*sim_folder_name*"/final_atmosphere.png", t="final converged state", plot_grid, 
+             speciescolor, speciesstyle, zmax, abs_tol_for_plot)
+
+    # Write out final atmosphere
+    write_atmosphere(nc_all, results_dir*sim_folder_name*"/"*final_atm_file, alt, num_layers)   # write out the final state to a specially named file
+
 else
     throw("Invalid problem_type")
 end 
@@ -1277,5 +1575,11 @@ write(f, "Simulation total runtime $(format_sec_or_min(t7-t1))\n")
 
 close(f)
 
+n_converged = get_ncurrent("/home/mike/Documents/Mars/Photochemistry/eryn_ions_2021Dec/Code/converged_gear_20211231.h5")
 
-
+# Pack the global variables and send them through for faster code!
+ti = time()
+timestorage = times_to_save[1] / 10  # This variable lets us periodically print the timestep being worked on for tracking purposes
+plotnum = 1 # To order the plots for each timestep correctly in the folder so it's easy to page through them.
+atm_soln = evolve_atmosphere(n_converged, mindt, maxdt, t_to_save=times_to_save)
+tf = time() 

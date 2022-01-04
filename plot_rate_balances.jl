@@ -23,7 +23,7 @@ include(paramfile)
 
 # Load the new standard reaction network from file if it the parameter file doesn''t have its own network.
 if !@isdefined reactionnet 
-    include("/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/reaction_network.jl")
+    include("$(@__DIR__)/reaction_network.jl")
 end
 
 println("Found the folder name: $(sim_folder_name)")

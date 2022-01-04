@@ -174,10 +174,10 @@ const HDOi = findfirst(x->x==:HDO, active_longlived)
 # **************************************************************************** #
 # **************************************************************************** #
 
-const extra_plots_dir = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Auxiliary plots/"
-const research_dir = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Code/"
-const results_dir = "/home/emc/GDrive-CU/Research-Modeling/UpperAtmoDH/Results/"
-const xsecfolder = research_dir * "uvxsect/";
+const code_dir = "$(@__DIR__)"
+const extra_plots_dir = code_dir * "/../Auxiliary plots/"
+const results_dir = code_dir * "/../Results/"
+const xsecfolder = code_dir * "uvxsect/";
 
 # fundamental constants ========================================================
 const kB_MKS = 1.38e-23;        # J/K - needed for saturation vapor pressure empirical equation.
