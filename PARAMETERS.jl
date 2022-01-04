@@ -25,13 +25,14 @@
 # Basic simulation parameters
 const simtype = "temp"
 const controltemps = [216., 130., 205.]
-const problem_type = "ODE" #  "SS" #
+const problem_type = "SS" #"ODE" #  
 const converge_which = "both"
+const optional_logging_note = "Changes: (1) added ion temperatures by Hanley+2021 (2) removed mysterious factor of 2 in ion reactions (3) new DCO+ + e- rate"
 
 # Folders and files 
-const sim_folder_name = "$(simtype)_$(Int64(controltemps[1]))_$(Int64(controltemps[2]))_$(Int64(controltemps[3]))_$(problem_type)_GwensTemps"
-# const initial_atm_file = "converged_full_atmosphere.h5"
-const initial_atm_file = results_dir*"$(simtype)_$(Int64(controltemps[1]))_$(Int64(controltemps[2]))_$(Int64(controltemps[3]))_SS_GwensTemps/final_atmosphere.h5"
+const sim_folder_name = "$(simtype)_$(Int64(controltemps[1]))_$(Int64(controltemps[2]))_$(Int64(controltemps[3]))_$(problem_type)_Newest"
+const initial_atm_file = "converged_full_atmosphere.h5"
+# const initial_atm_file = results_dir*"$(simtype)_$(Int64(controltemps[1]))_$(Int64(controltemps[2]))_$(Int64(controltemps[3]))_SS_GwensTemps/final_atmosphere.h5"
 const final_atm_file = "$(simtype)_$(Int64(controltemps[1]))_$(Int64(controltemps[2]))_$(Int64(controltemps[3]))_$(problem_type).h5"
 
 # Water 

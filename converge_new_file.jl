@@ -1110,6 +1110,7 @@ end
 f = open(results_dir*sim_folder_name*"/simulation_params_"*FNext*".txt", "w")
 
 # Basic parameters written out 
+write(f, optional_logging_note*"\n\n")
 write(f, "$(simtype) experiment: \n")
 write(f, input_string*"\n\n")
 write(f, "Initial atmosphere state: $(initial_atm_file)\n\n")

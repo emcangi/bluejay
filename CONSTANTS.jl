@@ -15,7 +15,7 @@ const mH = 1.67e-24;            # g
 const marsM = 0.1075*5.972e27;  # g 
 const radiusM = 3396e5;         # cm
 const q = 4.8032e-10            # statcoulomb (cm^1.5 g^0.5 s^-1)
-const DH = 5.5 * 1.6e-4               # SMOW value from Yung 1988
+const DH = 5.5 * 1.6e-4         # SMOW value, Yung 1988
 
 # Polarizability from NIST. Experimental values from: https://cccbdb.nist.gov/pollistx.asp
 # Calculations for species not available in experiment from: https://cccbdb.nist.gov/polcalc2x.asp
@@ -40,36 +40,35 @@ const polarizability = Dict(# Values available from experiment
                             :DCO=>2.505e-24, :DO2=>1.858e-24, :DOCO=>3.224e-24, :HDO2=>2.143e-24, :O1D=>0.802e-24, 
                             )
 
-const molmass = Dict(:Ar=>40, 
-                     :C=>12, :CH=>13, :CN=>26,
-                     :CO=>28, :CO2=>44, 
-                     :H=>1, :H2=>2, :H2O=>18, :H2O2=>34, 
-                     :HCN=>27, :HCO=>29, :HNO=>31, 
-                     :HO2=>33, :HOCO=>45, 
-                     :N=>14, :N2=>28,
-                     :N2O=>44, :NH=>15, :NH2=>16, :NO=>30, :NO2=>46, 
-                     :O=>16, :O1D=>16, :O2=>32, :O3=>48, :OH=>17,
-
-                     # Neutrals .- deuterated
-                     :D=>2, :DCO=>30, :DO2=>34, :DOCO=>46, :HD=>3, :HDO=>19, :HDO2=>35, :OD=>18, 
-
-                     # Ions
-                     :Arpl=>40, :ArHpl=>41, :ArDpl=>42,
-                     :Cpl=>12, :CHpl=>13, :CNpl=>26, 
-                     :COpl=>28, :CO2pl=>44,
-                     :Hpl=>1, :Dpl=>2, 
-                     :H2pl=>2, :HDpl=>3, 
-                     :H3pl=>3, :H2Dpl=>4, :HD2pl=>5, 
-                     :H2Opl=>18, :HDOpl=>19, 
-                     :H3Opl=>19,  :H2DOpl=>20,
-                     :HO2pl=>33, 
-                     :HCOpl=>29, :HOCpl=>29, :DCOpl=>30, :DOCpl=>30, 
-                     :HCO2pl=>45, :DCO2pl=>46, 
-                     :HCNpl=>27, :HCNHpl=>28, :HNOpl=>31, :HN2Opl=>45,  
-                     :Npl=>14, :N2pl=>28, 
-                     :N2Hpl=>29, :N2Dpl=>30, 
-                     :N2Opl=>44, 
-                     :NHpl=>15, :NH2pl=>16, :NH3pl=>17,
-                     :NOpl=>30, :NO2pl=>46,
-                     :Opl=>16, :O2pl=>32, :OHpl=>17, :ODpl=>18 
+const molmass = Dict(:H=>1, :Hpl=>1, 
+                     :H2=>2, :H2pl=>2, :D=>2, :Dpl=>2, 
+                     :HD=>3, :HDpl=>3, :H3pl=>3, 
+                     :H2Dpl=>4, 
+                     :HD2pl=>5, 
+                     :C=>12, :Cpl=>12,  
+                     :CH=>13, :CHpl=>13, 
+                     :N=>14, :Npl=>14,
+                     :NH=>15, :NHpl=>15, 
+                     :NH2=>16, :NH2pl=>16, :O=>16, :O1D=>16, :Opl=>16, 
+                     :NH3pl=>17, :OH=>17, :OHpl=>17, 
+                     :H2O=>18, :OD=>18, :ODpl=>18, :H2Opl=>18, 
+                     :HDO=>19, :HDOpl=>19, :H3Opl=>19,
+                     :H2DOpl=>20,
+                     :CN=>26, :CNpl=>26, 
+                     :HCN=>27, :HCNpl=>27, 
+                     :CO=>28, :COpl=>28, :HCNHpl=>28, :N2=>28, :N2pl=>28, 
+                     :HCO=>29, :HCOpl=>29, :HOCpl=>29, :N2Hpl=>29, 
+                     :DCO=>30, :DCOpl=>30, :DOCpl=>30, :NO=>30,  :NOpl=>30, :N2Dpl=>30, 
+                     :HNO=>31, :HNOpl=>31, 
+                     :O2=>32, :O2pl=>32, 
+                     :HO2=>33, :HO2pl=>33, 
+                     :DO2=>34, :H2O2=>34, 
+                     :HDO2=>35,
+                     :Ar=>40, :Arpl=>40, 
+                     :ArHpl=>41, 
+                     :ArDpl=>42,
+                     :CO2=>44, :CO2pl=>44, :N2O=>44, :N2Opl=>44, 
+                     :HOCO=>45, :HCO2pl=>45, :HN2Opl=>45,  
+                     :DOCO=>46, :DCO2pl=>46, :NO2=>46, :NO2pl=>46,
+                     :O3=>48, 
                      )
