@@ -14,7 +14,7 @@ using PlotUtils
 
 export # Basic utility functions
        charge_type, create_folder, deletefirst, find_nonfinites, fluxsymbol, format_chemistry_string, format_sec_or_min, getpos, input, nans_present, 
-       next_in_loop, searchdir, search_subfolders, subtract_difflength,
+       next_in_loop, searchdir, searchsortednearest, search_subfolders, subtract_difflength,
        # Plotting functions
        get_colors, get_grad_colors, plot_atm, plot_bg, plot_extinction, plot_Jrates, plot_rxns, plot_temp_prof, plot_water_profile,                 
        # Reaction rate functions
@@ -33,7 +33,7 @@ export # Basic utility functions
        # Photochemistry functions
        binupO2, co2xsect, h2o2xsect_l, h2o2xsect, hdo2xsect, ho2xsect_l, o2xsect, O3O1Dquantumyield, padtosolar, populate_xsect_dict, quantumyield, 
        # Temperature functions
-       T_all, Tpiecewise,                                                                                                      
+       T_updated, T_all, Tpiecewise,                                                                                                      
        # Water profile functions  
        Psat, Psat_HDO         
 
@@ -196,6 +196,18 @@ end
 
 # searches path for key
 searchdir(path, key) = filter(x->occursin(key,x), readdir(path))
+
+function searchsortednearest(a,x)
+    idx = searchsortedfirst(a,x)
+    if (idx==1); return idx; end
+    if (idx>length(a)); return length(a); end
+    if (a[idx]==x); return idx; end
+    if (abs(a[idx]-x) < abs(a[idx-1]-x))
+        return idx
+    else
+        return idx-1
+    end
+end
 
 function search_subfolders(path::String, key; type="folders")
     #=
@@ -1195,26 +1207,33 @@ function plot_temp_prof(n_temps, alts; # params to pass
     end
     if e_temps != nothing
         ax.plot(e_temps, alts./1e5, label="Electrons", color="cornflowerblue")
-        ax.legend(fontsize=16, loc="center right")
+        ax.legend(fontsize=16, loc=(1.05,0.8))#"center right")
         ax.set_xscale("log")
     end
 
     # plot the control temps
+
+    # surface
     ax.scatter(n_temps[1], 0, marker="o", color=medgray, zorder=10)
     ax.text(n_temps[1], 0, L"\mathrm{T}_{\mathrm{surface}}"*" = $(Int64(round(n_temps[1], digits=0))) K ")
 
-    middle_ind = Int64(length(n_temps)/2)
-    ax.scatter(n_temps[middle_ind-1], 75, marker="o", color=medgray, zorder=10)
-    ax.text(n_temps[middle_ind]+5, 75, L"\mathrm{T}_{\mathrm{meso}}"*" = $(Int64(round(n_temps[middle_ind-1], digits=0))) K ")
+    # mesosphere
+    meso_ind = findfirst(x->x==minimum(n_temps), n_temps)# Int64(length(n_temps)/2)
+    # println(meso_ind)
+    ax.scatter(n_temps[meso_ind], alts[meso_ind+5]/1e5, marker="o", color=medgray, zorder=10)
+    ax.text(n_temps[meso_ind]+5, alts[meso_ind+5]/1e5, L"\mathrm{T}_{\mathrm{meso}}"*" = $(Int64(round(n_temps[meso_ind], digits=0))) K ")
 
+    # exosphere
     ax.scatter(n_temps[end], 250, marker="o", color=medgray, zorder=10)
     ax.text(n_temps[end]*1.05, 240, L"\mathrm{T}_{\mathrm{exo}}"*" = $(Int64(round(n_temps[end], digits=0))) K ")
     
+    # final labels
     ax.set_ylabel("Altitude [km]")
     ax.set_yticks(collect(0:50:alts[end]/1e5))
     ax.set_yticklabels(collect(0:50:alts[end]/1e5))
     ax.set_xlabel("Temperature [K]")
-    ax.set_xlim(100, 2e3)
+    ax.set_xlim(95, 2e3)
+    ax.tick_params(which="both", axis="x", top=true, labeltop=true)
 
     if showonly==true
         show()
@@ -1738,8 +1757,7 @@ function get_flux(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Ti,
     D_arr = zeros(size(Tn))
     Keddy_arr, H0_dict, Dcoef_dict = update_diffusion_and_scaleH(allsp, atmdict, Tn, Tp, D_arr, bcdict, allsp, neutralsp, 
                                                                  mmass, alts, n_alt_index, polar, T_for_diff)
-    Hs_dict = Dict{Symbol, Vector{ftype_ncur}}([sp=>scaleH(alt, sp, T_for_Hs[charge_type(sp)], molmass) for sp in allsp])  
-
+    Hs_dict = Dict{Symbol, Vector{ftype_ncur}}([sp=>scaleH(alts, sp, T_for_Hs[charge_type(sp)], molmass) for sp in allsp])  
     fluxcoefs_all = fluxcoefs(allsp, Tn, Tp, Keddy_arr, Dcoef_dict, H0_dict, Hs_dict, alts, dz)
     bc_dict = boundaryconditions(fluxcoefs_all, bcdict, allsp, setdiff(allsp, transsp), dz)
 
@@ -1787,9 +1805,7 @@ function get_transport_PandL_rate(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype
     Keddy_arr, H0_dict, Dcoef_dict = update_diffusion_and_scaleH(allsp, atmdict, Tn, Tp, D_arr, bcdict, allsp, neutralsp, 
                                                                  mmass, alts, n_alt_index, polar, T_for_diff)
 
-    Hs_dict = Dict{Symbol, Vector{ftype_ncur}}([sp=>scaleH(alt, sp, T_for_Hs[charge_type(sp)], molmass) for sp in allsp]) 
-
-
+    Hs_dict = Dict{Symbol, Vector{ftype_ncur}}([sp=>scaleH(alts, sp, T_for_Hs[charge_type(sp)], molmass) for sp in allsp]) 
     fluxcoefs_all = fluxcoefs(allsp, Tn, Tp, Keddy_arr, Dcoef_dict, H0_dict, Hs_dict, alts, dz)
 
     # For the bulk layers only to make the loops below more comprehendable: 
@@ -1846,20 +1862,20 @@ function Keddy(z, nt)
 end
 
 # Species-specific scale height
-function scaleH(z::Float64, sp::Symbol, controltemps::Array, mmass) # params to pass
-    #=
-    Input:
-        z: ONE altitude in cm
-        sp: species to calculate for
-        controltemps: temperatures at surface, mesosphere, exobase
-    Output:
-        species-specific scale height 
-    =#  
+# function scaleH(z::Float64, sp::Symbol, controltemps::Array, mmass) # params to pass
+    
+#     Input:
+#         z: ONE altitude in cm
+#         sp: species to calculate for
+#         controltemps: temperatures at surface, mesosphere, exobase
+#     Output:
+#         species-specific scale height 
+      
 
-    T = T_all(z, controltemps[1], controltemps[2], controltemps[3], charge_type(sp))
-    mm = mmass[sp]
-    return kB*T/(mm*mH*marsM*bigG)*(((z+radiusM))^2)
-end
+#     T = T_all(z, controltemps[1], controltemps[2], controltemps[3], charge_type(sp))
+#     mm = mmass[sp]
+#     return kB*T/(mm*mH*marsM*bigG)*(((z+radiusM))^2)
+# end
 
 # VECTORIZED scale heights
 function scaleH(z::Vector{Float64}, sp::Symbol, T::Array, mmass) # params to pass
@@ -2268,7 +2284,9 @@ function get_volume_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}},
             rate_coefs[rxn_str] = atmdict[rxn[3]]
         else                        # bi- and ter-molecular chemistry
             density_prod = reactant_density_product(atmdict, rxn[1], allsp, ionsp, numlyrs)
-            rate_coef = eval_rate_coef(atmdict, rxn[3], Tn, Ti, Te, allsp, ionsp, numlyrs)
+            thisrate = typeof(rxn[3]) != Expr ? :($rxn[3] + 0) : rxn[3]
+            rate_coef = eval_rate_coef(atmdict, thisrate, Tn, Ti, Te, allsp, ionsp, numlyrs)
+
 
             rxn_dat[rxn_str] = density_prod .* rate_coef
             rate_coefs[rxn_str] = rate_coef
@@ -2973,7 +2991,7 @@ function padtosolar(solarflux, crosssection::Array{Float64, 2})
     return retxsec
 end
 
-function populate_xsect_dict(controltemps::Array, alts; ion_xsects=true) # TODO: Put xsect file names into a large list argument. 
+function populate_xsect_dict(Tn_array::Array, alts::Array; ion_xsects=true) # TODO: Put xsect file names into a large list argument. 
     #=
     Creates a dictionary of the 1-nm photodissociation or photoionization
     cross-sections important in the atmosphere. keys are symbols found in
@@ -2989,7 +3007,6 @@ function populate_xsect_dict(controltemps::Array, alts; ion_xsects=true) # TODO:
     =#
 
     # Set up =======================================================================
-    Temp_n(z) = T_all(z, controltemps[1], controltemps[2], controltemps[3], "neutral")
     xsect_dict = Dict{Symbol, Array{Array{Float64}}}()
 
     # Loading Data =================================================================
@@ -3060,20 +3077,20 @@ function populate_xsect_dict(controltemps::Array, alts; ion_xsects=true) # TODO:
     #CO2+hv->CO+O
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((l->l>167, 1), (l->95>l, 0.5))),
-              map(t->co2xsect(co2xdata, t), map(Temp_n, alts))), :JCO2toCOpO)
+              map(t->co2xsect(co2xdata, t), Tn_array)), :JCO2toCOpO)
     #CO2+hv->CO+O1D
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((l->95<l<167, 1), (l->l<95, 0.5))),
-              map(t->co2xsect(co2xdata, t), map(Temp_n, alts))), :JCO2toCOpO1D)
+              map(t->co2xsect(co2xdata, t), Tn_array)), :JCO2toCOpO1D)
 
     # O2 photodissociation ---------------------------------------------------------
     #O2+hv->O+O
     setindex!(xsect_dict,
-              map(xs->quantumyield(xs,((x->x>175, 1),)), map(t->o2xsect(o2xdata, o2schr130K, o2schr190K, o2schr280K, t), map(Temp_n, alts))),
+              map(xs->quantumyield(xs,((x->x>175, 1),)), map(t->o2xsect(o2xdata, o2schr130K, o2schr190K, o2schr280K, t), Tn_array)),
               :JO2toOpO)
     #O2+hv->O+O1D
     setindex!(xsect_dict,
-              map(xs->quantumyield(xs,((x->x<175, 1),)), map(t->o2xsect(o2xdata, o2schr130K, o2schr190K, o2schr280K, t), map(Temp_n, alts))),
+              map(xs->quantumyield(xs,((x->x<175, 1),)), map(t->o2xsect(o2xdata, o2schr130K, o2schr190K, o2schr280K, t), Tn_array)),
               :JO2toOpO1D)
 
     # O3 photodissociation ---------------------------------------------------------
@@ -3087,7 +3104,7 @@ function populate_xsect_dict(controltemps::Array, alts; ion_xsects=true) # TODO:
                                    (l->306<=l<328, l->(1 .- O3O1Dquantumyield(l, t))),
                                    (l->328<=l<340, 0.92),
                                    (l->340<=l, 1.0)
-                                  )), map(Temp_n, alts)), :JO3toO2pO)
+                                  )), Tn_array), :JO3toO2pO)
     # O3+hv->O2+O1D
     setindex!(xsect_dict,
               map(t->quantumyield(o3xdata,
@@ -3098,7 +3115,7 @@ function populate_xsect_dict(controltemps::Array, alts; ion_xsects=true) # TODO:
                                    (l->306<=l<328, l->O3O1Dquantumyield(l, t)),
                                    (l->328<=l<340, 0.08),
                                    (l->340<=l, 0.0)
-                                  )), map(Temp_n, alts)), :JO3toO2pO1D)
+                                  )), Tn_array), :JO3toO2pO1D)
     # O3+hv->O+O+O
     setindex!(xsect_dict,
               fill(quantumyield(o3xdata,((x->true, 0.),)),length(alts)),
@@ -3166,37 +3183,37 @@ function populate_xsect_dict(controltemps::Array, alts; ion_xsects=true) # TODO:
     # H2O2 and HDO2 photodissociation ----------------------------------------------
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((x->x<230, 0.85),(x->x>230, 1))),
-              map(t->h2o2xsect(h2o2xdata, t), map(Temp_n, alts))), :JH2O2to2OH)
+              map(t->h2o2xsect(h2o2xdata, t), Tn_array)), :JH2O2to2OH)
 
     # H2O2+hv->HO2+H
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((x->x<230, 0.15),(x->x>230, 0))),
-              map(t->h2o2xsect(h2o2xdata, t), map(Temp_n, alts))), :JH2O2toHO2pH)
+              map(t->h2o2xsect(h2o2xdata, t), Tn_array)), :JH2O2toHO2pH)
 
     # H2O2+hv->H2O+O1D
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((x->true, 0),)), map(t->h2o2xsect(h2o2xdata, t),
-              map(Temp_n, alts))), :JH2O2toH2OpO1D)
+              Tn_array)), :JH2O2toH2OpO1D)
 
     # HDO2 + hν -> OH + OD
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((x->x<230, 0.85),(x->x>230, 1))),
-              map(t->hdo2xsect(hdo2xdata, t), map(Temp_n, alts))), :JHDO2toOHpOD)
+              map(t->hdo2xsect(hdo2xdata, t), Tn_array)), :JHDO2toOHpOD)
 
     # HDO2 + hν-> DO2 + H
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((x->x<230, 0.5*0.15),(x->x>230, 0))),
-              map(t->hdo2xsect(hdo2xdata, t), map(Temp_n, alts))), :JHDO2toDO2pH)
+              map(t->hdo2xsect(hdo2xdata, t), Tn_array)), :JHDO2toDO2pH)
 
     # HDO2 + hν-> HO2 + D
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((x->x<230, 0.5*0.15),(x->x>230, 0))),
-              map(t->hdo2xsect(hdo2xdata, t), map(Temp_n, alts))), :JHDO2toHO2pD)
+              map(t->hdo2xsect(hdo2xdata, t), Tn_array)), :JHDO2toHO2pD)
 
     # HDO2 + hν -> HDO + O1D
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((x->true, 0),)), map(t->hdo2xsect(hdo2xdata, t),
-              map(Temp_n, alts))), :JHDO2toHDOpO1D)
+              Tn_array)), :JHDO2toHDOpO1D)
 
     if ion_xsects == true
         # NEW: CO2 photodissociation ---------------------------------------------------------
@@ -3401,6 +3418,82 @@ end
 #                   Temperature & Water profile functions                      #
 #                                                                              #
 # **************************************************************************** #
+
+function T_updated(z, Tsurf, Tmeso, Texo, sptype::String)
+    #= 
+    Input:
+        z: altitude above surface in cm
+        Tsurf: Surface temperature in KT
+        Tmeso: tropopause/mesosphere tempearture
+        Texo: exobase temperature
+        sptype: "neutral", "ion" or "electron". NECESSARY!
+    Output: 
+        A single temperature value in K.
+    =#
+    
+    lapserate = -1.4e-5 # lapse rate in K/cm
+    z_meso_bottom = alt[searchsortednearest(alt, (Tmeso-Tsurf)/(lapserate))]
+    z_meso_top = 110e5  # height of the tropopause top
+    
+    # These are the altitudes at which we "stitch" together the profiles 
+    # from fitting the tanh profile in Ergun+2015,2021 to Hanley+2021 DD8
+    # ion and electron profiles, and the somewhat arbitary profiles defined for
+    # the region roughly between z_meso_top and the bottom of the fitted profiles.
+    stitch_alt_electrons = 142e5
+    stitch_alt_ions = 135e5
+
+    function T_upper_atmo_neutrals(zee)
+        return Texo - (Texo - Tmeso)*exp(-((zee - z_meso_top)^2)/(8e10*Texo))
+    end
+    
+    function bobs_profile(z, TH, TL, z0, H0)
+        #=
+        Functional form from Ergun+ 2015 and 2021, but fit to data for electrons and ions
+        in Hanley+ 2021, DD* data.
+        =#
+        return ((TH+TL)/2) + ((TH-TL)/2) * tanh(((z/1e5)-z0)/H0)
+    end
+    
+    function T_ions_thermalize_region(z)
+        #=
+        This is a totally arbitary functional form for the region from [z_meso_top, 138]
+        =#
+        M = 6.06308414
+        B = -538.97784139
+        return M*(z/1e5) + B
+    end
+    
+    # In the lower atmosphere, neutrals, ions, and electrons all 
+    # have the same temperatures. 
+    if z < z_meso_bottom
+        return Tsurf + lapserate*z
+    elseif z_meso_bottom <= z <= z_meso_top 
+        return Tmeso
+    
+    # Near the top of the isothermal mesosphere, profiles diverge.        
+    elseif z > z_meso_top
+        if sptype=="neutral"
+            return T_upper_atmo_neutrals(z)
+        elseif sptype=="electron"
+            # This region connects the upper atmosphere with the isothermal mesosphere
+            if z_meso_top <= z < stitch_alt_electrons
+                return bobs_profile(z, -1289.05806755, 469.31681082, 72.24740123, -50.84113252)
+            # This next region is a fit of the tanh electron temperature expression in Ergun+2015 and 2021 
+            # to the electron profile in Hanley+2021, DD8
+            elseif z >= stitch_alt_electrons
+                return bobs_profile(z, 1409.23363494, 292.20319103, 191.39012079, 36.64138724)
+            end
+        elseif sptype=="ion"
+            # This is similar to the electron handling, but for the ion profile in Hanley+2021, DD8.
+            if z_meso_top < z <= stitch_alt_ions
+                return T_ions_thermalize_region(z) < Tmeso ? Tmeso : T_ions_thermalize_region(z)
+            elseif z > stitch_alt_ions
+                return bobs_profile(z, 4.87796600e+06, 2.15643719e+02, 7.83610155e+02, 1.16129872e+02)
+            end
+        end
+    end
+end
+
 function T_all(z, Tsurf, Tmeso, Texo, sptype::String)
     #= 
     Input:

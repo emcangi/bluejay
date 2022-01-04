@@ -27,6 +27,7 @@ const simtype = "temp"
 const controltemps = [216., 130., 205.]
 const problem_type = "Gear" # "ODE" # "SS" # 
 const converge_which = "both"
+const optional_logging_note = "Changes: (1) added ion temperatures by Hanley+2021 (2) removed mysterious factor of 2 in ion reactions (3) new DCO+ + e- rate"
 
 # Check that float type is properly set
 if problem_type == "Gear" && (ftype_ncur == Float64 || ftype_chem == Float64)
@@ -36,9 +37,9 @@ elseif problem_type != "Gear" && (ftype_ncur == Double64 || ftype_chem == Double
 end
 
 # Folders and files 
-const sim_folder_name = "$(simtype)_$(Int64(controltemps[1]))_$(Int64(controltemps[2]))_$(Int64(controltemps[3]))_$(problem_type)"
+const sim_folder_name = "$(simtype)_$(Int64(controltemps[1]))_$(Int64(controltemps[2]))_$(Int64(controltemps[3]))_$(problem_type)_Newest"
 const initial_atm_file = "converged_full_atmosphere.h5"
-# const initial_atm_file = results_dir*"$(simtype)_$(Int64(controltemps[1]))_$(Int64(controltemps[2]))_$(Int64(controltemps[3]))_$(problem_type)/final_atmosphere.h5"
+# const initial_atm_file = results_dir*"$(simtype)_$(Int64(controltemps[1]))_$(Int64(controltemps[2]))_$(Int64(controltemps[3]))_SS_GwensTemps/final_atmosphere.h5"
 const final_atm_file = "$(simtype)_$(Int64(controltemps[1]))_$(Int64(controltemps[2]))_$(Int64(controltemps[3]))_$(problem_type).h5"
 
 # Water 
@@ -102,17 +103,17 @@ const T_surf = controltemps[1]
 const T_meso = controltemps[2]
 const T_exo = controltemps[3]
 
-const Tn_arr = [T_all(a, controltemps[1], controltemps[2], controltemps[3], "neutral") for a in alt];
-const Ti_arr = [T_all(a, controltemps[1], controltemps[2], controltemps[3], "ion") for a in alt];
-const Te_arr = [T_all(a, controltemps[1], controltemps[2], controltemps[3], "electron") for a in alt];
+const Tn_arr = [T_updated(a, controltemps[1], controltemps[2], controltemps[3], "neutral") for a in alt];
+const Ti_arr = [T_updated(a, controltemps[1], controltemps[2], controltemps[3], "ion") for a in alt];
+const Te_arr = [T_updated(a, controltemps[1], controltemps[2], controltemps[3], "electron") for a in alt];
 
-Temp_keepSVP(z::Float64) = T_all(z, meanTs, meanTm, meanTe, "neutral") # Needed for boundary conditions.
+Temp_keepSVP(z::Float64) = T_updated(z, meanTs, meanTm, meanTe, "neutral") # Needed for boundary conditions.
 
 const Tplasma_arr = Ti_arr .+ Te_arr;
 const Tprof_for_diffusion = Dict("neutral"=>Tn_arr, "ion"=>Tplasma_arr)
 const Tprof_for_Hs = Dict("neutral"=>Tn_arr, "ion"=>Ti_arr)
 const fix_SVP = true
-const T_top = T_all(zmax, controltemps[1], controltemps[2], controltemps[3], "neutral")
+const T_top = T_updated(zmax, controltemps[1], controltemps[2], controltemps[3], "neutral")
 
 # **************************************************************************** #
 #                                                                              #
