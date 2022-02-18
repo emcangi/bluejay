@@ -38,6 +38,9 @@ const polarizability = Dict(# Values available from experiment
 
                             # Assumed same as hydrogen analogue
                             :DCO=>2.505e-24, :DO2=>1.858e-24, :DOCO=>3.224e-24, :HDO2=>2.143e-24, :O1D=>0.802e-24, 
+
+                            # Assumed same as non-excited version
+                            :Nup2D=>1.710e-24, 
                             )
 
 const molmass = Dict(:H=>1, :Hpl=>1, 
@@ -56,7 +59,7 @@ const molmass = Dict(:H=>1, :Hpl=>1,
                      :H2DOpl=>20,
                      :CN=>26, :CNpl=>26, 
                      :HCN=>27, :HCNpl=>27, 
-                     :CO=>28, :COpl=>28, :HCNHpl=>28, :N2=>28, :N2pl=>28, 
+                     :CO=>28, :COpl=>28, :HCNHpl=>28, :N2=>28, :Nup2D=>28, :N2pl=>28, 
                      :HCO=>29, :HCOpl=>29, :HOCpl=>29, :N2Hpl=>29, 
                      :DCO=>30, :DCOpl=>30, :DOCpl=>30, :NO=>30,  :NOpl=>30, :N2Dpl=>30, 
                      :HNO=>31, :HNOpl=>31, 
@@ -72,3 +75,6 @@ const molmass = Dict(:H=>1, :Hpl=>1,
                      :DOCO=>46, :DCO2pl=>46, :NO2=>46, :NO2pl=>46,
                      :O3=>48, 
                      )
+
+const collision_xsect = Dict(:H=>8.79e-17, :D=>8.79e-17 #  the Bohr radius--depends only on Z, so same for isotopes.
+                            ) # Units of cm^2; 

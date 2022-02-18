@@ -5,7 +5,7 @@
 # 
 # Eryn Cangi
 # Created December 2019
-# Last edited: August 2021
+# Last edited: January 2022
 # Currently tested for Julia: 1.6.1
 ################################################################################
 
@@ -25,9 +25,10 @@
 # Basic simulation parameters
 const simtype = "temp"
 const controltemps = [216., 130., 205.]
-const problem_type = "Gear" # "ODE" # "SS" # 
+const tag = "internally_screaming"#addN(2D)" # Optional extra bit for the filename to help indicate what it is
+const problem_type = "SS" # "Gear" #"ODE" #  
 const converge_which = "both"
-const optional_logging_note = "Changes: (1) added ion temperatures by Hanley+2021 (2) removed mysterious factor of 2 in ion reactions (3) new DCO+ + e- rate"
+const optional_logging_note = "This is a test run because the stackoverflow error is back and I wanna scream"#This run is to incorporate the species N2D "
 
 # Check that float type is properly set
 if problem_type == "Gear" && (ftype_ncur == Float64 || ftype_chem == Float64)
@@ -37,10 +38,11 @@ elseif problem_type != "Gear" && (ftype_ncur == Double64 || ftype_chem == Double
 end
 
 # Folders and files 
-const sim_folder_name = "$(simtype)_$(Int64(controltemps[1]))_$(Int64(controltemps[2]))_$(Int64(controltemps[3]))_$(problem_type)_Newest"
-const initial_atm_file = "converged_full_atmosphere.h5"
-# const initial_atm_file = results_dir*"$(simtype)_$(Int64(controltemps[1]))_$(Int64(controltemps[2]))_$(Int64(controltemps[3]))_SS_GwensTemps/final_atmosphere.h5"
-const final_atm_file = "$(simtype)_$(Int64(controltemps[1]))_$(Int64(controltemps[2]))_$(Int64(controltemps[3]))_$(problem_type).h5"
+const sim_folder_name = "$(simtype)_$(Int64(controltemps[1]))_$(Int64(controltemps[2]))_$(Int64(controltemps[3]))_$(problem_type)_$(tag)"
+const initial_atm_file = "converged_gear_20211231.h5"#"converged_full_atmosphere.h5"
+# const initial_atm_file = results_dir*"temp_216_130_205_SS_Newest/final_atmosphere.h5"
+const final_atm_file = "final_atmosphere.h5"
+const reaction_network_spreadsheet = code_dir*"REACTION_NETWORK.xlsx"
 
 # Water 
 const water_mixing_ratio = 1.38e-4
@@ -64,8 +66,8 @@ const excess_peak_alt = 42 # altitude at which to add the extra water
 #                       Simulation time and tolerances                         #
 #                                                                              #
 # **************************************************************************** #
-const dt_min_and_max = Dict("neutrals"=>[-3, 14], "ions"=>[-4, 6], "both"=>[-4, 16])
-const rel_tol = 1e-4 # relative tolerance
+const dt_min_and_max = Dict("neutrals"=>[-3, 14], "ions"=>[-4, 6], "both"=>[-4, 14])
+const rel_tol = 1e-2 # relative tolerance
 
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
 # !!                                                                        !! #
@@ -81,7 +83,7 @@ const rel_tol = 1e-4 # relative tolerance
 const do_chem = true 
 const do_trans = true 
 const make_new_alt_grid = false
-const use_nonzero_initial_profiles = true
+const use_nonzero_initial_profiles = false
 
 # Sets whether photochemical equilibrium is assumed. Aids in converging ions and neutrals
 # together. Generally leave it as is so the code determines it, but you can change it
@@ -147,7 +149,7 @@ const conv_neutrals = [:Ar, :C, :CH, :CN, :CO, :CO2, :H, :H2, :H2O, :H2O2,
                        :N, :N2, :NH, :NH2, :N2O, :NO, :NO2, 
                        :O, :O1D, :O2, :O3, :OH,
                        :D, :DCO, :DO2, :DOCO, :HD, :HDO, :HDO2, :OD];
-const new_neutrals = [];
+const new_neutrals = []#:Nup2D];
 
 const neutral_species = [];
 append!(neutral_species, conv_neutrals)
@@ -177,30 +179,30 @@ append!(all_species, ion_species)
 # Photolysis and Photoionization rate symbol lists ----------------------------
 
 const conv_Jrates = [# Original neutral photodissociation
-                    :JCO2toCOpO,:JCO2toCOpO1D,:JO2toOpO,:JO2toOpO1D,
-                    :JO3toO2pO,:JO3toO2pO1D,:JO3toOpOpO,:JH2toHpH,:JOHtoOpH,
-                    :JOHtoO1DpH,:JHO2toOHpO,:JH2OtoHpOH,:JH2OtoH2pO1D,:JH2OtoHpHpO,
-                    :JH2O2to2OH,:JH2O2toHO2pH,:JH2O2toH2OpO1D,
+                    :JCO2toCOaO,:JCO2toCOaO1D,:JO2toOaO,:JO2toOaO1D,
+                    :JO3toO2aO,:JO3toO2aO1D,:JO3toOaOaO,:JH2toHaH,:JOHtoOaH,
+                    :JOHtoO1DaH,:JHO2toOHaO,:JH2OtoHaOH,:JH2OtoH2aO1D,:JH2OtoHaHaO,
+                    :JH2O2toOHaOH,:JH2O2toHO2aH,:JH2O2toH2OaO1D,
 
                     # Original deuterated neutral photodissociation
-                    :JHDOtoHpOD, :JHDOtoDpOH, :JHDO2toOHpOD,
-                    :JHDOtoHDpO1D, :JHDOtoHpDpO, :JODtoOpD, :JHDtoHpD, :JDO2toODpO,
-                    :JHDO2toDO2pH, :JHDO2toHO2pD, :JHDO2toHDOpO1D, :JODtoO1DpD,
+                    :JHDOtoHaOD, :JHDOtoDaOH, :JHDO2toOHaOD,
+                    :JHDOtoHDaO1D, :JHDOtoHaDaO, :JODtoOaD, :JHDtoHaD, :JDO2toODaO,
+                    :JHDO2toDO2aH, :JHDO2toHO2aD, :JHDO2toHDOaO1D, :JODtoO1DaD,
 
                     # New neutral photodissociation (from Roger)
-                    :JCO2toCpOpO, :JCO2toCpO2, :JCOtoCpO,
-                    :JN2OtoN2pO1D, :JNO2toNOpO, :JNOtoNpO,
+                    :JCO2toCaOaO, :JCO2toCaO2, :JCOtoCaO,
+                    :JN2OtoN2aO1D, :JNO2toNOaO, :JNOtoNaO,
 
                     # New photoionization/ion-involved photodissociation (Roger)
-                    :JCO2toCO2pl, :JCO2toOplpCO, :JOtoOpl, :JO2toO2pl, # Nair minimal ionosphere
-                    :JCO2toCO2plpl, :JCO2toCplplpO2, :JCO2toCOplpOpl,:JCO2toOplpCplpO, :JCO2toCplpO2, :JCO2toCOplpO, 
-                    :JCOtoCpOpl, :JCOtoCOpl,  :JCOtoOpCpl, 
+                    :JCO2toCO2pl, :JCO2toOplaCO, :JOtoOpl, :JO2toO2pl, # Nair minimal ionosphere
+                    :JCO2toCO2plpl, :JCO2toCplplaO2, :JCO2toCOplaOpl,:JCO2toOplaCplaO, :JCO2toCplaO2, :JCO2toCOplaO, 
+                    :JCOtoCaOpl, :JCOtoCOpl,  :JCOtoOaCpl, 
                     :JHtoHpl, 
-                    :JH2toH2pl, :JH2toHplpH, :JHDtoHDpl, 
+                    :JH2toH2pl, :JH2toHplaH, :JHDtoHDpl, 
                     :JH2OtoH2Opl, 
-                    :JH2OtoOplpH2, :JH2OtoHplpOH, :JH2OtoOHplpH, :JHDOtoHDOpl,
+                    :JH2OtoOplaH2, :JH2OtoHplaOH, :JH2OtoOHplaH, :JHDOtoHDOpl,
                     :JH2O2toH2O2pl, 
-                    :JN2toN2pl, :JN2toNplpN, 
+                    :JN2toN2pl, :JN2toNplaN, 
                     :JN2OtoN2Opl, :JNO2toNO2pl, :JNOtoNOpl, 
                     :JO3toO3pl,
                   ];
@@ -209,8 +211,9 @@ const Jratelist = [];
 append!(Jratelist, conv_Jrates)
 append!(Jratelist, newJrates)
 
-# This dictionary specifies the species absorbing a photon for each J rate using regular expressions.
+# These dictionaries specify the species absorbing a photon for each J rate, and the products of the reaction.
 const absorber = Dict([x=>Symbol(match(r"(?<=J).+(?=to)", string(x)).match) for x in Jratelist])
+const photolysis_products = Dict([x=>[Symbol(m.match) for m in eachmatch(r"(?<=to|a)[A-Z0-9(pl)]+", string(x))] for x in Jratelist]);
 
 # **************************************************************************** #
 #                                                                              #
@@ -279,7 +282,7 @@ const active_shortlived = intersect(active_species, short_lived_species)
 
 # Annoyingly, these have to be here because they depend on other things defined above.
 # D group will have dashed lines; neutrals, solid (default)
-const speciesstyle = Dict(vcat([s=>"--" for s in setdiff(D_bearing_species, [:HD2pl])], [:HD2pl=>":"]) )
+const speciesstyle = Dict(vcat([s=>"--" for s in setdiff(D_bearing_species, [:HD2pl])], [:HD2pl=>":", :Nup2D=>"-."]) )
 
 # Species-specific scale heights - has to be done here instead of in the param file
 const Hs_dict = Dict{Symbol, Vector{Float64}}([sp=>scaleH(alt, sp, Tprof_for_Hs[charge_type(sp)], molmass) for sp in all_species])

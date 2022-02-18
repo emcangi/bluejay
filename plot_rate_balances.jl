@@ -68,6 +68,16 @@ for f in filelist
     else  # The normal case, the new code, where we use all_species and not fullspecieslist. 
         for sp in all_species
             println("Working on $(sp)")
+
+                (sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Ti, Te, Tp, # params to pass
+                   bcdict::Dict{Symbol, Matrix{Any}}, rxnnet, 
+                   allsp, ionsp, transsp, chemsp, mmass::Dict{Symbol, Int64}, alts, n_alt_index::Dict, dz, 
+                   polar::Dict{Symbol, Float64}, numlyrs::Int64, plotalts, 
+                   results_dir::String, T_for_Hs::Dict{String, Vector{Any}}, T_for_diff::Dict{String, Vector{Any}}; 
+                   shown_rxns=nothing, subfolder="", plotsfolder="", dt=nothing, num="", extra_title="", 
+                   plot_timescales=false, plot_total_rate_coefs=false, showonly=false)
+    #=
+
             plot_rxns(sp, ncur, Tn_arr, Ti_arr, Te_arr, Tplasma_arr, speciesbclist, reactionnet, 
                       all_species, ion_species, transport_species, chem_species, 
                       molmass, alt, n_alt_index, dz, polarizability, 

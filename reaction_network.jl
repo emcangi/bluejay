@@ -14,7 +14,7 @@ threebodyca(k0, kinf) = :($k0 ./ (1 .+ $k0 ./ ($kinf ./ M)).*0.6 .^ ((1 .+ (log1
 # 1988; base rates from this work or Chaffin+ 2017. Note: below, H-ana means 
 # the same reaction but with only H-bearing species.
 
-const reactionnet = [   #Photodissociation
+const reaction_network = [   #Photodissociation
              [[:CO2], [:CO, :O], :JCO2toCOpO],
              [[:CO2], [:CO, :O1D], :JCO2toCOpO1D],
              [[:O2], [:O, :O], :JO2toOpO],
@@ -108,12 +108,12 @@ const reactionnet = [   #Photodissociation
              [[:HD, :O], [:OH, :D], :(4.40e-12 .* exp.(-4390 ./ Tn))], # NIST
              [[:HD, :O], [:OD, :H], :(1.68e-12 .* exp.(-4400 ./ Tn))], # NIST 
              # HD and H2 exchange
-             [[:H, :HD], [:H2, :D], :(6.31e-11 .* exp.(-4038 ./ Tn))], # TODO:CHECK rate: Yung89. NIST rate is from 1959 for 200-1200K.
-             [[:D, :H2], [:HD, :H], :(6.31e-11 .* exp.(-3821 ./ Tn))], # TODO:CHECK NIST (1986, 200-300K): 8.19e-13 .* exp.(-2700/Tn)
+             [[:H, :HD], [:H2, :D], :(1.15e-11 .* exp.(-3041 ./ Tn))], # TODO:CHECK rate: Yung89. NIST rate is from 1959 for 200-1200K.
+             [[:D, :H2], [:HD, :H], :(2.73e-17 .* (Tn .^ 2) .* exp.(-2700 ./ Tn))], # TODO:CHECK NIST (1986, 200-300K): 8.19e-13 .* exp.(-2700/Tn)
 
              ## OH + H2
              [[:OH, :H2], [:H2O, :H], :(2.8e-12 .* exp.(-1800 ./ Tn))], # Burkholder 2020
-             [[:OH, :HD], [:HDO, :H], :((3 ./ 20.) .* 2.8e-12 .* exp.(-1800 ./ Tn))], # Yung88: rate (3/20) .* H-ana. Sander2011: 5e-12 .* exp.(-2130 ./ Tn)
+             [[:OH, :HD], [:HDO, :H], :(5.0e-12 .* exp.(-2130 ./ Tn))], # Yung88: rate (3/20) .* H-ana. Sander2011: 5e-12 .* exp.(-2130 ./ Tn)
              [[:OH, :HD], [:H2O, :D], :((3 ./ 20.) .* 2.8e-12 .* exp.(-1800 ./ Tn))], # see prev line
              [[:OD, :H2], [:HDO, :H], :(2.8e-12 .* exp.(-1800 ./ Tn))], # Yung88: rate same as H-ana (assumed)
              [[:OD, :H2], [:H2O, :D], :(0)], # Yung88 (assumed)
@@ -199,7 +199,7 @@ const reactionnet = [   #Photodissociation
              [[:HO2, :HO2], [:H2O2, :O2], :(3.0e-13 .* exp.(460 ./ Tn))], # Burkholder2020. Yung89: 2.3e-13 .* exp.(600/Tn). KIDA 230-420K: 2.2e-13 .* exp.(600/Tn)
              [[:DO2, :HO2], [:HDO2, :O2], :(((34 ./ 33) .^ -0.5) .* 3.0e-13 .* exp.(460 ./ Tn))], # Yung88: same as H-ana (assumed)
              [[:HO2, :HO2, :M], [:H2O2, :O2, :M], :(2 .* 2.1e-33 .* exp.(920 ./ Tn))], # Burkholder2020.
-             [[:HO2, :DO2, :M], [:HDO2, :O2, :M], :(((34 ./ 33) .^ -0.5) .* #==#2 .* 2.1e-33 .* exp.(920 ./ Tn))], # added 3/13 with assumed same rate as H analogue
+             [[:HO2, :DO2, :M], [:HDO2, :O2, :M], :(((34 ./ 33) .^ -0.5) .* 2 .* 2.1e-33 .* exp.(920 ./ Tn))], # added 3/13 with assumed same rate as H analogue
 
              ## OH + D or OD + H (no non-deuterated analogues)
              [[:OD, :H], [:OH, :D], :(3.3e-9 .* (Tn .^ -0.63) ./ (0.72 .* exp.(717 ./ Tn)))], # rate: Yung88. NIST (Howard82): 5.25E-11 .* (Tn/298) .^ -0.63  .- turn off for Case 2
@@ -221,11 +221,12 @@ const reactionnet = [   #Photodissociation
              # NEW .- Neutral reactions from Roger Yelle
              # Type 1
              [[:O1D], [:O], :(5.10e-3)],
+             # [[:Nup2D], [:N], :(2.3e-5)], # NEW!!!!!! N(2D)
 
              # Type 2
              # [[:C, :C], [:C2], :(2.16e-11)],  # UMIST: 4.36e-18 .* ((Tn ./ 300) .^ 0.35) .* exp.(-161.30 ./ Tn)
              [[:C, :H], [:CH], :(1.00e-17)],  # UMIST agrees
-             [[:C, :N], [:CN], :((6.93e-20 .* Tn .^ 0.37) .* exp.(-51.0 ./ Tn))], # KIDA: :(7.76e-19 .* ((Tn ./ 300) .^ 0.14) .* exp.(-0.18 ./ Tn) ) for T=40-400K
+             [[:C, :N], [:CN], :((3.49e-19 .* Tn .^ 0.14) .* exp.(-0.18 ./ Tn))], # KIDA: :(7.76e-19 .* ((Tn ./ 300) .^ 0.14) .* exp.(-0.18 ./ Tn) ) for T=40-400K
              [[:CH, :C], [:C2, :H], :(6.59e-11)], # KIDA: 2.4e-10
              [[:CH, :H], [:H2, :C], :(1.31e-10 .* exp.(-80.0 ./ Tn))], # KIDA: :(1.24e-10 .* (Tn ./ 300) .^ 0.26)
              [[:CH, :H2], [:CH2, :H], :(2.90e-10 .* exp.(-1670.0 ./ Tn))], # KIDA agrees
@@ -261,7 +262,6 @@ const reactionnet = [   #Photodissociation
              # NEW
              [[:DCO, :H], [:CO, :HD], :(((30 ./ 29) .^ -0.5) .* 1.5e-10)],  
              [[:HCO, :D], [:CO, :HD], :(((2 ./ 1) .^ -0.5) .* 1.5e-10)], 
-             # [[:DCO, :D], [:CO, :HD], :(((2 ./ 1) .^ -0.5) .* 1.5e-10)],  # TODO: Doubly deuterated mass scaling factor?
 
              [[:HCO, :HCO], [:CO, :CO, :H2], :(7.35e-12)],
              [[:HCO, :HCO], [:H2CO, :CO], :(4.26e-11)],
@@ -328,9 +328,7 @@ const reactionnet = [   #Photodissociation
              # NEW
              [[:DOCO, :OH], [:CO2, :HDO], :(((46 ./ 45) .^ -0.5) .* 1.03e-11)],
              [[:HOCO, :OD], [:CO2, :HDO], :(((18 ./ 17) .^ -0.5) .* 1.03e-11)],
-             # [[:DOCO, :OD], [:CO2, :HDO], :(1.03e-11)], # TODO: Doubly deuterated mass scaling factor?
 
-             # [[:N, :C], [:CN], :(3.49e-19 .* (Tn .^ 0.14) .* exp.(-0.18 ./ Tn))], # ROGER'S DUPLICATE 
              [[:N2O, :CO], [:CO2, :N2], :(1.62e-13 .* exp.(-8780.0 ./ Tn))],
              [[:N2O, :H], [:NO, :NH], :(0.111 .* (Tn .^ -2.16) .* exp.(-18700.0 ./ Tn))],
              [[:N2O, :H], [:OH, :N2], :(8.08e-22 .* (Tn .^ 3.15) .* exp.(-3603.0 ./ Tn))],
@@ -387,6 +385,19 @@ const reactionnet = [   #Photodissociation
              [[:NO2, :NH], [:N2O, :OH], :(1.09e-6 .* (Tn .^ -1.94) .* exp.(-56.9 ./ Tn))],
              [[:NO2, :NH2], [:N2O, :H2O], :(2.1e-12 .* exp.(650.0 ./ Tn))],
              [[:NO2, :O], [:O2, :NO], :(5.1e-12 .* exp.(210.0 ./ Tn))],
+
+             # [[:Nup2D, :CO], [:CO, :N], :(1.9e-12)],
+             # [[:Nup2D, :CO2], [:NO, :CO], :(3.6e-13)],
+             # [[:Nup2D, :H2], [:NH, :H], :(4.2e-11 .* exp.(-880 ./ Tn))],
+             # [[:Nup2D, :H2O], [:HNO, :H], :(1.3e-11)],
+             # [[:Nup2D, :H2O], [:NO, :H2], :(1.3e-11)],
+             # [[:Nup2D, :H2O], [:OH, :NH], :(1.3e-11)],
+             # [[:Nup2D, :N2], [:N2, :N], :(1.7e-14)],
+             # [[:Nup2D, :N2O], [:NO, :N2], :(1.5e-11 .* exp.(-570 ./ Tn))],
+             # [[:Nup2D, :NO], [:N2, :O], :(6.0e-11)],
+             # [[:Nup2D, :O], [:O, :N], :(3.3e-12 .* exp.(-260 ./ Tn))],
+             # [[:Nup2D, :O2], [:NO, :O], :(9.7e-12 .* exp.(-185 ./ Tn))],
+             
              [[:O, :C], [:CO], :(1.75e-19 .* (Tn .^ 0.705) .* exp.(-136.0 ./ Tn))],
 
              [[:O, :H], [:OH], :(8.65e-18 .* (Tn .^ -0.38))],
@@ -439,7 +450,6 @@ const reactionnet = [   #Photodissociation
              [[:O1D, :N2], [:N2O], :(0.0 .+ (4.75e-34 .* (Tn .^ -0.9) .* 1.0 .* (Tn .^ -0.9) .* M) ./ (4.75e-34 .* (Tn .^ -0.9) .* M .+ 1.0 .* (Tn .^ -0.9)))], 
                         
              # More complicated - need the minimum of the two expressions. These updated 5 Feb 2021 to match Roger's code.
-             # ROGER'S DUPLICATE #[[:CH, :H2], [:CH2, :H], :(min.($:(8.5e-11 .* (Tn .^ 0.15)), $:(0.0 .+ (10 .^ ((log10.(0.6)) ./ (1 .+ ((log10.((4.7e-26 .* (Tn .^ -1.6) .* M) ./ (8.5e-11 .* (Tn .^ 0.15))) .- 0.4 .- 0.67 .* log10.(0.6)) ./ (0.75 .- 1.27 .* log10.(0.6) .- 0.14 .* (log10.((4.7e-26 .* (Tn .^ -1.6) .* M) ./ (8.5e-11 .* (Tn .^ 0.15))) .- 0.4 .- 0.67 .* log10.(0.6)))) .^ 2)) .* 4.7e-26 .* (Tn .^ -1.6) .* 8.5e-11 .* (Tn .^ 0.15) .* M) ./ (4.7e-26 .* (Tn .^ -1.6) .* M .+ 8.5e-11 .* (Tn .^ 0.15)))))],
              [[:CO, :O], [:CO2], :(min.($:(1.0 .* exp.(-1509.0 ./ Tn)), $:(0.0 .+ (10 .^ ((log10.(0.4)) ./ (1 .+ ((log10.((1.7e-33 .* exp.(-1509.0 ./ Tn) .* M) ./ (1.0 .* exp.(-1509.0 ./ Tn))) .- 0.4 .- 0.67 .* log10.(0.4)) ./ (0.75 .- 1.27 .* log10.(0.4) .- 0.14 .* (log10.((1.7e-33 .* exp.(-1509.0 ./ Tn) .* M) ./ (1.0 .* exp.(-1509.0 ./ Tn))) .- 0.4 .- 0.67 .* log10.(0.4)))) .^ 2)) .* 1.7e-33 .* exp.(-1509.0 ./ Tn) .* 1.0 .* exp.(-1509.0 ./ Tn) .* M) ./ (1.7e-33 .* exp.(-1509.0 ./ Tn) .* M .+ 1.0 .* exp.(-1509.0 ./ Tn)))))],
              
              [[:NO, :H], [:HNO], :(min.($:(2.53e-9 .* (Tn .^ -0.41)), $:(0.0 .+ (10 .^ ((log10.(0.82)) ./ (1 .+ ((log10.((9.56e-29 .* (Tn .^ -1.17) .* exp.(-212.0 ./ Tn) .* M) ./ (2.53e-9 .* (Tn .^ -0.41))) .- 0.4 .- 0.67 .* log10.(0.82)) ./ (0.75 .- 1.27 .* log10.(0.82) .- 0.14 .* (log10.((9.56e-29 .* (Tn .^ -1.17) .* exp.(-212.0 ./ Tn) .* M) ./ (2.53e-9 .* (Tn .^ -0.41))) .- 0.4 .- 0.67 .* log10.(0.82)))) .^ 2)) .* 9.56e-29 .* (Tn .^ -1.17) .* exp.(-212.0 ./ Tn) .* 2.53e-9 .* (Tn .^ -0.41) .* M) ./ (9.56e-29 .* (Tn .^ -1.17) .* exp.(-212.0 ./ Tn) .* M .+ 2.53e-9 .* (Tn .^ -0.41)))))],
@@ -457,22 +467,34 @@ const reactionnet = [   #Photodissociation
              [[:NO2, :OH], [:HONO2], threebody(:(4.86e-23 .* (Tn .^ -3.0)), :(2.8e-11))],
              [[:NO2, :OH], [:HOONO], threebody(:(4.17e-22 .* (Tn .^ -3.9)), :(7.27e12 .* (Tn .^ -0.5)))],
                      
-             # IONOSPHERE .- reactions from Roger Yelle. Updated 5 Feb 2021 to match Roger's code
+             # ION-NEUTRAL REACTIONS - reactions from Roger Yelle unless otherwise noted
              [[:ArHpl, :C], [:CHpl, :Ar], :(1.02e-9)],
 
              [[:ArHpl, :CO], [:HCOpl, :Ar], :(1.25e-9)],
-             # NEW
-             # [[:ArDpl, :CO], [:DCOpl, :Ar], :(((42 ./ 41) .^ -0.5) .* 1.25e-9)], # DUPLICATE
+             [[:ArDpl, :CO], [:DCOpl, :Ar], :(1.25e-9)], # D-ion-rxn: Anicich2003, close to result from mass scaling (1.23e-9). Alternative: 7.8e-10
 
-             [[:ArHpl, :CO2], [:HCO2pl, :Ar], :(1.1e-9)],
+             [[:ArHpl, :CO2], [:HCO2pl, :Ar], :(1.1e-9)], 
+             [[:ArDpl, :CO2], [:DCO2pl, :Ar], :(1.1e-9)], # D-ion-rxn: Anicich2003, close to result from mass scaling. Alternative: 8.9e-10
+
              [[:ArHpl, :H2], [:H3pl, :Ar], :(6.3e-10)],
+             [[:ArHpl, :HD], [:H2Dpl, :Ar], :(8.6e-10)], # D-ion-rxn: Anicich2003, for T=300K
+             [[:ArDpl, :H2], [:H2Dpl, :Ar], :(8.8e-10)], # D-ion-rxn: Anicich2003, for T=300K
+             [[:ArDpl, :H2], [:ArHpl, :HD], :(4.5e-10)], # D-ion-rxn: Anicich2003, for T=300K
+
              [[:ArHpl, :N2], [:N2Hpl, :Ar], :(8.0e-10)],
+             [[:ArDpl, :N2], [:N2Dpl, :Ar], :(6e-10)], # D-ion-rxn: Anicich2003. Basically the median of 4 possible values. 
+
              [[:ArHpl, :O], [:OHpl, :Ar], :(5.9e-10)],
              [[:ArHpl, :O2], [:HO2pl, :Ar], :(5.05e-10)],
              [[:Arpl, :CO], [:COpl, :Ar], :(4.4e-11)],
              [[:Arpl, :CO2], [:CO2pl, :Ar], :(4.8e-10)],
+
              [[:Arpl, :H2], [:ArHpl, :H], :(8.72e-10)],
              [[:Arpl, :H2], [:H2pl, :Ar], :(1.78e-11)],
+             [[:Arpl, :HD], [:HDpl, :Ar], :(0.06 .* 8.0e-10)], # D-ion-rxn: Anicich 2003
+             [[:Arpl, :HD], [:ArHpl, :D], :(0.46 .* 8.0e-10)], # D-ion-rxn: Anicich 2003
+             [[:Arpl, :HD], [:ArDpl, :H], :(0.48 .* 8.0e-10)], # D-ion-rxn: Anicich 2003
+
              [[:Arpl, :H2O], [:ArHpl, :OH], :(3.24e-10)],
              [[:Arpl, :H2O], [:H2Opl, :Ar], :(1.3e-9)],
              [[:Arpl, :N2], [:N2pl, :Ar], :(1.1e-11)],
@@ -538,21 +560,18 @@ const reactionnet = [   #Photodissociation
 
              [[:CO2pl, :H], [:HCOpl, :O], :(4.47e-10)],
              [[:CO2pl, :H], [:Hpl, :CO2], :(5.53e-11)],
-             # NEW 
-             # [[:CO2pl, :D], [:DCOpl, :O], :(((2 ./ 1) .^ -0.5) .* 4.47e-10)], # DUPLICATE
-             # [[:CO2pl, :D], [:Dpl, :CO2], :(((2 ./ 1) .^ -0.5) .* 5.53e-11)], # DUPLICATE
+             [[:CO2pl, :D], [:DCOpl, :O], :(0.76 .* 8.4e-11)], # D-ion-rxn: Anicich2003
+             [[:CO2pl, :D], [:Dpl, :CO2], :(0.24 .* 8.4e-11)], # D-ion-rxn: Anicich2003
 
              [[:CO2pl, :H2], [:HCO2pl, :H], :(4.7e-10)], # Nair minimal ionosphere. # Borodi2009: :(9.5e-10 .* ((Ti ./ 300) .^ -0.15)). Roger: :(2.24e-9 .* (Ti .^ -0.15)). Nair: in use. BAD RATE? 2.24e-9 .* ((300 ./ Ti) .^ -0.15)
-             # NEW
-             [[:CO2pl, :HD], [:DCO2pl, :H], :(0.5 .* ((3 ./ 2) .^ -0.5) .* 4.7e-10)], # factor of 0.5 to account for two branches.
-             [[:CO2pl, :HD], [:HCO2pl, :D], :(0.5 .* ((3 ./ 2) .^ -0.5) .* 4.7e-10)], # factor of 0.5 to account for two branches.
+             [[:CO2pl, :HD], [:DCO2pl, :H], :(0.5 .* ((3 ./ 2) .^ -0.5) .* 4.7e-10)], # D-ion-rxn: Mass-scaling. factor of 0.5 to account for two branches.
+             [[:CO2pl, :HD], [:HCO2pl, :D], :(0.5 .* ((3 ./ 2) .^ -0.5) .* 4.7e-10)], # D-ion-rxn: factor of 0.5 to account for two branches.
 
              [[:CO2pl, :H2O], [:H2Opl, :CO2], :(1.8e-9)],
              [[:CO2pl, :H2O], [:HCO2pl, :OH], :(6.0e-10)],
-             # NEW 
-             [[:CO2pl, :HDO], [:HDOpl, :CO2], :(((19 ./ 18) .^ -0.5) .* 1.8e-9)],
-             [[:CO2pl, :HDO], [:DCO2pl, :OH], :(0.5 .* ((19 ./ 18) .^ -0.5) .* 6.0e-10)],
-             [[:CO2pl, :HDO], [:HCO2pl, :OD], :(0.5 .* ((19 ./ 18) .^ -0.5) .* 6.0e-10)],
+             [[:CO2pl, :HDO], [:HDOpl, :CO2], :(((19 ./ 18) .^ -0.5) .* 1.8e-9)], # D-ion-rxn: Mass-scaling. 
+             [[:CO2pl, :HDO], [:DCO2pl, :OH], :(0.5 .* ((19 ./ 18) .^ -0.5) .* 6.0e-10)], # D-ion-rxn: Mass-scaling. 
+             [[:CO2pl, :HDO], [:HCO2pl, :OD], :(0.5 .* ((19 ./ 18) .^ -0.5) .* 6.0e-10)], # D-ion-rxn: Mass-scaling. 
 
              [[:CO2pl, :HCN], [:HCNpl, :CO2], :(8.1e-10)],
              [[:CO2pl, :HCN], [:HCO2pl, :CN], :(9.0e-11)],
@@ -567,25 +586,21 @@ const reactionnet = [   #Photodissociation
              [[:COpl, :CO2], [:CO2pl, :CO], :(1.1e-9)],
 
              [[:COpl, :H], [:Hpl, :CO], :(4.0e-10)],
-             # NEW
-             # [[:COpl, :D], [:Dpl, :CO], :(((2 ./ 1) .^ -0.5) .* 4.0e-10)], # DUPLICATE
+             [[:COpl, :D], [:Dpl, :CO], :(9e-11)], # D-ion-rxn: Anicich2003
 
              [[:COpl, :H2], [:HCOpl, :H], :(7.5e-10)],
              [[:COpl, :H2], [:HOCpl, :H], :(7.5e-10)],
-             # NEW
-             [[:COpl, :HD], [:DCOpl, :H], :(((3 ./ 2) .^ -0.5) .* 0.5 .* 7.5e-10)],
-             [[:COpl, :HD], [:HCOpl, :D], :(((3 ./ 2) .^ -0.5) .* 0.5 .* 7.5e-10)],
-             [[:COpl, :HD], [:DOCpl, :H], :(((3 ./ 2) .^ -0.5) .* 0.5 .* 7.5e-10)],
-             [[:COpl, :HD], [:HOCpl, :D], :(((3 ./ 2) .^ -0.5) .* 0.5 .* 7.5e-10)],
+             [[:COpl, :HD], [:DCOpl, :H], :(((3 ./ 2) .^ -0.5) .* 0.25 .* 7.5e-10)], # D-ion-rxn: Mass-scaling. 
+             [[:COpl, :HD], [:HCOpl, :D], :(((3 ./ 2) .^ -0.5) .* 0.25 .* 7.5e-10)], # D-ion-rxn: Mass-scaling.  
+             [[:COpl, :HD], [:DOCpl, :H], :(((3 ./ 2) .^ -0.5) .* 0.25 .* 7.5e-10)], # D-ion-rxn: Mass-scaling. 
+             [[:COpl, :HD], [:HOCpl, :D], :(((3 ./ 2) .^ -0.5) .* 0.25 .* 7.5e-10)], # D-ion-rxn: Mass-scaling. 
 
              [[:COpl, :H2O], [:H2Opl, :CO], :(1.56e-9)],
-             # NEW
-             [[:COpl, :HDO], [:HDOpl, :CO], :(((19 ./ 18) .^ -0.5) .* 1.56e-9)],
+             [[:COpl, :HDO], [:HDOpl, :CO], :(((19 ./ 18) .^ -0.5) .* 1.56e-9)], # D-ion-rxn: Mass-scaling. 
 
              [[:COpl, :H2O], [:HCOpl, :OH], :(8.4e-10)],
-             # NEW
-             [[:COpl, :HDO], [:DCOpl, :OH], :(((19 ./ 18) .^ -0.5) .* 0.5 .* 8.4e-10)],
-             [[:COpl, :HDO], [:HCOpl, :OD], :(((19 ./ 18) .^ -0.5) .* 0.5 .* 8.4e-10)],
+             [[:COpl, :HDO], [:DCOpl, :OH], :(((19 ./ 18) .^ -0.5) .* 0.5 .* 8.4e-10)], # D-ion-rxn: Mass-scaling. 
+             [[:COpl, :HDO], [:HCOpl, :OD], :(((19 ./ 18) .^ -0.5) .* 0.5 .* 8.4e-10)], # D-ion-rxn: Mass-scaling. 
 
              [[:COpl, :HCN], [:HCNpl, :CO], :(3.06e-9)],
              [[:COpl, :HCO], [:HCOpl, :CO], :(1.28e-8 .* (Ti .^ -0.5))],
@@ -605,22 +620,22 @@ const reactionnet = [   #Photodissociation
              [[:Cpl, :CO2], [:CO2pl, :C], :(1.1e-10)],
              [[:Cpl, :CO2], [:COpl, :CO], :(9.9e-10)],
              [[:Cpl, :H], [:CHpl], :(1.7e-17)],
+
              [[:Cpl, :H2], [:CH2pl], :(3.32e-13 .* (Ti .^ -1.3) .* exp.(-23.0 ./ Ti))],
              [[:Cpl, :H2], [:CHpl, :H], :(7.4e-10 .* exp.(-4537.0 ./ Ti))],
+             [[:Cpl, :HD], [:CHpl, :D], :(0.17 .* 1.2e-16)], # D-ion-rxn: Anicich2003
+             [[:Cpl, :HD], [:CDpl, :H], :(0.83 .* 1.2e-16)], # D-ion-rxn: Anicich2003
 
              [[:Cpl, :H2O], [:H2Opl, :C], :(2.4e-10)],
-             # NEW
              [[:Cpl, :HDO], [:HDOpl, :C], :(((19 ./ 18) .^ -0.5) .* 2.4e-10)],
 
              [[:Cpl, :H2O], [:HCOpl, :H], :(1.56e-8 .* (Ti .^ -0.5))],
-             # NEW
-             [[:Cpl, :HDO], [:DCOpl, :H], :(((19 ./ 18) .^ -0.5) .* 0.5 .* 1.56e-8 .* (Ti .^ -0.5))],
-             [[:Cpl, :HDO], [:HCOpl, :D], :(((19 ./ 18) .^ -0.5) .* 0.5 .* 1.56e-8 .* (Ti .^ -0.5))],
+             [[:Cpl, :HDO], [:DCOpl, :H], :(((19 ./ 18) .^ -0.5) .* 0.5 .* 1.56e-8 .* (Ti .^ -0.5))], # D-ion-rxn: Mass-scaling. 
+             [[:Cpl, :HDO], [:HCOpl, :D], :(((19 ./ 18) .^ -0.5) .* 0.5 .* 1.56e-8 .* (Ti .^ -0.5))], # D-ion-rxn: Mass-scaling. 
 
              [[:Cpl, :H2O], [:HOCpl, :H], :(2.16e-9)],
-             # NEW
-             [[:Cpl, :HDO], [:DOCpl, :H], :(((19 ./ 18) .^ -0.5) .* 0.5 .* 2.16e-9)],
-             [[:Cpl, :HDO], [:HOCpl, :D], :(((19 ./ 18) .^ -0.5) .* 0.5 .* 2.16e-9)],
+             [[:Cpl, :HDO], [:DOCpl, :H], :(((19 ./ 18) .^ -0.5) .* 0.5 .* 2.16e-9)], # D-ion-rxn: Mass-scaling. 
+             [[:Cpl, :HDO], [:HOCpl, :D], :(((19 ./ 18) .^ -0.5) .* 0.5 .* 2.16e-9)], # D-ion-rxn: Mass-scaling. 
 
              [[:Cpl, :HCN], [:C2Npl, :H], :(2.95e-9)],
              [[:Cpl, :HCO], [:CHpl, :CO], :(8.31e-9 .* (Ti .^ -0.5))],
@@ -634,23 +649,23 @@ const reactionnet = [   #Photodissociation
              [[:Cpl, :O2], [:COpl, :O], :(3.48e-10)],
              [[:Cpl, :O2], [:Opl, :CO], :(5.22e-10)],
              [[:Cpl, :OH], [:COpl, :H], :(1.33e-8 .* (Ti .^ -0.5))],
+
+             [[:Dpl, :H2], [:Hpl, :HD], :(2.2e-9)], # D-ion-rxn: Anicich2003
+             [[:DCOpl, :H], [:HCOpl, :D], :(1.5e-11)], # Anicich2003
+
              [[:H2Opl, :C], [:CHpl, :OH], :(1.1e-9)],
              [[:H2Opl, :CH], [:CH2pl, :OH], :(5.89e-9 .* (Ti .^ -0.5))],
              [[:H2Opl, :CH], [:CHpl, :H2O], :(5.89e-9 .* (Ti .^ -0.5))],
 
              [[:H2Opl, :CO], [:HCOpl, :OH], :(4.25e-10)],
-             # NEW 
-             [[:HDOpl, :CO], [:DCOpl, :OH], :(((19 ./ 18) .^ -0.5) .* 0.5 .* 4.25e-10)],
-             [[:HDOpl, :CO], [:HCOpl, :OD], :(((19 ./ 18) .^ -0.5) .* 0.5 .* 4.25e-10)],
+             [[:HDOpl, :CO], [:DCOpl, :OH], :(((19 ./ 18) .^ -0.5) .* 0.5 .* 4.25e-10)], # D-ion-rxn: Mass-scaling. 
+             [[:HDOpl, :CO], [:HCOpl, :OD], :(((19 ./ 18) .^ -0.5) .* 0.5 .* 4.25e-10)], # D-ion-rxn: Mass-scaling. 
 
              [[:H2Opl, :H2], [:H3Opl, :H], :(7.6e-10)],
-             # NEW
-             [[:HDOpl, :H2], [:H2DOpl, :H], :(((19 ./ 18) .^ -0.5) .* 0.5 .* 7.6e-10)],
-             [[:HDOpl, :H2], [:H3Opl, :D], :(((19 ./ 18) .^ -0.5) .* 0.5 .* 7.6e-10)],
-             [[:H2Opl, :HD], [:H2DOpl, :H], :(((3 ./ 2) .^ -0.5) .* 0.5 .* 7.6e-10)],
-             [[:H2Opl, :HD], [:H3Opl, :D], :(((3 ./ 2) .^ -0.5) .* 0.5 .* 7.6e-10)],
-             # [[:HDOpl, :HD], [:HD2Opl, :H], :(7.6e-10)], # TODO: doubly deuterated?
-             # [[:HDOpl, :HD], [:H2DOpl, :D], :(7.6e-10)],
+             [[:HDOpl, :H2], [:H2DOpl, :H], :(((19 ./ 18) .^ -0.5) .* 0.5 .* 7.6e-10)], # D-ion-rxn: Mass-scaling. 
+             [[:HDOpl, :H2], [:H3Opl, :D], :(((19 ./ 18) .^ -0.5) .* 0.5 .* 7.6e-10)], # D-ion-rxn: Mass-scaling. 
+             [[:H2Opl, :HD], [:H2DOpl, :H], :(((3 ./ 2) .^ -0.5) .* 0.5 .* 7.6e-10)], # D-ion-rxn: Mass-scaling. 
+             [[:H2Opl, :HD], [:H3Opl, :D], :(((3 ./ 2) .^ -0.5) .* 0.5 .* 7.6e-10)], # D-ion-rxn: Mass-scaling. 
 
              [[:H2Opl, :H2O], [:H3Opl, :OH], :(1.85e-9)],
              [[:H2Opl, :HCN], [:HCNHpl, :OH], :(1.05e-9)],
@@ -659,38 +674,33 @@ const reactionnet = [   #Photodissociation
              [[:H2Opl, :HCO], [:HCOpl, :H2O], :(4.85e-9 .* (Ti .^ -0.5))],
              
              [[:H2Opl, :N], [:HNOpl, :H], :(1.12e-10)],
-             # NEW
-             [[:HDOpl, :N], [:DNOpl, :H], :(((19 ./ 18) .^ -0.5) .* 0.5 .* 1.12e-10)],
-             [[:HDOpl, :N], [:HNOpl, :D], :(((19 ./ 18) .^ -0.5) .* 0.5 .* 1.12e-10)],
+             [[:HDOpl, :N], [:DNOpl, :H], :(((19 ./ 18) .^ -0.5) .* 0.5 .* 1.12e-10)], # D-ion-rxn: Mass-scaling. 
+             [[:HDOpl, :N], [:HNOpl, :D], :(((19 ./ 18) .^ -0.5) .* 0.5 .* 1.12e-10)], # D-ion-rxn: Mass-scaling. 
 
              [[:H2Opl, :N], [:NOpl, :H2], :(2.8e-11)],
-             # NEW 
-             [[:HDOpl, :N], [:NOpl, :HD], :(((19 ./ 18) .^ -0.5) .* 2.8e-11)],
+             [[:HDOpl, :N], [:NOpl, :HD], :(((19 ./ 18) .^ -0.5) .* 2.8e-11)], # D-ion-rxn: Mass-scaling. 
 
              [[:H2Opl, :NH], [:H3Opl, :N], :(1.23e-8 .* (Ti .^ -0.5))],
              [[:H2Opl, :NH2], [:NH2pl, :H2O], :(8.49e-9 .* (Ti .^ -0.5))],
              [[:H2Opl, :NH2], [:NH3pl, :OH], :(8.49e-9 .* (Ti .^ -0.5))],
 
              [[:H2Opl, :NO], [:NOpl, :H2O], :(4.6e-10)],
-             # NEW 
-             [[:HDOpl, :NO], [:NOpl, :HDO], :(((19 ./ 18) .^ -0.5) .* 4.6e-10)],
+             [[:HDOpl, :NO], [:NOpl, :HDO], :(((19 ./ 18) .^ -0.5) .* 4.6e-10)], # D-ion-rxn: Mass-scaling. 
 
              [[:H2Opl, :NO2], [:NO2pl, :H2O], :(1.2e-9)],
 
              [[:H2Opl, :O], [:O2pl, :H2], :(4.0e-11)],
-             # NEW
-             [[:HDOpl, :O], [:O2pl, :HD], :(((19 ./ 18) .^ -0.5) .* 4.0e-11)],
+             [[:HDOpl, :O], [:O2pl, :HD], :(((19 ./ 18) .^ -0.5) .* 4.0e-11)], # D-ion-rxn: Mass-scaling. 
 
              [[:H2Opl, :O2], [:O2pl, :H2O], :(3.3e-10)],
-             # NEW
-             [[:HDOpl, :O2], [:O2pl, :HDO], :(((19 ./ 18) .^ -0.5) .* 3.3e-10)],
+             [[:HDOpl, :O2], [:O2pl, :HDO], :(((19 ./ 18) .^ -0.5) .* 3.3e-10)], # D-ion-rxn: Mass-scaling. 
 
              [[:H2Opl, :OH], [:H3Opl, :O], :(1.2e-8 .* (Ti .^ -0.5))],
              
              [[:H2pl, :Ar], [:ArHpl, :H], :(2.1e-9)],
              # NEW
-             # [[:HDpl, :Ar], [:ArDpl, :H], :(((3 ./ 2) .^ -0.5) .* 0.5 .* 2.1e-9)], # DUPLICATE
-             [[:HDpl, :Ar], [:ArHpl, :D], :(((3 ./ 2) .^ -0.5) .* 0.5 .* 2.1e-9)],
+             [[:HDpl, :Ar], [:ArDpl, :H], :(((3 ./ 2) .^ -0.5) .* 0.45 .* 2.1e-9)], # D-ion-rxn: BR Anicich2003, rate estimated with mass-scaling due to no reported rate in Anicich2003
+             [[:HDpl, :Ar], [:ArHpl, :D], :(((3 ./ 2) .^ -0.5) .* 0.55 .* 2.1e-9)], # D-ion-rxn: Mass-scaling. 
 
              [[:H2pl, :C], [:CHpl, :H], :(2.4e-9)],
              [[:H2pl, :CH], [:CH2pl, :H], :(1.23e-8 .* (Ti .^ -0.5))],
@@ -700,17 +710,22 @@ const reactionnet = [   #Photodissociation
              [[:H2pl, :CO], [:COpl, :H2], :(6.44e-10)],
 
              [[:H2pl, :CO], [:HCOpl, :H], :(2.9e-9)],
-             # NEW
-             [[:HDpl, :CO], [:DCOpl, :H], :(((3 ./ 2) .^ -0.5) .* 0.5 .* 2.9e-9)],
-             [[:HDpl, :CO], [:HCOpl, :D], :(((3 ./ 2) .^ -0.5) .* 0.5 .* 2.9e-9)],
+             [[:HDpl, :CO], [:DCOpl, :H], :(((3 ./ 2) .^ -0.5) .* 0.5 .* 2.9e-9)], # D-ion-rxn: Mass-scaling. 
+             [[:HDpl, :CO], [:HCOpl, :D], :(((3 ./ 2) .^ -0.5) .* 0.5 .* 2.9e-9)], # D-ion-rxn: Mass-scaling. 
 
              [[:H2pl, :CO2], [:HCO2pl, :H], :(2.35e-9)],
-             # NEW 
-             [[:HDpl, :CO2], [:DCO2pl, :H], :(((3 ./ 2) .^ -0.5) .* 0.5 .* 2.35e-9)],
-             [[:HDpl, :CO2], [:HCO2pl, :D], :(((3 ./ 2) .^ -0.5) .* 0.5 .* 2.35e-9)],
+             [[:HDpl, :CO2], [:DCO2pl, :H], :(((3 ./ 2) .^ -0.5) .* 0.5 .* 2.35e-9)], # D-ion-rxn: Mass-scaling. 
+             [[:HDpl, :CO2], [:HCO2pl, :D], :(((3 ./ 2) .^ -0.5) .* 0.5 .* 2.35e-9)], # D-ion-rxn: Mass-scaling. 
 
              [[:H2pl, :H], [:Hpl, :H2], :(6.4e-10)],
+
+             
+             
+
              [[:H2pl, :H2], [:H3pl, :H], :(2.0e-9)],
+             [[:HDpl, :HD], [:H2Dpl, :D], :(0.55 .* 1.53e-9)], # D-ion-rxn: Anicich2003
+             [[:HDpl, :HD], [:HD2pl, :H], :(0.45 .* 1.53e-9)], # D-ion-rxn: Anicich2003
+
              [[:H2pl, :H2O], [:H2Opl, :H2], :(3.87e-9)],
              [[:H2pl, :H2O], [:H3Opl, :H], :(3.43e-9)],
              [[:H2pl, :HCN], [:HCNpl, :H2], :(4.68e-8 .* (Ti .^ -0.5))],
@@ -719,9 +734,8 @@ const reactionnet = [   #Photodissociation
              [[:H2pl, :N], [:NHpl, :H], :(1.9e-9)],
 
              [[:H2pl, :N2], [:N2Hpl, :H], :(2.0e-9)],
-             # NEW
-             [[:HDpl, :N2], [:N2Dpl, :H], :(((3 ./ 2) .^ -0.5) .* 0.5 .* 2.0e-9)],
-             [[:HDpl, :N2], [:N2Hpl, :D], :(((3 ./ 2) .^ -0.5) .* 0.5 .* 2.0e-9)],
+             [[:HDpl, :N2], [:N2Dpl, :H], :(((3 ./ 2) .^ -0.5) .* 0.5 .* 2.0e-9)], # D-ion-rxn: Mass-scaling. 
+             [[:HDpl, :N2], [:N2Hpl, :D], :(((3 ./ 2) .^ -0.5) .* 0.5 .* 2.0e-9)], # D-ion-rxn: Mass-scaling. 
 
              [[:H2pl, :N2O], [:HN2Opl, :H], :(1.32e-9)],
              [[:H2pl, :N2O], [:N2Hpl, :OH], :(7.77e-10)],
@@ -731,14 +745,12 @@ const reactionnet = [   #Photodissociation
              [[:H2pl, :NO], [:NOpl, :H2], :(1.1e-9)],
 
              [[:H2pl, :O], [:OHpl, :H], :(1.5e-9)],
-             # NEW 
-             [[:HDpl, :O], [:ODpl, :H], :(0.5 .* ((3 ./ 2) .^ -0.5) .* 1.5e-9)],
-             [[:HDpl, :O], [:OHpl, :D], :(0.5 .* ((3 ./ 2) .^ -0.5) .* 1.5e-9)],
+             [[:HDpl, :O], [:ODpl, :H], :(0.5 .* ((3 ./ 2) .^ -0.5) .* 1.5e-9)], # D-ion-rxn: Mass-scaling. 
+             [[:HDpl, :O], [:OHpl, :D], :(0.5 .* ((3 ./ 2) .^ -0.5) .* 1.5e-9)], # D-ion-rxn: Mass-scaling. 
 
              [[:H2pl, :O2], [:HO2pl, :H], :(1.92e-9)],
-             # NEW
-             [[:HDpl, :O2], [:DO2pl, :H], :(((3 ./ 2) .^ -0.5) .* 0.5 .* 1.92e-9)],
-             [[:HDpl, :O2], [:HO2pl, :D], :(((3 ./ 2) .^ -0.5) .* 0.5 .* 1.92e-9)],
+             [[:HDpl, :O2], [:DO2pl, :H], :(((3 ./ 2) .^ -0.5) .* 0.5 .* 1.92e-9)], # D-ion-rxn: Mass-scaling. 
+             [[:HDpl, :O2], [:HO2pl, :D], :(((3 ./ 2) .^ -0.5) .* 0.5 .* 1.92e-9)], # D-ion-rxn: Mass-scaling. 
 
              [[:H2pl, :O2], [:O2pl, :H2], :(7.83e-10)],
              [[:H2pl, :OH], [:H2Opl, :H], :(1.32e-8 .* (Ti .^ -0.5))],
@@ -769,6 +781,16 @@ const reactionnet = [   #Photodissociation
              [[:H3pl, :O], [:OHpl, :H2], :(1.94e-9 .* (Ti .^ -0.156) .* exp.(-1.4 ./ Ti))],
              [[:H3pl, :O2], [:HO2pl, :H2], :(6.7e-10)],
              [[:H3pl, :OH], [:H2Opl, :H2], :(2.25e-8 .* (Ti .^ -0.5))],
+
+             [[:H2Dpl, :H2], [:H3pl, :HD], :(5.3e-10)],
+             [[:H2Dpl, :HD], [:H3pl, :D2], :(0.1 .* 5.0e-10)], # D-ion-rxn: Anicich2003
+             [[:H2Dpl, :HD], [:HD2pl, :H2], :(0.9 .* 5.0e-10)], # D-ion-rxn: Anicich2003
+
+             [[:HD2pl, :H2], [:H3pl, :D2], :(0.25 .* 7.6e-10)], # D-ion-rxn: Anicich2003
+             [[:HD2pl, :H2], [:H2Dpl, :HD], :(0.75 .* 7.6e-10)], # D-ion-rxn: Anicich2003
+             [[:HD2pl, :HD], [:H2Dpl, :D2], :(0.25 .* 4.5e-10)], # D-ion-rxn: Anicich2003
+             [[:HD2pl, :HD], [:D3pl, :H2], :(0.75 .* 4.5e-10)], # D-ion-rxn: Anicich2003
+ 
              [[:HCNHpl, :CH], [:CH2pl, :HCN], :(5.46e-9 .* (Ti .^ -0.5))],
              [[:HCNHpl, :H2O], [:H3Opl, :HCN], :(8.8e-13)],
              [[:HCNpl, :C], [:CHpl, :CN], :(1.1e-9)],
@@ -777,7 +799,10 @@ const reactionnet = [   #Photodissociation
              [[:HCNpl, :CO], [:HNCpl, :CO], :(3.22e-10)],
              [[:HCNpl, :CO2], [:HCO2pl, :CN], :(2.1e-10)],
              [[:HCNpl, :CO2], [:HNCpl, :CO2], :(2.9e-10)],
+
              [[:HCNpl, :H], [:Hpl, :HCN], :(3.7e-11)],
+             [[:HCNpl, :D], [:Dpl, :HCN], :(3.7e-11)], # D-ion-rxn: Anicich2003
+
              [[:HCNpl, :H2], [:HCNHpl, :H], :(8.8e-10)],
              [[:HCNpl, :H2O], [:H2Opl, :HCN], :(3.12e-8 .* (Ti .^ -0.5))],
              [[:HCNpl, :H2O], [:H3Opl, :CN], :(3.12e-8 .* (Ti .^ -0.5))],
@@ -794,29 +819,24 @@ const reactionnet = [   #Photodissociation
              [[:HCO2pl, :C], [:CHpl, :CO2], :(1.0e-9)],
              
              [[:HCO2pl, :CO], [:HCOpl, :CO2], :(7.8e-10)],
-             # NEW
-             [[:DCO2pl, :CO], [:DCOpl, :CO2], :(((46 ./ 45) .^ -0.5) .* 7.8e-10)],
+             [[:DCO2pl, :CO], [:DCOpl, :CO2], :(((46 ./ 45) .^ -0.5) .* 7.8e-10)], # D-ion-rxn: Mass-scaling. 
 
              [[:HCO2pl, :H2O], [:H3Opl, :CO2], :(2.65e-9)],
-             # NEW
-             [[:DCO2pl, :H2O], [:H2DOpl, :CO2], :(((46 ./ 45) .^ -0.5) .* 2.65e-9)],
-             [[:HCO2pl, :HDO], [:H2DOpl, :CO2], :(((19 ./ 18) .^ -0.5) .* 2.65e-9)],
+             [[:DCO2pl, :H2O], [:H2DOpl, :CO2], :(((46 ./ 45) .^ -0.5) .* 2.65e-9)], # D-ion-rxn: Mass-scaling. 
+             [[:HCO2pl, :HDO], [:H2DOpl, :CO2], :(((19 ./ 18) .^ -0.5) .* 2.65e-9)], # D-ion-rxn: Mass-scaling. 
 
              [[:HCO2pl, :O], [:HCOpl, :O2], :(5.8e-10)],
-             # NEW
-             [[:DCO2pl, :O], [:DCOpl, :O2], :(((46 ./ 45) .^ -0.5) .* 5.8e-10)],
+             [[:DCO2pl, :O], [:DCOpl, :O2], :(((46 ./ 45) .^ -0.5) .* 5.8e-10)], # D-ion-rxn: Mass-scaling. 
 
              [[:HCOpl, :C], [:CHpl, :CO], :(1.1e-9)],
-             # NEW
-             [[:DCOpl, :C], [:CDpl, :CO], :(((30 ./ 29) .^ -0.5) .* 1.1e-9)],
+             [[:DCOpl, :C], [:CDpl, :CO], :(((30 ./ 29) .^ -0.5) .* 1.1e-9)], # D-ion-rxn: Mass-scaling. 
 
              [[:HCOpl, :CH], [:CH2pl, :CO], :(1.09e-8 .* (Ti .^ -0.5))],
+             [[:HCOpl, :D], [:DCOpl, :H], :(4.25e-11)], # D-ion-rxn: Anicich2003
 
              [[:HCOpl, :H2O], [:H3Opl, :CO], :(2.6e-9)],
-             # NEW
-             [[:DCOpl, :H2O], [:H2DOpl, :CO], :(((30 ./ 29) .^ -0.5) .* 2.6e-9)],
-             [[:HCOpl, :HDO], [:H2DOpl, :CO], :(((30 ./ 29) .^ -0.5) .* 2.6e-9)],
-             # [[:DCOpl, :HDO], [:HD2Opl, :CO], :(2.6e-9)],  # TODO: Doubly deuterated mass scaling factor?
+             [[:DCOpl, :H2O], [:H2DOpl, :CO], :(((30 ./ 29) .^ -0.5) .* 2.6e-9)], # D-ion-rxn: Mass-scaling. 
+             [[:HCOpl, :HDO], [:H2DOpl, :CO], :(((19 ./ 18) .^ -0.5) .* 2.6e-9)], # D-ion-rxn: Mass-scaling. 
 
              [[:HCOpl, :H2O], [:HCOOH2pl], :(6.64e-10 .* (Ti .^ -1.3))],
              [[:HCOpl, :HCN], [:HCNHpl, :CO], :(3.5e-9)],
@@ -860,8 +880,7 @@ const reactionnet = [   #Photodissociation
              [[:HO2pl, :OH], [:H2Opl, :O2], :(1.06e-8 .* (Ti .^ -0.5))],
 
              [[:HOCpl, :CO], [:HCOpl, :CO], :(6.0e-10)],
-             # NEW
-             [[:DOCpl, :CO], [:DCOpl, :CO], :(((30 ./ 29) .^ -0.5) .* 6.0e-10)],
+             [[:DOCpl, :CO], [:DCOpl, :CO], :(((30 ./ 29) .^ -0.5) .* 6.0e-10)], # D-ion-rxn: Mass-scaling. 
 
              [[:HOCpl, :CO2], [:HCO2pl, :CO], :(9.45e-10)],
              [[:HOCpl, :H2], [:H3pl, :CO], :(2.68e-10)],
@@ -871,48 +890,62 @@ const reactionnet = [   #Photodissociation
              [[:HOCpl, :NO], [:HNOpl, :CO], :(7.1e-10)],
              [[:HOCpl, :O2], [:HO2pl, :CO], :(1.9e-10)],
              [[:Hpl, :CH], [:CHpl, :H], :(3.29e-8 .* (Ti .^ -0.5))],
-             
+
              [[:Hpl, :CO2], [:HCOpl, :O], :(3.8e-9)],
-             # NEW
-             # [[:Dpl, :CO2], [:DCOpl, :O], :(((2 ./ 1) .^ -0.5) .* 3.8e-9)], # DUPLICATE
+             [[:Dpl, :CO2], [:DCOpl, :O], :(2.6e-9)], # D-ion-rxn: Anicich2003
+             [[:Dpl, :CO2], [:CO2pl, :D], :(3.5e-9)], # D-ion-rxn: Anicich2003
+
+             ## Charge exchange - NON-THERMAL KEY
+             [[:Hpl, :H], [:H, :Hpl], :(6.5e-11 .* (Ti .^ 0.5))], # NEW - Yung 1989
+             [[:Hpl, :O], [:H, :Opl], :(3.75e-10)], # Anicich 2003/Roger. 
+             [[:Dpl, :H], [:D, :Hpl], :(0.87 .* 6.5e-11 .* (Ti .^ 0.5))], # NEW - Yung 1989
+             [[:Dpl, :O], [:D, :Opl], :(2.8e-10)], # Anicich 2003. 
 
              [[:Hpl, :H], [:H2pl], :(2.34e-22 .* (Ti .^ 1.49) .* exp.(-228.0 ./ Ti))],
+             [[:Hpl, :HD], [:Dpl, :H2], :(1.1e-10)], # D-ion-rxn: Anicich2003
 
              [[:Hpl, :H2O], [:H2Opl, :H], :(8.2e-9)],
-             # NEW
-             [[:Dpl, :H2O], [:HDOpl, :H], :(((2 ./ 1) .^ -0.5) .* 0.5 .* 8.2e-9)],
-             # [[:Dpl, :H2O], [:H2Opl, :D], :(((2 ./ 1) .^ -0.5) .* 0.5 .* 8.2e-9)], # DUPLICATE
-             [[:Hpl, :HDO], [:HDOpl, :H], :(((19 ./ 18) .^ -0.5) .* 0.5 .* 8.2e-9)],
-             [[:Hpl, :HDO], [:H2Opl, :D], :(((19 ./ 18) .^ -0.5) .* 0.5 .* 8.2e-9)],
-             # [[:Dpl, :HDO], [:HDOpl, :D], :(((?? ./ ??) .^ -0.5) .* 8.2e-9)], # TODO: doubly deuterated?
+             [[:Dpl, :H2O], [:H2Opl, :D], :(5.2e-9)], # D-ion-rxn: Anicich2003
+             [[:Dpl, :H2O], [:HDOpl, :H], :(((2 ./ 1) .^ -0.5) .* 0.5 .* 8.2e-9)], # D-ion-rxn: Mass-scaling. 
+             [[:Hpl, :HDO], [:HDOpl, :H], :(((19 ./ 18) .^ -0.5) .* 0.5 .* 8.2e-9)], # D-ion-rxn: Mass-scaling. 
+             [[:Hpl, :HDO], [:H2Opl, :D], :(((19 ./ 18) .^ -0.5) .* 0.5 .* 8.2e-9)], # D-ion-rxn: Mass-scaling. 
 
              [[:Hpl, :HCN], [:HCNpl, :H], :(1.1e-8)],
              [[:Hpl, :HCO], [:COpl, :H2], :(1.63e-8 .* (Ti .^ -0.5))],
              [[:Hpl, :HCO], [:H2pl, :CO], :(1.63e-8 .* (Ti .^ -0.5))],
              [[:Hpl, :HCO], [:HCOpl, :H], :(1.63e-8 .* (Ti .^ -0.5))],
              [[:Hpl, :HNO], [:NOpl, :H2], :(6.93e-8 .* (Ti .^ -0.5))],
+
              [[:Hpl, :N2O], [:N2Hpl, :O], :(3.52e-10)],
              [[:Hpl, :N2O], [:N2Opl, :H], :(1.85e-9)],
+             [[:Dpl, :N2O], [:N2Opl, :D], :(0.85 .* 1.7e-9)], # D-ion-rxn: Anicich2003
+             [[:Dpl, :N2O], [:N2Dpl, :O], :(0.15 .* 1.7e-9)], # D-ion-rxn: Anicich2003
+
              [[:Hpl, :NH], [:NHpl, :H], :(3.64e-8 .* (Ti .^ -0.5))],
              [[:Hpl, :NH2], [:NH2pl, :H], :(5.02e-8 .* (Ti .^ -0.5))],
-             [[:Hpl, :NO], [:NOpl, :H], :(1.9e-9)],
-             [[:Hpl, :NO2], [:NOpl, :OH], :(1.9e-9)],
 
-             
+             [[:Hpl, :NO], [:NOpl, :H], :(1.9e-9)],
+             [[:Dpl, :NO], [:NOpl, :D], :(1.8e-9)], # D-ion-rxn: Anicich2003
+
+             [[:Hpl, :NO2], [:NOpl, :OH], :(1.9e-9)],
+             [[:Dpl, :NO2], [:NOpl, :OD], :(0.95 .* 1.6e-9)], # D-ion-rxn: Anicich2003
+             [[:Dpl, :NO2], [:NO2pl, :D], :(0.05 .* 1.6e-9)], # D-ion-rxn: Anicich2003
 
              [[:Hpl, :O2], [:O2pl, :H], :(1.17e-9)],
-             # NEW 
-             # [[:Dpl, :O2], [:O2pl, :D], :(((2 ./ 1) .^ -0.5) .* 1.17e-9)], # DUPLICATE
+             [[:Dpl, :O2], [:O2pl, :D], :(1.6e-9)], # D-ion-rxn: Anicich2003
 
              [[:Hpl, :OH], [:OHpl, :H], :(3.64e-8 .* (Ti .^ -0.5))],
              [[:N2Hpl, :C], [:CHpl, :N2], :(1.1e-9)],
              [[:N2Hpl, :CH], [:CH2pl, :N2], :(1.09e-8 .* (Ti .^ -0.5))],
              
              [[:N2Hpl, :CO], [:HCOpl, :N2], :(8.8e-10)],
-             # NEW
-             [[:N2Dpl, :CO], [:DCOpl, :N2], :(((30 ./ 29) .^ -0.5) .* 8.8e-10)], 
+             [[:N2Dpl, :CO], [:DCOpl, :N2], :(((30 ./ 29) .^ -0.5) .* 8.8e-10)],  # D-ion-rxn: Mass-scaling. 
 
              [[:N2Hpl, :CO2], [:HCO2pl, :N2], :(1.07e-9)],
+
+             [[:N2Hpl, :D], [:N2Dpl, :H], :(8e-11)], # D-ion-rxn: Anicich2003
+             [[:N2Dpl, :H], [:N2Hpl, :D], :(2.5e-11)], # D-ion-rxn: Anicich2003
+
              [[:N2Hpl, :H2], [:H3pl, :N2], :(5.1e-18)],
              [[:N2Hpl, :H2O], [:H3Opl, :N2], :(2.6e-9)],
              [[:N2Hpl, :HCN], [:HCNHpl, :N2], :(3.2e-9)],
@@ -923,8 +956,7 @@ const reactionnet = [   #Photodissociation
              [[:N2Hpl, :NO], [:HNOpl, :N2], :(3.4e-10)],
 
              [[:N2Hpl, :O], [:OHpl, :N2], :(1.4e-10)],
-             # NEW
-             [[:N2Dpl, :O], [:ODpl, :N2], :(((30 ./ 29) .^ -0.5) .* 1.4e-10)],
+             [[:N2Dpl, :O], [:ODpl, :N2], :(((30 ./ 29) .^ -0.5) .* 1.4e-10)], # D-ion-rxn: Mass-scaling. 
 
              [[:N2Hpl, :OH], [:H2Opl, :N2], :(1.07e-8 .* (Ti .^ -0.5))],
              [[:N2Opl, :CO], [:CO2pl, :N2], :(1.11e-10)],
@@ -947,18 +979,16 @@ const reactionnet = [   #Photodissociation
              [[:N2pl, :CO2], [:CO2pl, :N2], :(8.0e-10)],
 
              [[:N2pl, :H2], [:N2Hpl, :H], :(1.87e-9 .* exp.(-54.7 ./ Ti))],
-             # NEW
-             # [[:N2pl, :HD], [:N2Hpl, :D], :(((3 ./ 2) .^ -0.5) .* 0.5 .* 1.87e-9 .* exp.(-54.7 ./ Ti))], # DUPLICATE
-             # [[:N2pl, :HD], [:N2Dpl, :H], :(((3 ./ 2) .^ -0.5) .* 0.5 .* 1.87e-9 .* exp.(-54.7 ./ Ti))], # DUPLICATE
+             [[:N2pl, :HD], [:N2Hpl, :D], :(0.49 .* 1.34e-9)], # D-ion-rxn: Anicich2003
+             [[:N2pl, :HD], [:N2Dpl, :H], :(0.51 .* 1.34e-9)], # D-ion-rxn: Anicich2003
+
 
              [[:N2pl, :H2O], [:H2Opl, :N2], :(1.9e-9)],
-             # NEW 
-             [[:N2pl, :HDO], [:HDOpl, :N2], :(((19 ./ 18) .^ -0.5) .* 1.9e-9)],
+             [[:N2pl, :HDO], [:HDOpl, :N2], :(((19 ./ 18) .^ -0.5) .* 1.9e-9)], # D-ion-rxn: Mass-scaling. 
 
              [[:N2pl, :H2O], [:N2Hpl, :OH], :(5.04e-10)],
-             # NEW
-             [[:N2pl, :HDO], [:N2Dpl, :OH], :(((19 ./ 18) .^ -0.5) .* 0.5 .* 5.04e-10)],
-             [[:N2pl, :HDO], [:N2Hpl, :OD], :(((19 ./ 18) .^ -0.5) .* 0.5 .* 5.04e-10)],
+             [[:N2pl, :HDO], [:N2Dpl, :OH], :(((19 ./ 18) .^ -0.5) .* 0.5 .* 5.04e-10)], # D-ion-rxn: Mass-scaling. 
+             [[:N2pl, :HDO], [:N2Hpl, :OD], :(((19 ./ 18) .^ -0.5) .* 0.5 .* 5.04e-10)], # D-ion-rxn: Mass-scaling. 
 
              [[:N2pl, :HCN], [:HCNpl, :N2], :(3.9e-10)],
              [[:N2pl, :HCO], [:HCOpl, :N2], :(6.41e-9 .* (Ti .^ -0.5))],
@@ -1034,9 +1064,8 @@ const reactionnet = [   #Photodissociation
              [[:Npl, :CO2], [:COpl, :NO], :(2.02e-10)],
 
              [[:Npl, :H2], [:NHpl, :H], :(5.0e-10 .* exp.(-85.0 ./ Ti))],
-             # NEW
-             # [[:Npl, :HD], [:NDpl, :H], :(((3 ./ 2) .^ -0.5) .* 0.5 .* 5.0e-10 .* exp.(-85.0 ./ Ti))], # DUPLICATE
-             # [[:Npl, :HD], [:NHpl, :D], :(((3 ./ 2) .^ -0.5) .* 0.5 .* 5.0e-10 .* exp.(-85.0 ./ Ti))], # DUPLICATE
+             [[:Npl, :HD], [:NHpl, :D], :(0.25 .* 3.1e-10)], # D-ion-rxn: Anicich2003
+             [[:Npl, :HD], [:NDpl, :H], :(0.75 .* 3.1e-10)], # D-ion-rxn: Anicich2003
 
              [[:Npl, :H2O], [:H2Opl, :N], :(2.7e-9)],
              [[:Npl, :HCN], [:HCNpl, :N], :(3.7e-9)],
@@ -1071,22 +1100,17 @@ const reactionnet = [   #Photodissociation
              [[:OHpl, :CN], [:HCNpl, :O], :(1.73e-8 .* (Ti .^ -0.5))],
 
              [[:OHpl, :CO], [:HCOpl, :O], :(8.4e-10)],
-             # NEW
-             [[:ODpl, :CO], [:DCOpl, :O], :(((18 ./ 17) .^ -0.5) .* 8.4e-10)],
+             [[:ODpl, :CO], [:DCOpl, :O], :(((18 ./ 17) .^ -0.5) .* 8.4e-10)], # D-ion-rxn: Mass-scaling. 
 
              [[:OHpl, :CO2], [:HCO2pl, :O], :(1.35e-9)],
-             # NEW
-             [[:ODpl, :CO2], [:DCO2pl, :O], :(((18 ./ 17) .^ -0.5) .* 1.35e-9)],
+             [[:ODpl, :CO2], [:DCO2pl, :O], :(((18 ./ 17) .^ -0.5) .* 1.35e-9)], # D-ion-rxn: Mass-scaling. 
 
              [[:OHpl, :H2], [:H2Opl, :H], :(9.7e-10)],
-             # NEW 
-             [[:ODpl, :H2], [:HDOpl, :H], :(0.5 .* ((18 ./ 17) .^ -0.5) .* 9.7e-10)],
-             [[:ODpl, :H2], [:H2Opl, :D], :(0.5 .* ((18 ./ 17) .^ -0.5) .* 9.7e-10)],
+             [[:ODpl, :H2], [:HDOpl, :H], :(0.5 .* ((18 ./ 17) .^ -0.5) .* 9.7e-10)], # D-ion-rxn: Mass-scaling. 
+             [[:ODpl, :H2], [:H2Opl, :D], :(0.5 .* ((18 ./ 17) .^ -0.5) .* 9.7e-10)], # D-ion-rxn: Mass-scaling. 
              [[:OHpl, :HD], [:HDOpl, :H], :(((3 ./ 2) .^ -0.5) .* 9.7e-10)],
              [[:OHpl, :HD], [:H2Opl, :D], :(((3 ./ 2) .^ -0.5) .* 9.7e-10)],
-             # [[:ODpl, :HD], [:HDOpl, :D], :(9.7e-10)],  # TODO: Doubly deuterated mass scaling factor?
-
-
+ 
              [[:OHpl, :H2O], [:H2Opl, :OH], :(1.59e-9)],
              [[:OHpl, :H2O], [:H3Opl, :O], :(1.3e-9)],
              [[:OHpl, :HCN], [:HCNHpl, :O], :(2.08e-8 .* (Ti .^ -0.5))],
@@ -1095,12 +1119,10 @@ const reactionnet = [   #Photodissociation
              [[:OHpl, :HCO], [:HCOpl, :OH], :(4.85e-9 .* (Ti .^ -0.5))],
 
              [[:OHpl, :N], [:NOpl, :H], :(8.9e-10)],
-             # NEW 
-             [[:ODpl, :N], [:NOpl, :D], :(((18 ./ 17) .^ -0.5) .* 8.9e-10)],
+             [[:ODpl, :N], [:NOpl, :D], :(((18 ./ 17) .^ -0.5) .* 8.9e-10)], # D-ion-rxn: Mass-scaling. 
 
              [[:OHpl, :N2], [:N2Hpl, :O], :(2.4e-10)],
-             # NEW
-             [[:ODpl, :N2], [:N2Dpl, :O], :(((18 ./ 17) .^ -0.5) .* 2.4e-10)],
+             [[:ODpl, :N2], [:N2Dpl, :O], :(((18 ./ 17) .^ -0.5) .* 2.4e-10)], # D-ion-rxn: Mass-scaling. 
 
              [[:OHpl, :N2O], [:HN2Opl, :O], :(9.58e-10)],
              [[:OHpl, :N2O], [:N2Opl, :OH], :(2.13e-10)],
@@ -1112,32 +1134,26 @@ const reactionnet = [   #Photodissociation
              [[:OHpl, :NO], [:NOpl, :OH], :(8.15e-10)],
 
              [[:OHpl, :O], [:O2pl, :H], :(7.1e-10)],
-             # NEW
-             [[:ODpl, :O], [:O2pl, :D], :(((18 ./ 17) .^ -0.5) .* 7.1e-10)],
+             [[:ODpl, :O], [:O2pl, :D], :(((18 ./ 17) .^ -0.5) .* 7.1e-10)], # D-ion-rxn: Mass-scaling. 
 
              [[:OHpl, :O2], [:O2pl, :OH], :(3.8e-10)],
-             # NEW 
-             [[:ODpl, :O2], [:O2pl, :OD], :(((18 ./ 17) .^ -0.5) .* 3.8e-10)],
+             [[:ODpl, :O2], [:O2pl, :OD], :(((18 ./ 17) .^ -0.5) .* 3.8e-10)], # D-ion-rxn: Mass-scaling. 
 
              [[:OHpl, :OH], [:H2Opl, :O], :(1.21e-8 .* (Ti .^ -0.5))],
              [[:Opl, :CH], [:CHpl, :O], :(6.06e-9 .* (Ti .^ -0.5))],
              [[:Opl, :CH], [:COpl, :H], :(6.06e-9 .* (Ti .^ -0.5))],
              [[:Opl, :CN], [:NOpl, :C], :(1.73e-8 .* (Ti .^ -0.5))],
-             [[:Opl, :CO2], [:O2pl, :CO], :(9.6e-10)], # Nair minimal ionosphere # Roger: :(1.1e-9) # Nair: -in use-  
+             [[:Opl, :CO2], [:O2pl, :CO], :(1.1e-9)], # Nair minimal ionosphere 
              
              [[:Opl, :H], [:Hpl, :O], :(6.4e-10)],
-             # NEW
-             [[:Opl, :D], [:Dpl, :O], :(((2 ./ 1) .^ -0.5) .* 6.4e-10)],
-
+             [[:Opl, :D], [:Dpl, :O], :(((2 ./ 1) .^ -0.5) .* 6.4e-10)], # D-ion-rxn: Mass-scaling. 
 
              [[:Opl, :H2], [:OHpl, :H], :(1.62e-9)],
-             # NEW
-             # [[:Opl, :HD], [:OHpl, :D], :(((3 ./ 2) .^ -0.5) .* 0.5 .* 1.62e-9)], # DUPLICATE
-             # [[:Opl, :HD], [:ODpl, :H], :(((3 ./ 2) .^ -0.5) .* 0.5 .* 1.62e-9)], # DUPLICATE
+             [[:Opl, :HD], [:OHpl, :D], :(0.54 .* 1.25e-9)], # D-ion-rxn: Anicich2003
+             [[:Opl, :HD], [:ODpl, :H], :(0.46 .* 1.25e-9)], # D-ion-rxn: Anicich2003
 
              [[:Opl, :H2O], [:H2Opl, :O], :(2.6e-9)],
-             # NEW
-             [[:Opl, :HDO], [:HDOpl, :O], :(((19 ./ 18) .^ -0.5) .* 2.6e-9)],
+             [[:Opl, :HDO], [:HDOpl, :O], :(((19 ./ 18) .^ -0.5) .* 2.6e-9)], # D-ion-rxn: Mass-scaling. 
 
              [[:Opl, :HCN], [:COpl, :NH], :(1.17e-9)],
              [[:Opl, :HCN], [:HCOpl, :N], :(1.17e-9)],
@@ -1156,46 +1172,43 @@ const reactionnet = [   #Photodissociation
              [[:Opl, :OH], [:O2pl, :H], :(6.24e-9 .* (Ti .^ -0.5))],
              [[:Opl, :OH], [:OHpl, :O], :(6.24e-9 .* (Ti .^ -0.5))],
 
-             # Recombination 
+             # Electron Recombination 
              [[:ArHpl, :E], [:Ar, :H], :(1.0e-9)],
              [[:Arpl, :E], [:Ar], :(4.0e-12 .* (Te .^ 0.6))],
              [[:CHpl, :E], [:C, :H], :(1.65e-6 .* (Te .^ -0.42))],
              [[:CNpl, :E], [:N, :C], :(3.12e-6 .* (Te .^ -0.5))],
-             [[:CO2pl, :E], [:CO, :O], :(3.8e-7)], # Nair minimal ionosphere # Vuitton: :(4.2e-7 .* (Te ./ 300) .^ -0.75) Roger: :(3.03e-5 .* (Te .^ -0.75)) Nair: in use. BAD RATE?: 3.03e-5 .* ((300 ./ Te) .^ -0.75)
+             [[:CO2pl, :E], [:CO, :O], :(3.03e-5 .* (Te .^ -0.75))], # Roger Nair: 3.8e-7
              [[:COpl, :E], [:O, :C], :(4.82e-6 .* (Te .^ -0.55))],
              [[:COpl, :E], [:O1D, :C], :(2.48e-8 .* (Te .^ -0.55))],
              [[:Cpl, :E], [:C], :(6.28e-10 .* (Te .^ -0.59))],
 
+
              [[:H2Opl, :E], [:O, :H, :H], :(2.08e-5 .* (Te .^ -0.74))],
-             # NEW 
-             [[:HDOpl, :E], [:O, :D, :H], :(((19 ./ 18) .^ -0.5) .* 2.08e-5 .* (Te .^ -0.74))],
+             [[:HDOpl, :E], [:O, :D, :H], :(((19 ./ 18) .^ -0.5) .* 2.08e-5 .* (Te .^ -0.74))], # D-ion-rxn: Mass-scaling. 
 
              [[:H2Opl, :E], [:H2, :O], :(2.64e-6 .* (Te .^ -0.74))],
-             # NEW 
-             [[:HDOpl, :E], [:HD, :O], :(((19 ./ 18) .^ -0.5) .* 2.64e-6 .* (Te .^ -0.74))],
+             [[:HDOpl, :E], [:HD, :O], :(((19 ./ 18) .^ -0.5) .* 2.64e-6 .* (Te .^ -0.74))], # D-ion-rxn: Mass-scaling. 
 
              [[:H2Opl, :E], [:OH, :H], :(5.86e-6 .* (Te .^ -0.74))],
-             # NEW 
-             [[:HDOpl, :E], [:OH, :D], :(0.5 .* ((19 ./ 18) .^ -0.5) .* 5.86e-6 .* (Te .^ -0.74))],
-             [[:HDOpl, :E], [:OD, :H], :(0.5 .* ((19 ./ 18) .^ -0.5) .* 5.86e-6 .* (Te .^ -0.74))],
+             [[:HDOpl, :E], [:OH, :D], :(0.5 .* ((19 ./ 18) .^ -0.5) .* 5.86e-6 .* (Te .^ -0.74))], # D-ion-rxn: Mass-scaling. 
+             [[:HDOpl, :E], [:OD, :H], :(0.5 .* ((19 ./ 18) .^ -0.5) .* 5.86e-6 .* (Te .^ -0.74))], # D-ion-rxn: Mass-scaling. 
 
              
              [[:H3Opl, :E], [:H2, :O, :H], :(9.68e-8 .* (Te .^ -0.5))],
-             [[:H2DOpl, :E], [:HD, :O, :H], :(0.5 .* ((20 ./ 19) .^ -0.5) .* 9.68e-8 .* (Te .^ -0.5))],
-             [[:H2DOpl, :E], [:H2, :O, :D], :(0.5 .* ((20 ./ 19) .^ -0.5) .* 9.68e-8 .* (Te .^ -0.5))],
+             [[:H2DOpl, :E], [:HD, :O, :H], :(0.5 .* ((20 ./ 19) .^ -0.5) .* 9.68e-8 .* (Te .^ -0.5))], # D-ion-rxn: Mass-scaling. 
+             [[:H2DOpl, :E], [:H2, :O, :D], :(0.5 .* ((20 ./ 19) .^ -0.5) .* 9.68e-8 .* (Te .^ -0.5))], # D-ion-rxn: Mass-scaling. 
+
              [[:H3Opl, :E], [:H2O, :H], :(1.86e-6 .* (Te .^ -0.5))],
-             [[:H2DOpl, :E], [:HDO, :H], :(0.5 .* ((20 ./ 19) .^ -0.5) .* 1.86e-6 .* (Te .^ -0.5))],
-             [[:H2DOpl, :E], [:H2O, :D], :(0.5 .* ((20 ./ 19) .^ -0.5) .* 1.86e-6 .* (Te .^ -0.5))],
+             [[:H2DOpl, :E], [:HDO, :H], :(0.5 .* ((20 ./ 19) .^ -0.5) .* 1.86e-6 .* (Te .^ -0.5))], # D-ion-rxn: Mass-scaling. 
+             [[:H2DOpl, :E], [:H2O, :D], :(0.5 .* ((20 ./ 19) .^ -0.5) .* 1.86e-6 .* (Te .^ -0.5))], # D-ion-rxn: Mass-scaling. 
 
              [[:H3Opl, :E], [:OH, :H, :H], :(4.47e-6 .* (Te .^ -0.5))],
-             # NEW
-             [[:H2DOpl, :E], [:OD, :H, :H], :(0.5 .* ((20 ./ 19) .^ -0.5) .* 4.47e-6 .* (Te .^ -0.5))],
-             [[:H2DOpl, :E], [:OH, :D, :H], :(0.5 .* ((20 ./ 19) .^ -0.5) .* 4.47e-6 .* (Te .^ -0.5))],
+             [[:H2DOpl, :E], [:OD, :H, :H], :(0.5 .* ((20 ./ 19) .^ -0.5) .* 4.47e-6 .* (Te .^ -0.5))], # D-ion-rxn: Mass-scaling. 
+             [[:H2DOpl, :E], [:OH, :D, :H], :(0.5 .* ((20 ./ 19) .^ -0.5) .* 4.47e-6 .* (Te .^ -0.5))], # D-ion-rxn: Mass-scaling. 
 
              [[:H3Opl, :E], [:OH, :H2], :(1.04e-6 .* (Te .^ -0.5))],
-             # NEW
-             [[:H2DOpl, :E], [:OD, :H2], :(((20 ./ 19) .^ -0.5) .* 0.5 .* 1.04e-6 .* (Te .^ -0.5))],
-             [[:H2DOpl, :E], [:OH, :HD], :(((20 ./ 19) .^ -0.5) .* 0.5 .* 1.04e-6 .* (Te .^ -0.5))],
+             [[:H2DOpl, :E], [:OD, :H2], :(((20 ./ 19) .^ -0.5) .* 0.5 .* 1.04e-6 .* (Te .^ -0.5))], # D-ion-rxn: Mass-scaling. 
+             [[:H2DOpl, :E], [:OH, :HD], :(((20 ./ 19) .^ -0.5) .* 0.5 .* 1.04e-6 .* (Te .^ -0.5))], # D-ion-rxn: Mass-scaling. 
 
              [[:H3pl, :E], [:H, :H, :H], :(8.46e-7 .* (Te .^ -0.52))],
              [[:H3pl, :E], [:H2, :H], :(4.54e-7 .* (Te .^ -0.52))],
@@ -1205,7 +1218,6 @@ const reactionnet = [   #Photodissociation
              [[:HCO2pl, :E], [:CO, :O, :H], :(2.38e-7 .* (Te ./ 300) .^ -0.5)], # Fox2015 "Chemistry of..""
              [[:HCO2pl, :E], [:CO, :OH], :(9.45e-8 .* (Te ./ 300) .^ -0.5)],  # Fox2015 "Chemistry of..""
              [[:HCO2pl, :E], [:CO2, :H], :(1.75e-8 .* (Te ./ 300) .^ -0.5)], # Nair minimal ionosphere. Rate from Fox2015 "Chemistry of..""
-             # NEW
              [[:DCO2pl, :E], [:CO, :O, :D], :(0.68 .* 4.62e-5 .* (Te .^ -0.64))], # Geppert05
              [[:DCO2pl, :E], [:CO, :OD], :(0.27 .* 4.62e-5 .* (Te .^ -0.64))], # Geppert05
              [[:DCO2pl, :E], [:CO2, :D], :(0.05 .* 4.62e-5 .* (Te .^ -0.64))], # Geppert05
@@ -1225,96 +1237,40 @@ const reactionnet = [   #Photodissociation
              [[:HOCpl, :E], [:CO, :H], :(3.3e-5 .* (Te .^ -1.0))],
 
              [[:HOCpl, :E], [:OH, :C], :(1.19e-8 .* (Te .^ 1.2))],
-             # NEW
-             [[:DOCpl, :E], [:OD, :C], :(((30 ./ 29) .^ -0.5) .* 1.19e-8 .* (Te .^ 1.2))],
+             [[:DOCpl, :E], [:OD, :C], :(((30 ./ 29) .^ -0.5) .* 1.19e-8 .* (Te .^ 1.2))], # D-ion-rxn: Mass-scaling. 
 
              [[:Hpl, :E], [:H], :(6.46e-14 .* (Te .^ 0.7))],
 
+             ## Molecular hydrogen/hydrogen deuteride ion recombination - NON-THERMAL KEY
+             [[:H2pl, :E], [:H, :H], :(1.86e-7 .* (Te .^ -0.43))],
+             [[:HDpl, :E], [:H, :D], :(1.49e-8 .* ((Te ./ 300) .^ -0.853) .* exp.(-43.3 ./ Te))], # D-ion-rxn: KIDA database, temps 100-1000K. 
+
              [[:N2Hpl, :E], [:N2, :H], :(6.6e-7 .* (Te .^ -0.51))],
-             # NEW 
-             [[:N2Dpl, :E], [:N2, :D], :(((30 ./ 29) .^ -0.5) .* 6.6e-7 .* (Te .^ -0.51))],
+             [[:N2Dpl, :E], [:N2, :D], :(((30 ./ 29) .^ -0.5) .* 6.6e-7 .* (Te .^ -0.51))], # D-ion-rxn: Mass-scaling. 
 
              [[:N2Hpl, :E], [:NH, :N], :(1.17e-6 .* (Te .^ -0.51))],
              [[:N2Opl, :E], [:N, :N, :O], :(1.36e-6 .* (Te .^ -0.57))],
              [[:N2Opl, :E], [:N2, :O], :(4.09e-6 .* (Te .^ -0.57))],
              [[:N2Opl, :E], [:NO, :N], :(3.07e-6 .* (Te .^ -0.57))],
              [[:N2pl, :E], [:N, :N], :(5.09e-7 .* (Te .^ -0.39))],
-             [[:N2pl, :E], [:N, :N], :(1.42e-6 .* (Te .^ -0.39))], # These are secretly N(²D) but I don't track that species. 
+             [[:N2pl, :E], [:Nup2D, :Nup2D], :(1.42e-6 .* Te .^ -0.39)],
              [[:NH2pl, :E], [:N, :H, :H], :(1.71e-5 .* (Te .^ -0.8) .* exp.(-17.1 ./ Te))],
              [[:NH2pl, :E], [:NH, :H], :(8.34e-6 .* (Te .^ -0.79) .* exp.(-17.1 ./ Te))],
              [[:NH3pl, :E], [:NH, :H, :H], :(2.68e-6 .* (Te .^ -0.5))],
              [[:NH3pl, :E], [:NH2, :H], :(2.68e-6 .* (Te .^ -0.5))],
              [[:NHpl, :E], [:N, :H], :(7.45e-7 .* (Te .^ -0.5))],
              [[:NO2pl, :E], [:NO, :O], :(5.2e-6 .* (Te .^ -0.5))],
-             [[:NOpl, :E], [:O, :N], :(6.93e-6 .* (Te .^ -0.5))], # NEW rate from Fox+ 2015 ("Chemistry of protonated..."). Really, 95% BR to N(2D) and 5% to else. Roger's rate rom a '90 and '77 pub: 8.52e-7 .* (Te .^ -0.37)
+             # [[:NOpl, :E], [:O, :N], :(6.93e-6 .* (Te .^ -0.5))], # NEW rate from Fox+ 2015 ("Chemistry of protonated..."). Really, 95% BR to N(2D) and 5% to else. Roger's rate rom a '90 and '77 pub: 8.52e-7 .* (Te .^ -0.37)
+             
+             [[:NOpl, :E], [:O, :Nup2D], :(0.95 .* 6.928e-6 .* Te .^ -0.5)], # Fox2015 (Vejby-Christensen+1998, Hellberg+2003)
+             [[:NOpl, :E], [:O, :N], :(0.05 .* 6.928e-6 .* Te .^ -0.5)], # Fox2015 (Vejby-Christensen+1998, Hellberg+2003)
+
              [[:Npl, :E], [:N], :(1.9e-10 .* (Te .^ -0.7))],
-             [[:O2pl, :E], [:O, :O], :(6.6e-5 .* Te .^ -1.0)], # Nair minimal ionosphere.  # Vuitton: :(1.95e-7 .* (Te ./ 300) .^ (-0.7)) Roger: :(8.15e-6 .* (Te .^ -0.65)) Nair: in use. BAD RATE?: 8.15e-6 .* ((300 ./ Te) .^ -0.65)
+             [[:O2pl, :E], [:O, :O], :(8.15e-6 .* (Te .^ -0.65))], # Roger/Vuitton. Nair minimal ionosphere: :(6.6e-5 .* Te .^ -1.0). 
              
              [[:OHpl, :E], [:O, :H], :(6.5e-7 .* (Te .^ -0.5))],
-             # NEW 
-             [[:ODpl, :E], [:O, :D], :(((18 ./ 17) .^ -0.5) .* 6.5e-7 .* (Te .^ -0.5))],
+             [[:ODpl, :E], [:O, :D], :(((18 ./ 17) .^ -0.5) .* 6.5e-7 .* (Te .^ -0.5))], # D-ion-rxn: Mass-scaling. 
 
              [[:Opl, :E], [:O], :(1.4e-10 .* (Te .^ -0.66))],
-
-             # D IONS!
-             [[:Arpl, :HD], [:HDpl, :Ar], :(0.06*8.0e-10)],
-             [[:Arpl, :HD], [:ArHpl, :D], :(0.46*8.0e-10)],
-             [[:Arpl, :HD], [:ArDpl, :H], :(0.48*8.0e-10)],
-             [[:ArHpl, :HD], [:H2Dpl, :Ar], :(8.6e-10)],
-             [[:ArDpl, :H2], [:H2Dpl, :Ar], :(8.8e-10)],
-             [[:ArDpl, :H2], [:ArHpl, :HD], :(4.5e-10)],
-             [[:ArDpl, :N2], [:N2Dpl, :Ar], :(6e-10)],
-             [[:ArDpl, :CO], [:DCOpl, :Ar], :(1.25e-9)], # HAS DUPLICATE (COMPARE RATES)
-             [[:ArDpl, :CO2], [:OCODpl, :Ar], :(1.1e-9)],
-             [[:Cpl, :HD], [:CHpl, :D], :(0.17*1.2e-16)],
-             [[:Cpl, :HD], [:CDpl, :H], :(0.83*1.2e-16)],
-             [[:COpl, :D], [:Dpl, :CO], :(9e-11)], # HAS DUPLICATE (COMPARE RATES)
-             [[:CO2pl, :D], [:DCOpl, :O], :(0.76*8.4e-11)], # HAS DUPLICATE (COMPARE RATES)
-             [[:CO2pl, :D], [:Dpl, :CO2], :(0.24*8.4e-11)], # HAS DUPLICATE (COMPARE RATES)
-             [[:Dpl, :H2], [:Hpl, :HD], :(2.2e-9)],
              
-             [[:Dpl, :H2O], [:H2Opl, :D], :(5.2e-9)], # HAS DUPLICATE (COMPARE RATES)
-             [[:Dpl, :O2], [:O2pl, :D], :(1.6e-9)], # HAS DUPLICATE (COMPARE RATES)
-             [[:Dpl, :CO2], [:DCOpl, :O], :(2.6e-9)], # HAS DUPLICATE (COMPARE RATES)
-             [[:Dpl, :CO2], [:CO2pl, :D], :(2.6e-9)],
-             [[:Dpl, :N2O], [:N2Opl, :D], :(0.85 * 1.7e-9)],
-             [[:Dpl, :N2O], [:N2Dpl, :O], :(0.15 * 1.7e-9)],
-             [[:Dpl, :NO], [:NOpl, :D], :(1.8e-9)],
-             [[:Dpl, :NO2], [:NOpl, :OD], :(0.95*1.6e-9)],
-             [[:Dpl, :NO2], [:NO2pl, :D], :(0.05*1.6e-9)],
-             [[:DCOpl, :H], [:HCOpl, :D], :(1.5e-11)],
-             [[:Hpl, :HD], [:Dpl, :H2], :(1.1e-10)],
-             [[:HCNpl, :D], [:Dpl, :HCN], :(3.7e-11)],
-             [[:HCOpl, :D], [:DCOpl, :H], :(4.25e-11)],
-             [[:H2Dpl, :H2], [:H3pl, :HD], :(5.3e-10)],
-             [[:H2Dpl, :HD], [:H3pl, :D2], :(0.1*5.0e-10)],
-             [[:H2Dpl, :HD], [:HD2pl, :H2], :(0.9*5.0e-10)],
-             [[:HDpl, :HD], [:H2Dpl, :D], :(0.55*1.53e-9)],
-             [[:HDpl, :HD], [:HD2pl, :H], :(0.45*1.53e-9)],
-             [[:HDpl, :Ar], [:ArDpl, :H], :(1.53e-9)], # HAS DUPLICATE (COMPARE RATES)
-             [[:HD2pl, :H2], [:H3pl, :D2], :(0.25*7.6e-10)],
-             [[:HD2pl, :H2], [:H2Dpl, :HD], :(0.75*7.6e-10)],
-             [[:HD2pl, :HD], [:H2Dpl, :D2], :(0.25*4.5e-10)],
-             [[:HD2pl, :HD], [:D3pl, :H2], :(0.75*4.5e-10)],
-             [[:Npl, :HD], [:NHpl, :D], :(0.25*3.1e-10)],# HAS DUPLICATE (COMPARE RATES)
-             [[:Npl, :HD], [:NDpl, :H], :(0.75*3.1e-10)], # HAS DUPLICATE (COMPARE RATES)
-             [[:N2pl, :HD], [:N2Hpl, :D], :(0.49*1.34e-9)], # HAS DUPLICATE (COMPARE RATES)
-             [[:N2pl, :HD], [:N2Dpl, :H], :(0.51*1.34e-9)], # HAS DUPLICATE (COMPARE RATES)
-             [[:N2Hpl, :D], [:N2Dpl, :H], :(8e-11)],
-             [[:N2Dpl, :H], [:N2Hpl, :D], :(2.5e-11)],
-             [[:Opl, :HD], [:OHpl, :D], :(0.54*1.25e-9)], # HAS DUPLICATE (COMPARE RATES)
-             [[:Opl, :HD], [:ODpl, :H], :(0.46*1.25e-9)], # HAS DUPLICATE (COMPARE RATES)
-
-             # KEY NON-THERMAL MECHANISM REACTIONS
-
-             ## Molecular hydrogen/hydrogen deuteride ion recombination
-             [[:H2pl, :E], [:H, :H], :(1.86e-7 .* (Te .^ -0.43))],
-             [[:HDpl, :E], [:H, :D], :(((3 ./ 2) .^ -0.5) .* 1.86e-7 .* (Te .^ -0.43))], 
-
-             ## Charge exchange,
-             [[:Hpl, :H], [:H, :Hpl], :(6.5e-11 .* (Ti .^ 0.5))], # NEW - Yung 1989
-             [[:Hpl, :O], [:H, :Opl], :(3.75e-10)], # Anicich 1993/Roger (factor of 2). Yung 1989 rate: :(0.8 .* 6.5e-11 .* (Ti .^ 0.5)
-             [[:Dpl, :H], [:D, :Hpl], :(0.87 .* 6.5e-11 .* (Ti .^ 0.5))], # NEW - Yung 1989
-             [[:Dpl, :O], [:D, :Opl], :(2.8e-10)], # Anicich 2003. Guesstimate by mass-scaling: :(((2 ./ 1) .^ -0.5) .* 3.75e-10)
-
              ];

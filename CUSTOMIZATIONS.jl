@@ -7,9 +7,11 @@
 # colors to use for species density plots, and so forth.
 #
 # Eryn Cangi
-# Created November 2021
+# Updated: January 2022
 # Currently tested for Julia: 1.6.1
 ################################################################################
+
+using DoubleFloats
 
 const code_dir = "$(@__DIR__)/"
 const extra_plots_dir = code_dir*"../Auxiliary plots/"
@@ -18,7 +20,6 @@ const xsecfolder = code_dir*"uvxsect/";
 
 # Float types for calculations =================================================
 # needed by both Photochemistry.jl and converge_new_file so it has to go here
-using DoubleFloats
 # if problem_type == "Gear"
 ftype_ncur = Double64 # used to store n_current values
 ftype_chem = Double64 # used to compute chemical reaction rates and chemical jacobian
@@ -29,7 +30,8 @@ ftype_chem = Double64 # used to compute chemical reaction rates and chemical jac
 
 # Altitude grid specifications =================================================
 const max_alt = 250e5
-const alt = convert(Array, (0:2e5:max_alt)) # TODO: Figure out how to get this without being hard-coded
+const dz = 2e5
+const alt = convert(Array, (0:dz:max_alt))
 const intaltgrid = round.(Int64, alt/1e5)[2:end-1]; # the altitude grid CELLS but in integers.
 const non_bdy_layers = alt[2:end-1]  # all layers, centered on 2 km, 4...248. Excludes the boundary layers which are [-1, 1] and [249, 251].
 const num_layers = length(non_bdy_layers) # there are 124 non-boundary layers.
@@ -38,7 +40,6 @@ const plot_grid_bdys = collect(1:2:((max_alt / 1e5)-1))  # the boundaries; inclu
 
 const zmin = alt[1]
 const zmax = alt[end];
-const dz = alt[2]-alt[1];
 const n_alt_index=Dict([z=>clamp((i-1),1, num_layers) for (i, z) in enumerate(alt)])
 
 # water altitude stuff 
@@ -74,7 +75,7 @@ const highestTe = 350.0  # This is the highest exobase temperature considered.
 const speciescolor = Dict( # PRIMARY NEUTRALS + IONS
                     :CO2 =>"#000000", :CO2pl=>"#000000",
                     :CO =>"#ff6600", :COpl=>"#ff6600",
-                    :N2=>"#cccccc", :N2pl=>"#cccccc", 
+                    :N2=>"#cccccc", :N2pl=>"#cccccc", :Nup2D=>"#cccccc",
                     :Ar=>"#808080", :Arpl=>"#808080", :ArHpl=>"#069668", :ArDpl=>"#069668",
                     :HCO=> "#33bbf9", :HCOpl=>"#33bbf9", :DCO=> "#33bbf9", :DCOpl=>"#33bbf9",
                     :HOCpl=>"#c71a85", :DOCpl=>"#c71a85",

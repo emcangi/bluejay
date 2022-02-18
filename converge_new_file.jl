@@ -29,6 +29,9 @@ println("loading Photochemistry.jl from $photochemistry_source_dir")
 push!(LOAD_PATH, photochemistry_source_dir)
 using Photochemistry  # custom module
 using DifferentialEquations
+using IterativeSolvers
+using IncompleteLU
+using Dates
 
 include("CONSTANTS.jl")
 include("CUSTOMIZATIONS.jl")
@@ -46,9 +49,13 @@ include(paramfile)
 
 println("Running a $(simtype) experiment with parameters $(controltemps) in the form of a $(problem_type == "SS" ? "steady state" : problem_type) problem")
 
-# Load the new standard reaction network from file if it the parameter file doesn''t have its own network.
+# Construct the chemistry reaction network
 if !@isdefined reactionnet 
     include(code_dir*"reaction_network.jl")
+# ionnet = format_ion_network(reaction_network_spreadsheet)
+# neutral_net = format_neutral_network(reaction_network_spreadsheet, all_species);
+# Jrxns = [[[absorber[Jr]], photolysis_products[Jr], Jr] for Jr in Jratelist]
+# reaction_network = [Jrxns..., neutral_net..., ionnet...]
 end
 
 t4 = time()
@@ -405,12 +412,13 @@ function PnL_eqn(dndt, n, p, t)
     n is a vector of active species densities by altitude.
     =#
 
+    println("Time = $(t)")
     # Unpack the parameters needed to call ratefn 
     n_inactive, inactivesp, activesp, activellsp, activeslsp, Tn, Ti, Te, Tp, D_arr = p 
 
     if t / timestorage >= 10
         f = open(results_dir*sim_folder_name*"/simulation_params_"*FNext*".txt", "a")
-        progress_alert = "reached timestep $(t) in $(format_sec_or_min(time() - ti))\n"
+        progress_alert = "reached timestep $(t) at $(Dates.format(now(), "yyyy-mm-dd at HH:MM:SS")), total elapsed time=$(format_sec_or_min(time() - ti))\n"
         write(f, progress_alert)
         close(f)
         println(progress_alert) # prints present timestep, but only if it's a factor of 10 greater than the last stored timestep (so we don't get a trillion outputs)
@@ -515,7 +523,7 @@ function evolve_atmosphere(atm_init::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_s
     log_t_end: Similar, but end time.
     t_to_save: timesteps at which to save a snapshot of the atmosphere.
     =#
-
+    println("Called evolve_atmosphere")
     # Get the start and stop time information 
     startdt = 10.0^log_t_start
     tspan = (10.0^log_t_start, 10.0^log_t_end)
@@ -556,9 +564,11 @@ function evolve_atmosphere(atm_init::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_s
     if problem_type == "SS"
         write(f, "\nODE solver: DynamicSS/$solver\n\n")
         close(f)
+        println("Defining SS problem")
         probSS = SteadyStateProblem{isinplace}(odefunc, nstart, params)
+        println("Calling the solver")
         sol = solve(probSS, DynamicSS(QNDF(), abstol=abs_tol, reltol=rel_tol), saveat=t_to_save, progress=true, save_everystep=false, dt=startdt,
-                    #=abstol=abs_tol, reltol=rel_tol,=# isoutofdomain=(u,p,t)->any(x->x<0,u))
+                    abstol=abs_tol, reltol=rel_tol, isoutofdomain=(u,p,t)->any(x->x<0,u))
 
     elseif problem_type == "ODE"
         write(f, "\nODE solver: $solver\n\n")
@@ -638,8 +648,6 @@ function get_rates_and_jacobian(n, p, t)
             chemJmat(n, n_short, n_inactive, activellsp, activeslsp, inactivesp, Jrates, Tn, Ti, Te, tup, tdown, tlower, tupper; dt=t) )# dt unused in chemJmat
 end
 
-using IterativeSolvers, IncompleteLU
-
 function solve_sparse(A, b)
     LU = ilu(A, τ = 0.1) # get incomplete LU preconditioner
     x = bicgstabl(A, b, 2, Pl = LU, reltol=1e-25)
@@ -667,7 +675,7 @@ function next_timestep(nstart, # concentrations before the timestep
     converged = false
     iter = 0
     while !converged
-        println("iter = $iter")
+        # println("iter = $iter")
         if iter>10; throw(TooManyIterationsException); end;
         
         nold = deepcopy(nthis)
@@ -696,7 +704,7 @@ function next_timestep(nstart, # concentrations before the timestep
         # check for convergence
         check_n_abserr = (nthis .<= abstol) .|| (nold .<= abstol) .|| (abs.(nthis - nold) .<= abstol)
         n_relerr = abs.(nthis-nold)./nold
-        println("max(n_relerr) = $(max(n_relerr[.!check_n_abserr]...))")
+        # println("max(n_relerr) = $(max(n_relerr[.!check_n_abserr]...))")
         check_n_relerr = n_relerr .< reltol
 
         # check_f_abserr = (abs.(fval) .<= f_abstol)
@@ -716,7 +724,6 @@ function next_timestep(nstart, # concentrations before the timestep
 
     return nthis
 end
-
 
 function update(n_current::Dict{Symbol, Array{ftype_ncur, 1}}, t, dt)
     # update n_current using the coupled reaction network, moving to
@@ -751,7 +758,6 @@ function update(n_current::Dict{Symbol, Array{ftype_ncur, 1}}, t, dt)
     return n_current
 end
 
-
 function converge(n_current::Dict{Symbol, Array{ftype_ncur, 1}},
                   log_t_start=-3, log_t_end=16, n_steps=800)
     # # update in logarithmiclly spaced timesteps until convergence, returning converged atmosphere
@@ -766,8 +772,8 @@ function converge(n_current::Dict{Symbol, Array{ftype_ncur, 1}},
     failfactor = 10.0
     while dt < 10.0^log_t_end
         total_time += dt
-        println("t  = $total_time")
-        println("dt = $dt")
+        # println("t  = $total_time")
+        # println("dt = $dt")
         n_old = deepcopy(n_current)
         try
             n_current = update(n_current, total_time, dt)
@@ -785,7 +791,7 @@ function converge(n_current::Dict{Symbol, Array{ftype_ncur, 1}},
                 rethrow(e)
             end
         end
-        println("max(n_current-n_old) = $(max([max((abs.(n_current[sp] - n_old[sp]))...) for sp in all_species]...))\n\n")
+        # println("max(n_current-n_old) = $(max([max((abs.(n_current[sp] - n_old[sp]))...) for sp in all_species]...))\n\n")
     end
     
     return n_current
@@ -913,7 +919,8 @@ end
 
 # Create a separate dictionary for: short lived species, inactive species, and Jrates which will be updated separately from
 # the main solving routine because these values cannot be/need not be part of the solver algorithm. 
-const external_storage = Dict([j=>n_current[j] for j in union(short_lived_species, inactive_species, Jratelist)])
+# TODO: Remove the replace function, just doing it once to transition from "p" to "a" in the J rates.
+const external_storage = Dict([j=>n_current[Symbol(replace(string(j), "a"=>"p", "JH2O2toOHaOH"=>"JH2O2to2OH"))] for j in union(short_lived_species, inactive_species, Jratelist)])
 
 # Densities of inactive species, which by definition do not change for entire simulation
 const inactive = flatten_atm(n_current, inactive_species, num_layers)
@@ -1008,9 +1015,9 @@ const active_longlived_below = [Symbol(string(s)*"_below") for s in active_longl
 # Chemistry =====================================================================
 # Create symbolic expressions for the chemical jacobian at a local layer with influence from that same layer, 
 # the one above, and the one below
-const chemJ_local = chemical_jacobian(reactionnet, transportnet, active_longlived, active_longlived, chem_species, transport_species);
-const chemJ_above = chemical_jacobian(reactionnet, transportnet, active_longlived, active_longlived_above, chem_species, transport_species);
-const chemJ_below = chemical_jacobian(reactionnet, transportnet, active_longlived, active_longlived_below, chem_species, transport_species);
+const chemJ_local = chemical_jacobian(reaction_network, transportnet, active_longlived, active_longlived, chem_species, transport_species);
+const chemJ_above = chemical_jacobian(reaction_network, transportnet, active_longlived, active_longlived_above, chem_species, transport_species);
+const chemJ_below = chemical_jacobian(reaction_network, transportnet, active_longlived, active_longlived_below, chem_species, transport_species);
 
 # Active long-lived and short-lived species expression arrays =====================
 
@@ -1021,7 +1028,7 @@ const chemJ_below = chemical_jacobian(reactionnet, transportnet, active_longlive
 # transport production, transport loss, in that order.
 active_longlived_species_rates = Array{Array{Expr}}(undef, length(active_longlived), 4)
 for (i, sp) in enumerate(active_longlived)
-    active_longlived_species_rates[i, :] .= getrate(sp, reactionnet, transportnet, sepvecs=true, chem_species, transport_species)
+    active_longlived_species_rates[i, :] .= getrate(sp, reaction_network, transportnet, sepvecs=true, chem_species, transport_species)
 end
 
 # Short-lived species expression array --------------------------------------------
@@ -1071,11 +1078,11 @@ equilibrium_eqn_terms = Array{Expr}(undef, length(short_lived_species), 1)
 
 for (i, sp) in enumerate(active_shortlived)
     # Removes from consideration any reaction where a species appears on both sides of the equation (as an observer)
-    ret = rxns_where_species_is_observer(sp, reactionnet)
+    ret = rxns_where_species_is_observer(sp, reaction_network)
     if ret == nothing
-        chemnet = reactionnet
+        chemnet = reaction_network
     else
-        chemnet = filter(x->!in(x, ret), reactionnet)        
+        chemnet = filter(x->!in(x, ret), reaction_network)        
     end
     
     # Get the species production rate and loss rate by chemistry. These are obtained as vectors of reaction vectors
@@ -1340,26 +1347,27 @@ xsect_dict = Dict("CO2"=>[co2file],
 
 # Log temperature and water parameters =========================================
 if simtype=="temp"
-    input_string = "T_surf=$(controltemps[1]), T_meso=$(controltemps[2]), T_exo=$(controltemps[3])" *
+    experiment_parameters = "T_surf=$(controltemps[1]), T_meso=$(controltemps[2]), T_exo=$(controltemps[3])" *
                    "\nwater init=$(water_mixing_ratio)\nDH=5.5 \nOflux=1.2e8"
 elseif simtype=="water"
-    input_string = "T_surf=$(meanTs), T_meso=$(meanTm), T_exo=$(meanTe)\n" *
+    experiment_parameters = "T_surf=$(meanTs), T_meso=$(meanTm), T_exo=$(meanTe)\n" *
                    "water init=$(water_mixing_ratio)\nDH=5.5\nOflux=1.2e8\n"
 elseif simtype=="dh"
-    input_string = "T_surf=$(meanTs), T_meso=$(meanTm), T_exo=$(meanTe)\nwater=$(water_mixing_ratio)\n" *
+    experiment_parameters = "T_surf=$(meanTs), T_meso=$(meanTm), T_exo=$(meanTe)\nwater=$(water_mixing_ratio)\n" *
                    "DH=$(DH) \nOflux=1.2e8\n"
 elseif simtype=="Oflux"
-    input_string = "T_surf=$(meanTs), T_meso=$(meanTm), T_exo=$(meanTe)\nwater=$(water_mixing_ratio)" *
+    experiment_parameters = "T_surf=$(meanTs), T_meso=$(meanTm), T_exo=$(meanTe)\nwater=$(water_mixing_ratio)" *
                    "\nDH=5.5\nOflux=$(Of)\n"
 end
 
 # Write the log ================================================================
 f = open(results_dir*sim_folder_name*"/simulation_params_"*FNext*".txt", "w")
 
+write(f, "Beginning simulation at $(Dates.format(now(), "yyyy-mm-dd at HH:MM:SS"))\n\n")
 # Basic parameters written out 
 write(f, optional_logging_note*"\n\n")
 write(f, "$(simtype) experiment: \n")
-write(f, input_string*"\n\n")
+write(f, experiment_parameters*"\n\n")
 write(f, "Initial atmosphere state: $(initial_atm_file)\n\n")
 write(f, "Final atmosphere state: $(final_atm_file)\n\n")
 write(f, "Mean temperatures used:\n")
@@ -1379,10 +1387,6 @@ write(f, "Active short-lived species: $(join(sort([string(i) for i in active_sho
 
 # Water profile information
 write(f, "Water profile information: \n")
-# write(f, "Total H2O col: $(H2O_per_cc*2e5)\n")
-# write(f, "Total HDO col: $(HDO_per_cc*2e5)\n")
-# write(f, "Total water col: $((H2O_per_cc + HDO_per_cc)*2e5)\n")
-# write(f, "H2O+HDO at surface: $((H2O_per_cc[1] + HDO_per_cc[1])*2e5)\n")
 write(f, "Total H2O (pr μm): $(H2Oprum)\n")
 write(f, "Total HDO (pr μm): $(HDOprum)\n")
 write(f, "Total H2O+HDO: $(H2Oprum + HDOprum)\n\n")
@@ -1435,7 +1439,7 @@ println("Plotting the initial condition")
 plot_atm(n_current, [neutral_species, ion_species],
          results_dir*sim_folder_name*"/initial_atmosphere.png", plot_grid, speciescolor, speciesstyle, zmax, abs_tol_for_plot,
          t="initial state")
-
+println("Plotted atmosphere")
 # Create a list to keep track of stiffness ratio ===============================
 # const stiffness = []
 
@@ -1484,13 +1488,13 @@ end
 # Usually I split everthing below this out into a separate file and
 # load the above into an interactive session -Mike
 
-# do the convergence ===========================================================
-println("Beginning Convergence")
 
-# Pack the global variables and send them through for faster code!
+# do the convergence ===========================================================
+# # Pack the global variables and send them through for faster code!
 ti = time()
 timestorage = times_to_save[1] / 10  # This variable lets us periodically print the timestep being worked on for tracking purposes
 plotnum = 1 # To order the plots for each timestep correctly in the folder so it's easy to page through them.
+println("Beginning convergence")
 atm_soln = evolve_atmosphere(n_current, mindt, maxdt, t_to_save=times_to_save)
 tf = time() 
 
@@ -1499,87 +1503,86 @@ write(f, "Simulation active convergence runtime $(format_sec_or_min(tf-ti))\n")
 
 println("Simulation active convergence runtime $((tf-ti)/60) minutes")
 
-# Save the results =============================================================
+# # Save the results =============================================================
 
-if problem_type == "SS"
-    # Update short-lived species one more time
-    n_short = flatten_atm(external_storage, active_shortlived, num_layers)
-    Jrates = deepcopy(Float64[external_storage[jr][ialt] for jr in Jratelist, ialt in 1:length(non_bdy_layers)])
-    set_concentrations!(external_storage, atm_soln.u, n_short, inactive, 
-                        active_longlived, active_shortlived, inactive_species, Jrates, Tn_arr, Ti_arr, Te_arr)
-    nc_all = merge(external_storage, unflatten_atm(atm_soln.u, active_longlived, num_layers))
+# if problem_type == "SS"
+#     # Update short-lived species one more time
+#     n_short = flatten_atm(external_storage, active_shortlived, num_layers)
+#     Jrates = deepcopy(Float64[external_storage[jr][ialt] for jr in Jratelist, ialt in 1:length(non_bdy_layers)])
+#     set_concentrations!(external_storage, atm_soln.u, n_short, inactive, 
+#                         active_longlived, active_shortlived, inactive_species, Jrates, Tn_arr, Ti_arr, Te_arr)
+#     nc_all = merge(external_storage, unflatten_atm(atm_soln.u, active_longlived, num_layers))
 
-    # Make final atmosphere plot
-    plot_atm(nc_all, [neutral_species, ion_species], results_dir*sim_folder_name*"/final_atmosphere.png", t="final converged state", plot_grid, 
-                      speciescolor, speciesstyle, zmax, abs_tol_for_plot)
+#     # Make final atmosphere plot
+#     plot_atm(nc_all, [neutral_species, ion_species], results_dir*sim_folder_name*"/final_atmosphere.png", t="final converged state", plot_grid, 
+#                       speciescolor, speciesstyle, zmax, abs_tol_for_plot)
 
-    # Write out final atmosphere
-    write_atmosphere(nc_all, results_dir*sim_folder_name*"/"*final_atm_file, alt, num_layers)   # write out the final state to a specially named file
-elseif problem_type == "ODE"
+#     # Write out final atmosphere
+#     write_atmosphere(nc_all, results_dir*sim_folder_name*"/"*final_atm_file, alt, num_layers)   # write out the final state to a specially named file
+# elseif problem_type == "ODE"
 
-    L = length(atm_soln.u)
-    i = 1
-    # Write all states to individual files.
-    for (timestep, atm_state) in zip(atm_soln.t, atm_soln.u)
+#     L = length(atm_soln.u)
+#     i = 1
+#     # Write all states to individual files.
+#     for (timestep, atm_state) in zip(atm_soln.t, atm_soln.u)
 
-        if i != L 
-            # NOTE: This will eventually result in the final Jrates being written out at every timestep.
-            # Currently there's no workaround for this and you just have to remember NOT TO TRUST Jrates
-            # at any timestep except the very last. 
-            # TODO: Fix this so we just don't write Jrates in these iterations...
-            local nc_all = merge(external_storage, unflatten_atm(atm_state, active_longlived, num_layers))
-            write_atmosphere(nc_all, results_dir*sim_folder_name*"/atm_state_t_$(timestep).h5", alt, num_layers) 
-        elseif i == L
-            # Update short-lived species one more time
-            local n_short = flatten_atm(external_storage, active_shortlived, num_layers)
-            local Jrates = deepcopy(Float64[external_storage[jr][ialt] for jr in Jratelist, ialt in 1:length(non_bdy_layers)])
-            set_concentrations!(external_storage, atm_state, n_short, inactive, 
-                                active_longlived, active_shortlived, inactive_species, Jrates, Tn_arr, Ti_arr, Te_arr)
-            local nc_all = merge(external_storage, unflatten_atm(atm_state, active_longlived, num_layers))
+#         if i != L 
+#             # NOTE: This will eventually result in the final Jrates being written out at every timestep.
+#             # Currently there's no workaround for this and you just have to remember NOT TO TRUST Jrates
+#             # at any timestep except the very last. 
+#             # TODO: Fix this so we just don't write Jrates in these iterations...
+#             local nc_all = merge(external_storage, unflatten_atm(atm_state, active_longlived, num_layers))
+#             write_atmosphere(nc_all, results_dir*sim_folder_name*"/atm_state_t_$(timestep).h5", alt, num_layers) 
+#         elseif i == L
+#             # Update short-lived species one more time
+#             local n_short = flatten_atm(external_storage, active_shortlived, num_layers)
+#             local Jrates = deepcopy(Float64[external_storage[jr][ialt] for jr in Jratelist, ialt in 1:length(non_bdy_layers)])
+#             set_concentrations!(external_storage, atm_state, n_short, inactive, 
+#                                 active_longlived, active_shortlived, inactive_species, Jrates, Tn_arr, Ti_arr, Te_arr)
+#             local nc_all = merge(external_storage, unflatten_atm(atm_state, active_longlived, num_layers))
 
-            # for jsp in Jratelist  # TODO: This needs to be worked so Jrates are tracked for each timestep. right now, only the last one is kept. :/
-            #     nc_all[jsp] = external_storage[jsp]
-            # end
+#             # for jsp in Jratelist  # TODO: This needs to be worked so Jrates are tracked for each timestep. right now, only the last one is kept. :/
+#             #     nc_all[jsp] = external_storage[jsp]
+#             # end
 
-            # Make final atmosphere plot
-            plot_atm(nc_all, [neutral_species, ion_species], results_dir*sim_folder_name*"/final_atmosphere.png", t="final converged state", plot_grid, speciescolor,
-                     speciesstyle, zmax, abs_tol_for_plot)
+#             # Make final atmosphere plot
+#             plot_atm(nc_all, [neutral_species, ion_species], results_dir*sim_folder_name*"/final_atmosphere.png", t="final converged state", plot_grid, speciescolor,
+#                      speciesstyle, zmax, abs_tol_for_plot)
 
-            # Write out final atmosphere
-            write_atmosphere(nc_all, results_dir*sim_folder_name*"/"*final_atm_file, alt, num_layers)   # write out the final state to a specially named file
-        end
-        global i += 1 
-    end
-elseif problem_type == "Gear"
-    nc_all = atm_soln # this solver returns a standard dictionary rather than a matrix like the other solvers
+#             # Write out final atmosphere
+#             write_atmosphere(nc_all, results_dir*sim_folder_name*"/"*final_atm_file, alt, num_layers)   # write out the final state to a specially named file
+#         end
+#         global i += 1 
+#     end
+# elseif problem_type == "Gear"
+#     nc_all = atm_soln # this solver returns a standard dictionary rather than a matrix like the other solvers
 
-    plot_atm(nc_all, [neutral_species, ion_species], results_dir*sim_folder_name*"/final_atmosphere.png", t="final converged state", plot_grid, 
-             speciescolor, speciesstyle, zmax, abs_tol_for_plot)
+#     plot_atm(nc_all, [neutral_species, ion_species], results_dir*sim_folder_name*"/final_atmosphere.png", t="final converged state", plot_grid, 
+#              speciescolor, speciesstyle, zmax, abs_tol_for_plot)
 
-    # Write out final atmosphere
-    write_atmosphere(nc_all, results_dir*sim_folder_name*"/"*final_atm_file, alt, num_layers)   # write out the final state to a specially named file
+#     # Write out final atmosphere
+#     write_atmosphere(nc_all, results_dir*sim_folder_name*"/"*final_atm_file, alt, num_layers)   # write out the final state to a specially named file
 
-else
-    throw("Invalid problem_type")
-end 
+# else
+#     throw("Invalid problem_type")
+# end 
 
-t7 = time()
+# t7 = time()
 
-println("Wrote all states to files")
-write(f, "Simulation total runtime $(format_sec_or_min(t7-t1))\n")
+# println("Wrote all states to files")
+# write(f, "Simulation total runtime $(format_sec_or_min(t7-t1))\n")
 
-# write(f, "Stiffness ratio evolution:\n")
-# write(f, "$(stiffness)")
-# write(f, "\n\n")
-# write(f, "Total runtime $(format_sec_or_min(t9-t1))\n")
+# # write(f, "Stiffness ratio evolution:\n")
+# # write(f, "$(stiffness)")
+# # write(f, "\n\n")
+# # write(f, "Total runtime $(format_sec_or_min(t9-t1))\n")
 
-close(f)
+# close(f)
 
-n_converged = get_ncurrent("/home/mike/Documents/Mars/Photochemistry/eryn_ions_2021Dec/Code/converged_gear_20211231.h5")
+# n_converged = get_ncurrent("/home/mike/Documents/Mars/Photochemistry/eryn_ions_2021Dec/Code/converged_gear_20211231.h5")
 
-# Pack the global variables and send them through for faster code!
-ti = time()
-timestorage = times_to_save[1] / 10  # This variable lets us periodically print the timestep being worked on for tracking purposes
-plotnum = 1 # To order the plots for each timestep correctly in the folder so it's easy to page through them.
-atm_soln = evolve_atmosphere(n_converged, mindt, maxdt, t_to_save=times_to_save)
-tf = time() 
+# ti = time()
+# timestorage = times_to_save[1] / 10  # This variable lets us periodically print the timestep being worked on for tracking purposes
+# plotnum = 1 # To order the plots for each timestep correctly in the folder so it's easy to page through them.
+# atm_soln = evolve_atmosphere(n_converged, mindt, maxdt, t_to_save=times_to_save)
+# tf = time() 
