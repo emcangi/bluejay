@@ -114,22 +114,15 @@ const speciescolor = Dict( # PRIMARY NEUTRALS + IONS
 const medgray = "#444444"
 
 # Crosssection filenames ======================================================
-# There's gotta be a better way to do this. Probably a dictionary of Jrates to strings.
 
-const co2file = "CO2.dat"
-const co2exfile = "binnedCO2e.csv" # added to shield short λ of sunlight in upper atmo
-const h2ofile = "h2oavgtbl.dat"
-const hdofile = "HDO.dat"#"HDO_250K.dat"#
-const h2o2file = "H2O2.dat"
-const hdo2file = "H2O2.dat" #TODO: do HDO2 xsects exist?
-const o3file = "O3.dat"
-const o3chapfile = "O3Chap.dat"
-const o2file = "O2.dat"
-const o2_130_190 = "130-190.cf4"
-const o2_190_280 = "190-280.cf4"
-const o2_280_500 = "280-500.cf4"
-const h2file = "binnedH2.csv"
-const hdfile = "binnedH2.csv" # TODO: change this to HD file if xsects ever exist
-const ohfile = "binnedOH.csv"
-const oho1dfile = "binnedOHo1D.csv"
-const odfile = "OD.csv"
+const photochem_data_files = Dict(:CO2=>Dict("main"=>"CO2.dat"), 
+                                   :H2O=>Dict("main"=>"h2oavgtbl.dat"), 
+                                   :HDO=>Dict("main"=>"HDO.dat"), 
+                                   :H2O2=>Dict("main"=>"H2O2.dat"), 
+                                   :HDO2=>Dict("main"=>"H2O2.dat"), 
+                                   :O3=>Dict("main"=>"O3.dat", "chapman"=>"O3Chap.dat"), 
+                                   :O2=>Dict("main"=>"O2.dat", "schr_short"=>"130-190.cf4", "schr_mid"=>"190-280.cf4", "schr_long"=>"280-500.cf4"), 
+                                   :H2=>Dict("main"=>"binnedH2.csv"), 
+                                   :HD=>Dict("main"=>"binnedH2.csv"), 
+                                   :OH=>Dict("main"=>"binnedOH.csv", "O1D+H"=>"binnedOHo1D.csv"), 
+                                   :OD=>Dict("main"=>"OD.csv"))

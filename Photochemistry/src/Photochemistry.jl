@@ -141,6 +141,23 @@ function format_sec_or_min(t)
     return "$(thehour) hours, $(themin) minutes, $(thesec) seconds"
 end
 
+function get_Jrate_symb(molecs::Array, Jrates::Array)
+    #=
+    Input:
+        molecs: Array of reactants and products as strings, order doesn't matter, in some photodissociation/
+                photoionization reaction. 
+        Jrate_symbs: Array of Jrate symbols used in the model. 
+    Output
+        J: the Jrate associated with the list of reactants and products. 
+    =#
+    for J in Jrates
+        if sort([m.match for m in collect(eachmatch(r"[A-I0-9K-Z]+(pl)*", string(J)))]) == sort(molecs)
+            return J
+            break
+        end      
+    end
+end
+
 function getpos(array, test::Function, n=Any[])
     #= 
     Get the position of keys that match "test" in an array
@@ -3371,7 +3388,7 @@ function padtosolar(solarflux, crosssection::Array{Float64, 2})
     return retxsec
 end
 
-function populate_xsect_dict(Tn_array::Array, alts::Array; ion_xsects=true) # TODO: Put xsect file names into a large list argument. 
+function populate_xsect_dict(pd_dataf, Tn_array::Array, alts::Array, Jrates; ion_xsects=true)
     #=
     Creates a dictionary of the 1-nm photodissociation or photoionization
     cross-sections important in the atmosphere. keys are symbols found in
@@ -3383,7 +3400,13 @@ function populate_xsect_dict(Tn_array::Array, alts::Array; ion_xsects=true) # TO
     PRODUCTS. In this sense, xsect_dict has already folded in quantum
     efficiency considerations (branching ratios).
 
-    ion_xsects: Whether to fill in crosssection information for ion species
+    Input
+        pd_dataf: Dictionary of filenames associated with a given species for its photodissociation reactions.
+        Tn_array: Neutral temperatures for certain photolysis processes.
+        ion_xsects: Whether to fill in crosssection information for ion species
+        Jrates: the list of Jrates as defined in the PARAMETER file.
+    Output
+        crosssections: dictionary of cross sections by wavelength for each species. 
     =#
 
     # Set up =======================================================================
@@ -3392,28 +3415,25 @@ function populate_xsect_dict(Tn_array::Array, alts::Array; ion_xsects=true) # TO
     # Loading Data =================================================================
     # CO2 photodissociation --------------------------------------------------------
     # temperature-dependent between 195-295K
-    co2xdata = readdlm(xsecfolder*co2file,'\t', Float64, comments=true, comment_char='#')
-
-    # CO2 photoionization (used to screen high energy sunlight)
-    # co2exdata = readdlm(xsecfolder*co2exfile,',',Float64, comments=true, comment_char='#')
+    co2xdata = readdlm(xsecfolder*pd_dataf[:CO2]["main"],'\t', Float64, comments=true, comment_char='#')
 
     # H2O & HDO --------------------------------------------------------------------
-    h2oxdata = readdlm(xsecfolder*h2ofile,'\t', Float64, comments=true, comment_char='#')
+    h2oxdata = readdlm(xsecfolder*pd_dataf[:H2O]["main"],'\t', Float64, comments=true, comment_char='#')
 
     # These xsect_dicts for HDO are for 298K.
-    hdoxdata = readdlm(xsecfolder*hdofile,'\t', Float64, comments=true, comment_char='#')
+    hdoxdata = readdlm(xsecfolder*pd_dataf[:HDO]["main"],'\t', Float64, comments=true, comment_char='#')
 
     # H2O2 + HDO2 ------------------------------------------------------------------
     # the data in the following table cover the range 190-260nm
-    h2o2xdata = readdlm(xsecfolder*h2o2file,'\t', Float64, comments=true, comment_char='#')
-    hdo2xdata = readdlm(xsecfolder*hdo2file,'\t', Float64, comments=true, comment_char='#')
+    h2o2xdata = readdlm(xsecfolder*pd_dataf[:H2O2]["main"],'\t', Float64, comments=true, comment_char='#')
+    hdo2xdata = readdlm(xsecfolder*pd_dataf[:HDO2]["main"],'\t', Float64, comments=true, comment_char='#')
 
     # O3 ---------------------------------------------------------------------------
     # including IR bands which must be resampled from wavenumber
-    o3xdata = readdlm(xsecfolder*o3file,'\t', Float64, comments=true, comment_char='#')
+    o3xdata = readdlm(xsecfolder*pd_dataf[:O3]["main"],'\t', Float64, comments=true, comment_char='#')
     global o3ls = o3xdata[:,1]
     global o3xs = o3xdata[:,2]
-    o3chapxdata = readdlm(xsecfolder*o3chapfile,'\t', Float64, comments=true, comment_char='#')
+    o3chapxdata = readdlm(xsecfolder*pd_dataf[:O3]["chapman"],'\t', Float64, comments=true, comment_char='#')
     o3chapxdata[:,1] = map(p->1e7/p, o3chapxdata[:,1])
     for i in [round(Int, floor(minimum(o3chapxdata[:,1]))):round(Int, ceil(maximum(o3chapxdata))-1);]
         posss = getpos(o3chapxdata, x->i<x<i+1)
@@ -3427,14 +3447,14 @@ function populate_xsect_dict(Tn_array::Array, alts::Array; ion_xsects=true) # TO
     
 
     # O2 ---------------------------------------------------------------------------
-    o2xdata = readdlm(xsecfolder*o2file,'\t', Float64, comments=true, comment_char='#')
-    o2schr130K = readdlm(xsecfolder*o2_130_190,'\t', Float64, comments=true, comment_char='#')
+    o2xdata = readdlm(xsecfolder*pd_dataf[:O2]["main"],'\t', Float64, comments=true, comment_char='#')
+    o2schr130K = readdlm(xsecfolder*pd_dataf[:O2]["schr_short"],'\t', Float64, comments=true, comment_char='#')
     o2schr130K[:,1] = map(p->1e7/p, o2schr130K[:,1])
     o2schr130K = binupO2(o2schr130K)
-    o2schr190K = readdlm(xsecfolder*o2_190_280,'\t', Float64, comments=true, comment_char='#')
+    o2schr190K = readdlm(xsecfolder*pd_dataf[:O2]["schr_mid"],'\t', Float64, comments=true, comment_char='#')
     o2schr190K[:,1] = map(p->1e7/p, o2schr190K[:,1])
     o2schr190K = binupO2(o2schr190K)
-    o2schr280K = readdlm(xsecfolder*o2_280_500,'\t', Float64, comments=true, comment_char='#')
+    o2schr280K = readdlm(xsecfolder*pd_dataf[:O2]["schr_long"],'\t', Float64, comments=true, comment_char='#')
     o2schr280K[:,1] = map(p->1e7/p, o2schr280K[:,1])
     o2schr280K = binupO2(o2schr280K)
 
@@ -3444,34 +3464,34 @@ function populate_xsect_dict(Tn_array::Array, alts::Array; ion_xsects=true) # TO
     do2xsect = deepcopy(ho2xsect)
 
     # H2 & HD ----------------------------------------------------------------------
-    h2xdata = readdlm(xsecfolder*h2file,',',Float64, comments=true, comment_char='#')
-    hdxdata = readdlm(xsecfolder*hdfile,',',Float64, comments=true, comment_char='#')
+    h2xdata = readdlm(xsecfolder*pd_dataf[:H2]["main"],',',Float64, comments=true, comment_char='#')
+    hdxdata = readdlm(xsecfolder*pd_dataf[:HD]["main"],',',Float64, comments=true, comment_char='#')
 
     # OH & OD ----------------------------------------------------------------------
-    ohxdata = readdlm(xsecfolder*ohfile,',',Float64, comments=true, comment_char='#')
-    ohO1Dxdata = readdlm(xsecfolder*oho1dfile,',',Float64, comments=true, comment_char='#')
-    odxdata = readdlm(xsecfolder*odfile,',',Float64, comments=true, comment_char='#')
+    ohxdata = readdlm(xsecfolder*pd_dataf[:OH]["main"],',',Float64, comments=true, comment_char='#')
+    ohO1Dxdata = readdlm(xsecfolder*pd_dataf[:OH]["O1D+H"],',',Float64, comments=true, comment_char='#')
+    odxdata = readdlm(xsecfolder*pd_dataf[:OD]["main"],',',Float64, comments=true, comment_char='#')
 
 
     # Populating the dictionary ======================================================
     #CO2+hv->CO+O
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((l->l>167, 1), (l->95>l, 0.5))),
-              map(t->co2xsect(co2xdata, t), Tn_array)), :JCO2toCOpO)
+              map(t->co2xsect(co2xdata, t), Tn_array)), get_Jrate_symb(["CO2", "CO", "O")], Jrates)
     #CO2+hv->CO+O1D
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((l->95<l<167, 1), (l->l<95, 0.5))),
-              map(t->co2xsect(co2xdata, t), Tn_array)), :JCO2toCOpO1D)
+              map(t->co2xsect(co2xdata, t), Tn_array)), get_Jrate_symb(["CO2", "CO", "O1D"], Jrates)
 
     # O2 photodissociation ---------------------------------------------------------
     #O2+hv->O+O
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((x->x>175, 1),)), map(t->o2xsect(o2xdata, o2schr130K, o2schr190K, o2schr280K, t), Tn_array)),
-              :JO2toOpO)
+              get_Jrate_symb(["O2", "O", "O"], Jrates))
     #O2+hv->O+O1D
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((x->x<175, 1),)), map(t->o2xsect(o2xdata, o2schr130K, o2schr190K, o2schr280K, t), Tn_array)),
-              :JO2toOpO1D)
+              get_Jrate_symb(["O2", "O", "O1D"], Jrates))
 
     # O3 photodissociation ---------------------------------------------------------
     # O3+hv->O2+O
@@ -3484,7 +3504,7 @@ function populate_xsect_dict(Tn_array::Array, alts::Array; ion_xsects=true) # TO
                                    (l->306<=l<328, l->(1 .- O3O1Dquantumyield(l, t))),
                                    (l->328<=l<340, 0.92),
                                    (l->340<=l, 1.0)
-                                  )), Tn_array), :JO3toO2pO)
+                                  )), Tn_array), get_Jrate_symb(["O3", "O2", "O"], Jrates))
     # O3+hv->O2+O1D
     setindex!(xsect_dict,
               map(t->quantumyield(o3xdata,
@@ -3495,275 +3515,312 @@ function populate_xsect_dict(Tn_array::Array, alts::Array; ion_xsects=true) # TO
                                    (l->306<=l<328, l->O3O1Dquantumyield(l, t)),
                                    (l->328<=l<340, 0.08),
                                    (l->340<=l, 0.0)
-                                  )), Tn_array), :JO3toO2pO1D)
+                                  )), Tn_array), get_Jrate_symb(["O3", "O2", "O1D"], Jrates))
     # O3+hv->O+O+O
     setindex!(xsect_dict,
               fill(quantumyield(o3xdata,((x->true, 0.),)),length(alts)),
-              :JO3toOpOpO)
+              get_Jrate_symb(["O3", "O", "O", "O"], Jrates))
 
     # H2 and HD photodissociation --------------------------------------------------
     # H2+hv->H+H
-    setindex!(xsect_dict, fill(h2xdata, length(alts)), :JH2toHpH)
+    setindex!(xsect_dict, fill(h2xdata, length(alts)), get_Jrate_symb(["H2", "H", "H"], Jrates))
     # HD+hν -> H+D 
-    setindex!(xsect_dict, fill(hdxdata, length(alts)), :JHDtoHpD)
+    setindex!(xsect_dict, fill(hdxdata, length(alts)), get_Jrate_symb(["HD", "H", "D"], Jrates))
 
     # OH and OD photodissociation --------------------------------------------------
     # OH+hv->O+H
-    setindex!(xsect_dict, fill(ohxdata, length(alts)), :JOHtoOpH)
-    # OH+hv->O1D+H
-    setindex!(xsect_dict, fill(ohO1Dxdata, length(alts)), :JOHtoO1DpH)
+    setindex!(xsect_dict, fill(ohxdata, length(alts)), get_Jrate_symb(["OH", "O", "H"], Jrates))
+    # OH + hv -> O(¹D) + H
+    setindex!(xsect_dict, fill(ohO1Dxdata, length(alts)), get_Jrate_symb(["OH", "O1D", "H"], Jrates))
     # OD + hv -> O+D  
-    setindex!(xsect_dict, fill(odxdata, length(alts)), :JODtoOpD)
+    setindex!(xsect_dict, fill(odxdata, length(alts)), get_Jrate_symb(["OD", "O", "D"], Jrates))
     # OD + hν -> O(¹D) + D 
-    setindex!(xsect_dict, fill(ohO1Dxdata, length(alts)), :JODtoO1DpD)
+    setindex!(xsect_dict, fill(ohO1Dxdata, length(alts)), get_Jrate_symb(["OD", "O1D", "D"], Jrates))
 
     # HO2 and DO2 photodissociation ------------------------------------------------
     # HO2 + hν -> OH + O
-    setindex!(xsect_dict, fill(ho2xsect, length(alts)), :JHO2toOHpO)
+    setindex!(xsect_dict, fill(ho2xsect, length(alts)), get_Jrate_symb(["HO2", "OH", "O"], Jrates))
     # DO2 + hν -> OD + O
-    setindex!(xsect_dict, fill(do2xsect, length(alts)), :JDO2toODpO)
+    setindex!(xsect_dict, fill(do2xsect, length(alts)), get_Jrate_symb(["DO2", "OD", "O"], Jrates))
 
     # H2O and HDO photodissociation ------------------------------------------------
     # H2O+hv->H+OH
     setindex!(xsect_dict,
               fill(quantumyield(h2oxdata,((x->x<145, 0.89),(x->x>145, 1))),length(alts)),
-              :JH2OtoHpOH)
+              get_Jrate_symb(["H2O", "H", "OH"], Jrates))
 
     # H2O+hv->H2+O1D
     setindex!(xsect_dict,
               fill(quantumyield(h2oxdata,((x->x<145, 0.11),(x->x>145, 0))),length(alts)),
-              :JH2OtoH2pO1D)
+              get_Jrate_symb(["H2O", "H2", "O1D"], Jrates))
 
     # H2O+hv->H+H+O
     setindex!(xsect_dict,
               fill(quantumyield(h2oxdata,((x->true, 0),)),length(alts)),
-              :JH2OtoHpHpO)
+              get_Jrate_symb(["H2O", "H", "H", "O"], Jrates))
 
     # HDO + hν -> H + OD
     setindex!(xsect_dict,
               fill(quantumyield(hdoxdata,((x->x<145, 0.5*0.89),(x->x>145, 0.5*1))),length(alts)),
-              :JHDOtoHpOD)
+              get_Jrate_symb(["HDO", "H", "OD"], Jrates))
 
     # HDO + hν -> D + OH
     setindex!(xsect_dict,
               fill(quantumyield(hdoxdata,((x->x<145, 0.5*0.89),(x->x>145, 0.5*1))),length(alts)),
-              :JHDOtoDpOH)
+              get_Jrate_symb(["HDO", "D", "OH"], Jrates))
 
     # HDO + hν -> HD + O1D
     setindex!(xsect_dict,
               fill(quantumyield(hdoxdata,((x->x<145, 0.11),(x->x>145, 0))),length(alts)),
-              :JHDOtoHDpO1D)
+              get_Jrate_symb(["HDO", "HD", "O1D"], Jrates))
 
     # HDO + hν -> H + D + O
     setindex!(xsect_dict,
               fill(quantumyield(hdoxdata,((x->true, 0),)),length(alts)),
-              :JHDOtoHpDpO)
+              get_Jrate_symb(["HDO", "H", "D", "O"], Jrates))
 
 
     # H2O2 and HDO2 photodissociation ----------------------------------------------
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((x->x<230, 0.85),(x->x>230, 1))),
-              map(t->h2o2xsect(h2o2xdata, t), Tn_array)), :JH2O2to2OH)
+              map(t->h2o2xsect(h2o2xdata, t), Tn_array)), get_Jrate_symb(["H2O2", "2OH"], Jrates))
 
     # H2O2+hv->HO2+H
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((x->x<230, 0.15),(x->x>230, 0))),
-              map(t->h2o2xsect(h2o2xdata, t), Tn_array)), :JH2O2toHO2pH)
+              map(t->h2o2xsect(h2o2xdata, t), Tn_array)), get_Jrate_symb(["H2O2", "HO2", "H"], Jrates))
 
     # H2O2+hv->H2O+O1D
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((x->true, 0),)), map(t->h2o2xsect(h2o2xdata, t),
-              Tn_array)), :JH2O2toH2OpO1D)
+              Tn_array)), get_Jrate_symb(["H2O2", "H2O", "O1D"], Jrates))
 
     # HDO2 + hν -> OH + OD
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((x->x<230, 0.85),(x->x>230, 1))),
-              map(t->hdo2xsect(hdo2xdata, t), Tn_array)), :JHDO2toOHpOD)
+              map(t->hdo2xsect(hdo2xdata, t), Tn_array)), get_Jrate_symb(["HDO2", "OH", "OD"], Jrates))
 
     # HDO2 + hν-> DO2 + H
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((x->x<230, 0.5*0.15),(x->x>230, 0))),
-              map(t->hdo2xsect(hdo2xdata, t), Tn_array)), :JHDO2toDO2pH)
+              map(t->hdo2xsect(hdo2xdata, t), Tn_array)), get_Jrate_symb(["HDO2", "DO2", "H"], Jrates))
 
     # HDO2 + hν-> HO2 + D
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((x->x<230, 0.5*0.15),(x->x>230, 0))),
-              map(t->hdo2xsect(hdo2xdata, t), Tn_array)), :JHDO2toHO2pD)
+              map(t->hdo2xsect(hdo2xdata, t), Tn_array)), get_Jrate_symb(["HDO2", "HO2", "D"], Jrates))
 
     # HDO2 + hν -> HDO + O1D
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((x->true, 0),)), map(t->hdo2xsect(hdo2xdata, t),
-              Tn_array)), :JHDO2toHDOpO1D)
+              Tn_array)), get_Jrate_symb(["HDO2", "HDO", "O1D"], Jrates))
 
     if ion_xsects == true
         # NEW: CO2 photodissociation ---------------------------------------------------------
         # Source: Roger Yelle
-        # CO₂ + hν -> C + O + O
-        CO2_totaldiss_data = readdlm(xsecfolder*"$(:JCO2toCpOpO).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(CO2_totaldiss_data, length(alts)), :JCO2toCpOpO)
+        # CO₂ + hν -> C + O + O; JCO2toCpOpO
+        thisjr = get_Jrate_symb(["CO2", "C", "O", "O"], Jrates)
+        CO2_totaldiss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(CO2_totaldiss_data, length(alts)), thisjr)
 
-        # CO2 + hν -> C + O₂
-        CO2_diss_data = readdlm(xsecfolder*"$(:JCO2toCpO2).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(CO2_diss_data, length(alts)), :JCO2toCpO2)
+        # CO2 + hν -> C + O₂; JCO2toCpO2
+        thisjr = get_Jrate_symb(["CO2", "C", "O2"], Jrates)
+        CO2_diss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(CO2_diss_data, length(alts)), thisjr)
 
         # NEW: CO photodissociation ---------------------------------------------------------
         # Source: Roger Yelle
 
-        # CO + hν -> C + O
-        CO_diss_data = readdlm(xsecfolder*"$(:JCOtoCpO).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(CO_diss_data, length(alts)), :JCOtoCpO)
+        # CO + hν -> C + O; JCOtoCpO
+        thisjr = get_Jrate_symb(["CO", "C", "O"], Jrates)
+        CO_diss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(CO_diss_data, length(alts)), thisjr)
 
 
         # NEW: Nitrogen species photodissociation --------------------------------------------
         # Source: Roger Yelle
 
-        # N₂ + hν -> N₂ + O(¹D)
-        N2_diss_data = readdlm(xsecfolder*"$(:JN2OtoN2pO1D).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(N2_diss_data, length(alts)), :JN2OtoN2pO1D)
+        # N₂ + hν -> N₂ + O(¹D); JN2OtoN2pO1D
+        thisjr = get_Jrate_symb(["N2O", "N2", "O1D"], Jrates)
+        N2_diss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(N2_diss_data, length(alts)), thisjr)
 
-        # NO₂ + hν -> NO + O
-        NO2_diss_data = readdlm(xsecfolder*"$(:JNO2toNOpO).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(NO2_diss_data, length(alts)), :JNO2toNOpO)
+        # NO₂ + hν -> NO + O; JNO2toNOpO
+        thisjr = get_Jrate_symb(["NO2", "NO", "O"], Jrates)
+        NO2_diss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(NO2_diss_data, length(alts)), thisjr)
 
-        # NO + hν -> N + O
-        NO_diss_data = readdlm(xsecfolder*"$(:JNOtoNpO).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(NO_diss_data, length(alts)), :JNOtoNpO)
+        # NO + hν -> N + O; JNOtoNpO
+        thisjr = get_Jrate_symb(["NO", "N", "O"], Jrates)
+        NO_diss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(NO_diss_data, length(alts)), thisjr)
 
         # Photoionization or ionizing dissociation reactions ============================================
 
         # NEW: CO₂ ionization -----------------------------------------------------------------
         # Source: Roger Yelle
 
-        # CO₂ + hν -> CO₂⁺
-        CO2_ionize_data = readdlm(xsecfolder*"$(:JCO2toCO2pl).csv", ',', Float64, comments=true, comment_char='#')  # NOTE: replaced with Mike's file 19-Jan-2021.
-        setindex!(xsect_dict, fill(CO2_ionize_data, length(alts)), :JCO2toCO2pl)
+        # CO₂ + hν -> CO₂⁺; JCO2toCO2pl
+        thisjr = get_Jrate_symb(["CO2", "CO2pl"], Jrates)
+        CO2_ionize_data = readdlm(xsecfolder*"$(thisjr).csv", ',', Float64, comments=true, comment_char='#')  # NOTE: replaced with Mike's file 19-Jan-2021.
+        setindex!(xsect_dict, fill(CO2_ionize_data, length(alts)), thisjr)
 
-        # CO₂ + hν -> CO₂²⁺  (even though we don't track doubly ionized CO₂)
-        CO2_doubleion_data = readdlm(xsecfolder*"$(:JCO2toCO2plpl).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(CO2_doubleion_data, length(alts)), :JCO2toCO2plpl)
+        # CO₂ + hν -> CO₂²⁺; JCO2toCO2plpl (even though we don't track doubly ionized CO₂)
+        thisjr = get_Jrate_symb(["CO2", "CO2plpl"], Jrates)
+        CO2_doubleion_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(CO2_doubleion_data, length(alts)), thisjr)
 
-        # CO₂ + hν -> C²⁺ + O₂
-        CO2_ionC2diss_data = readdlm(xsecfolder*"$(:JCO2toCplplpO2).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(CO2_ionC2diss_data, length(alts)), :JCO2toCplplpO2)
+        # CO₂ + hν -> C²⁺ + O₂; JCO2toCplplpO2
+        thisjr = get_Jrate_symb(["CO2", "Cplpl", "O2"], Jrates)
+        CO2_ionC2diss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(CO2_ionC2diss_data, length(alts)), thisjr)
 
-        # CO₂ + hν -> C⁺ + O₂
-        CO2_ionCdiss_data = readdlm(xsecfolder*"$(:JCO2toCplpO2).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(CO2_ionCdiss_data, length(alts)), :JCO2toCplpO2)
+        # CO₂ + hν -> C⁺ + O₂; JCO2toCplpO2
+        thisjr = get_Jrate_symb(["CO2", "Cpl", "O2"], Jrates)
+        CO2_ionCdiss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(CO2_ionCdiss_data, length(alts)), thisjr)
 
-        # CO₂ + hν -> CO⁺ + O⁺
-        CO2_ionCOandOdiss_data = readdlm(xsecfolder*"$(:JCO2toCOplpOpl).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(CO2_ionCOandOdiss_data, length(alts)), :JCO2toCOplpOpl)
+        # CO₂ + hν -> CO⁺ + O⁺; JCO2toCOplpOpl
+        thisjr = get_Jrate_symb(["CO2", "COpl", "Opl"], Jrates)
+        CO2_ionCOandOdiss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(CO2_ionCOandOdiss_data, length(alts)), thisjr)
 
-        # CO₂ + hν -> CO⁺ + O
-        CO2_ionCOdiss_data = readdlm(xsecfolder*"$(:JCO2toCOplpO).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(CO2_ionCOdiss_data, length(alts)), :JCO2toCOplpO)
+        # CO₂ + hν -> CO⁺ + O; JCO2toCOplpO
+        thisjr = get_Jrate_symb(["CO2", "COpl", "O"], Jrates)
+        CO2_ionCOdiss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(CO2_ionCOdiss_data, length(alts)), thisjr)
 
-        # CO₂ + hν -> CO + O⁺
-        CO2_ionOdiss_data = readdlm(xsecfolder*"$(:JCO2toOplpCO).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(CO2_ionOdiss_data, length(alts)), :JCO2toOplpCO)
+        # CO₂ + hν -> CO + O⁺; JCO2toOplpCO
+        thisjr = get_Jrate_symb(["CO2", "Opl", "CO"], Jrates)
+        CO2_ionOdiss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(CO2_ionOdiss_data, length(alts)), thisjr)
 
-        # CO₂ + hν -> C⁺ + O⁺ + O
-        CO2_ionCandOdiss_data = readdlm(xsecfolder*"$(:JCO2toOplpCplpO).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(CO2_ionCandOdiss_data, length(alts)), :JCO2toOplpCplpO)
+        # CO₂ + hν -> C⁺ + O⁺ + O; JCO2toOplpCplpO
+        thisjr = get_Jrate_symb(["CO2", "Opl", "Cpl", "O"], Jrates)
+        CO2_ionCandOdiss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(CO2_ionCandOdiss_data, length(alts)), thisjr)
 
         # NEW: H2O ionization --------------------------------------------------------------
         # Source: Roger Yelle
 
-        # H2O + hν -> H2O⁺
-        h2o_ionize_data = readdlm(xsecfolder*"$(:JH2OtoH2Opl).csv", ',', Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(h2o_ionize_data, length(alts)), :JH2OtoH2Opl)
+        # TODO: Left off here 
 
-        # H2DO + hν -> HDO⁺ # TODO: replace with HDO photoionization xsects when they exist
-        hdo_ionize_data = readdlm(xsecfolder*"$(:JH2OtoH2Opl).csv", ',', Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(hdo_ionize_data, length(alts)), :JHDOtoHDOpl)
+        # H2O + hν -> H2O⁺; JH2OtoH2Opl
+        H2Oionize_jr = get_Jrate_symb(["H2O", "H2Opl"], Jrates)
+        h2o_ionize_data = readdlm(xsecfolder*"$(H2Oionize_jr).csv", ',', Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(h2o_ionize_data, length(alts)), H2Oionize_jr)
 
-        # H2O + hν -> O⁺ + H2
-        h2o_ionOdiss_data = readdlm(xsecfolder*"$(:JH2OtoOplpH2).csv", ',', Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(h2o_ionOdiss_data, length(alts)), :JH2OtoOplpH2)
+        # HDO + hν -> HDO⁺; JHDOtoHDOpl # TODO: replace with HDO photoionization xsects when they exist
+        thisjr = get_Jrate_symb(["HDO", "HDOpl"], Jrates)
+        hdo_ionize_data = readdlm(xsecfolder*"$(H2Oionize_jr).csv", ',', Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(hdo_ionize_data, length(alts)), thisjr)
 
-        # H2O + hν -> H⁺ + OH
-        h2o_ionHdiss_data = readdlm(xsecfolder*"$(:JH2OtoHplpOH).csv", ',', Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(h2o_ionHdiss_data, length(alts)), :JH2OtoHplpOH)
+        # H2O + hν -> O⁺ + H2; JH2OtoOplpH2
+        thisjr = get_Jrate_symb(["H2O", "Opl", "H2"], Jrates)
+        h2o_ionOdiss_data = readdlm(xsecfolder*"$(thisjr).csv", ',', Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(h2o_ionOdiss_data, length(alts)), thisjr)
 
-        # H2O + hν -> OH⁺ + H
-        h2o_ionOHdiss_data = readdlm(xsecfolder*"$(:JH2OtoOHplpH).csv", ',', Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(h2o_ionOHdiss_data, length(alts)), :JH2OtoOHplpH)
+        # H2O + hν -> H⁺ + OH; JH2OtoHplpOH
+        thisjr = get_Jrate_symb(["H2O", "Hpl", "OH"], Jrates)
+        h2o_ionHdiss_data = readdlm(xsecfolder*"$(thisjr).csv", ',', Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(h2o_ionHdiss_data, length(alts)), thisjr)
+
+        # H2O + hν -> OH⁺ + H; JH2OtoOHplpH
+        thisjr = get_Jrate_symb(["H2O", "OHpl", "H"], Jrates)
+        h2o_ionOHdiss_data = readdlm(xsecfolder*"$(thisjr).csv", ',', Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(h2o_ionOHdiss_data, length(alts)), thisjr)
 
         # NEW: CO ionization ----------------------------------------------------------------
         # Source: Roger Yelle
 
-        # CO + hν -> CO⁺
-        CO_ionize_data = readdlm(xsecfolder*"$(:JCOtoCOpl).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(CO_ionize_data, length(alts)), :JCOtoCOpl)
+        # CO + hν -> CO⁺; JCOtoCOpl
+        thisjr = get_Jrate_symb(["CO", "COpl"], Jrates)
+        CO_ionize_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(CO_ionize_data, length(alts)), thisjr)
 
-        # CO + hν -> C + O⁺
-        CO_ionOdiss_data = readdlm(xsecfolder*"$(:JCOtoCpOpl).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(CO_ionOdiss_data, length(alts)), :JCOtoCpOpl)
+        # CO + hν -> C + O⁺; JCOtoCpOpl
+        thisjr = get_Jrate_symb(["CO", "C", "Opl"], Jrates)
+        CO_ionOdiss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(CO_ionOdiss_data, length(alts)), thisjr)
 
-        # CO + hν -> C⁺ + O
-        CO_ionCdiss_data = readdlm(xsecfolder*"$(:JCOtoOpCpl).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(CO_ionCdiss_data, length(alts)), :JCOtoOpCpl)
+        # CO + hν -> C⁺ + O; JCOtoOpCpl
+        thisjr = get_Jrate_symb(["CO", "O", "Cpl"], Jrates)
+        CO_ionCdiss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(CO_ionCdiss_data, length(alts)), thisjr)
 
         # NEW: Nitrogen species ionization --------------------------------------------------
         # Source: Roger Yelle
 
-        # N₂ + hν -> N₂⁺
-        N2_ionize_data = readdlm(xsecfolder*"$(:JN2toN2pl).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(N2_ionize_data, length(alts)), :JN2toN2pl)
+        # N₂ + hν -> N₂⁺; JN2toN2pl
+        thisjr = get_Jrate_symb(["N2", "N2pl"], Jrates)
+        N2_ionize_data = readdlm(xsecfolder*"$(:).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(N2_ionize_data, length(alts)), thisjr)
 
-        # N₂ + hν -> N⁺ + N
-        N2_iondiss_data = readdlm(xsecfolder*"$(:JN2toNplpN).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(N2_iondiss_data, length(alts)), :JN2toNplpN)
+        # N₂ + hν -> N⁺ + N; JN2toNplpN
+        thisjr = get_Jrate_symb(["N2", "Npl", "N"], Jrates)
+        N2_iondiss_data = readdlm(xsecfolder*"$(:).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(N2_iondiss_data, length(alts)), thisjr)
 
-        # NO₂ + hν -> NO₂⁺
-        NO2_ionize_data = readdlm(xsecfolder*"$(:JNO2toNO2pl).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(NO2_ionize_data, length(alts)), :JNO2toNO2pl)
+        # NO₂ + hν -> NO₂⁺; JNO2toNO2pl
+        thisjr = get_Jrate_symb(["NO2", "NO2pl"], Jrates)
+        NO2_ionize_data = readdlm(xsecfolder*"$(:).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(NO2_ionize_data, length(alts)), thisjr)
 
-        # NO + hν -> NO⁺
-        NO_ionize_data = readdlm(xsecfolder*"$(:JNOtoNOpl).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(NO_ionize_data, length(alts)), :JNOtoNOpl)
+        # NO + hν -> NO⁺; JNOtoNOpl
+        thisjr = get_Jrate_symb(["NO", "NOpl"], Jrates)
+        NO_ionize_data = readdlm(xsecfolder*"$(:).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(NO_ionize_data, length(alts)), thisjr)
 
-        # N₂O + hν -> N₂O⁺
-        N2O_ionize_data = readdlm(xsecfolder*"$(:JN2OtoN2Opl).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(N2O_ionize_data, length(alts)), :JN2OtoN2Opl)
+        # N₂O + hν -> N₂O⁺; JN2OtoN2Opl
+        thisjr = get_Jrate_symb(["N2O", "N2Opl"], Jrates)
+        N2O_ionize_data = readdlm(xsecfolder*"$(:).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(N2O_ionize_data, length(alts)), thisjr)
 
         # NEW: Molecular and atomic hydrogen ionization -------------------------------------
         # Source: Roger Yelle
 
-        # H + hν -> H⁺
-        H_ionize_data = readdlm(xsecfolder*"$(:JHtoHpl).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(H_ionize_data, length(alts)), :JHtoHpl)
+        # H + hν -> H⁺; JHtoHpl
+        thisjr = get_Jrate_symb(["H", "Hpl"], Jrates)
+        H_ionize_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(H_ionize_data, length(alts)), thisjr)
 
-        # H₂ + hν -> H₂⁺
-        H2_ion_data = readdlm(xsecfolder*"$(:JH2toH2pl).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(H2_ion_data, length(alts)), :JH2toH2pl)
+        # H₂ + hν -> H₂⁺; JH2toH2pl
+        thisjr = get_Jrate_symb(["H2", "H2pl"], Jrates)
+        H2_ion_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(H2_ion_data, length(alts)), thisjr)
 
-        # HD + hν -> HD⁺ # TODO: Load HD crosssections when they exist
-        HD_ion_data = readdlm(xsecfolder*"$(:JH2toH2pl).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(HD_ion_data, length(alts)), :JHDtoHDpl)
+        # HD + hν -> HD⁺; JH2toH2pl # TODO: Load HD crosssections when they exist
+        thisjr = get_Jrate_symb(["HD", "HDpl"], Jrates)
+        HD_ion_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(HD_ion_data, length(alts)), thisjr)
 
-        # H₂ + hν -> H⁺ + H
-        H2_iondiss_data = readdlm(xsecfolder*"$(:JH2toHplpH).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(H2_iondiss_data, length(alts)), :JH2toHplpH)
+        # H₂ + hν -> H⁺ + H; JH2toHplpH
+        thisjr = get_Jrate_symb(["H2", "Hpl", "H"], Jrates)
+        H2_iondiss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(H2_iondiss_data, length(alts)), thisjr)
 
-        # H₂O₂ + hν -> H₂O₂⁺
-        H2O2_ionize_data = readdlm(xsecfolder*"$(:JH2O2toH2O2pl).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(H2O2_ionize_data, length(alts)), :JH2O2toH2O2pl)
+        # H₂O₂ + hν -> H₂O₂⁺; JH2O2toH2O2pl
+        thisjr = get_Jrate_symb(["H2O2", "H2O2pl"], Jrates)
+        H2O2_ionize_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(H2O2_ionize_data, length(alts)), thisjr)
 
         # NEW: Oxygen and ozone ionization --------------------------------------------------
         # Source: Roger Yelle
 
-        # O + hν -> O⁺
-        O_iondiss_data = readdlm(xsecfolder*"$(:JOtoOpl).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(O_iondiss_data, length(alts)), :JOtoOpl)
+        # O + hν -> O⁺; JOtoOpl
+        thisjr = get_Jrate_symb(["O", "Opl"], Jrates)
+        O_iondiss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(O_iondiss_data, length(alts)), thisjr)
 
-        # O₂ + hν -> O₂⁺
-        O2_ionize_data = readdlm(xsecfolder*"$(:JO2toO2pl).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(O2_ionize_data, length(alts)), :JO2toO2pl)
+        # O₂ + hν -> O₂⁺; JO2toO2pl
+        thisjr = get_Jrate_symb(["O2", "O2pl"], Jrates)
+        O2_ionize_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(O2_ionize_data, length(alts)), thisjr)
 
-        # # O₃ + hν -> O₃⁺
-        O3_ionize_data = readdlm(xsecfolder*"$(:JO3toO3pl).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(O3_ionize_data, length(alts)), :JO3toO3pl)
+        # # O₃ + hν -> O₃⁺; JO3toO3pl
+        thisjr = get_Jrate_symb(["O3", "O3pl"], Jrates)
+        O3_ionize_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(O3_ionize_data, length(alts)), thisjr)
     end
     
     return xsect_dict

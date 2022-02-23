@@ -1306,7 +1306,7 @@ end
 ################################################################################
 println("$(Dates.format(now(), "(HH:MM:SS)")) Populating cross section dictionary...")
 
-const crosssection = populate_xsect_dict(Tn_arr, alt)
+const crosssection = populate_xsect_dict(photochem_data_files, Tn_arr, alt, Jratelist)
 
 # Solar Input ==================================================================
 
