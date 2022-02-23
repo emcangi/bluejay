@@ -146,10 +146,10 @@ const speciesbclist=Dict(
 # Neutrals --------------------------------------------------------------------
 const conv_neutrals = [:Ar, :C, :CH, :CN, :CO, :CO2, :H, :H2, :H2O, :H2O2, 
                        :HCN, :HCO, :HNO, :HO2, :HOCO, 
-                       :N, :N2, :NH, :NH2, :N2O, :NO, :NO2, 
+                       :N, :N2, :NH, :NH2, :N2O, :NO, :NO2, :Nup2D,
                        :O, :O1D, :O2, :O3, :OH,
                        :D, :DCO, :DO2, :DOCO, :HD, :HDO, :HDO2, :OD];
-const new_neutrals = [:Nup2D];
+const new_neutrals = [];
 
 const neutral_species = [];
 append!(neutral_species, conv_neutrals)
