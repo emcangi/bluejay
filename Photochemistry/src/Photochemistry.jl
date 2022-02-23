@@ -30,7 +30,7 @@ export # Basic utility functions
        # transport functions                                                                           
        Dcoef, Dcoef!, fluxcoefs, flux_param_arrays, flux_pos_and_neg, get_flux, Keddy, scaleH, update_diffusion_and_scaleH, update_transport_coefficients,                      
        # Chemistry functions
-       format_neutral_network, format_ion_network, calculate_stiffness,check_jacobian_eigenvalues, chemical_jacobian, getrate, loss_equations, 
+       load_reaction_network, calculate_stiffness, check_jacobian_eigenvalues, chemical_jacobian, getrate, loss_equations, 
        loss_rate, make_chemjac_key, make_net_change_expr, meanmass, production_equations, production_rate, rxns_where_species_is_observer, 
        # Photochemical equilibrium functions
        choose_solutions, construct_quadratic, group_terms, loss_coef, linear_in_species_density,
@@ -889,7 +889,7 @@ end
 
 function plot_Jrates(sp, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Ti, Te, bcdict::Dict{Symbol, Matrix{Any}}, # Not currently called. params to pass
                      allsp, ionsp, rxnnet, numlyrs::Int64, plotalts, results_dir::String; 
-                     filenameext="")
+                     filenameext="", source2=nothing)
     #=
     Plots the Jrates for each photodissociation or photoionizaiton reaction. Override for small groups of species.
 
@@ -898,14 +898,7 @@ function plot_Jrates(sp, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Ti, Te, 
     TODO: Needs to be worked on especially get_volume_rates works as expected
     =#
 
-    # --------------------------------------------------------------------------------
-    # calculate reaction rates x density of the species at each level of the atmosphere.
-    
-    rxd_prod = get_volume_rates(sp, atmdict, Tn, Ti, Te, allsp, ionsp, rxnnet, numlyrs, which="Jrates")
-    rxd_loss = get_volume_rates(sp, atmdict, Tn, Ti, Te, allsp, ionsp, rxnnet, numlyrs, which="Jrates")
-
-    # ---------------------------------------------------------------------------------
-    # Plot reaction rates and transport rates by altitude
+    # Plot setup
     rcParams = PyCall.PyDict(matplotlib."rcParams")
     rcParams["font.sans-serif"] = ["Louis George Caf?"]
     rcParams["font.monospace"] = ["FreeMono"]
@@ -914,7 +907,18 @@ function plot_Jrates(sp, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Ti, Te, 
     rcParams["xtick.labelsize"] = 16
     rcParams["ytick.labelsize"] = 16
 
-   
+
+    # --------------------------------------------------------------------------------
+    # make plot
+    
+    rxd_prod, prod_rc = get_volume_rates(sp, atmdict, Tn, Ti, Te, allsp, ionsp, rxnnet, numlyrs, which="Jrates")
+    rxd_loss, loss_rc = get_volume_rates(sp, atmdict, Tn, Ti, Te, allsp, ionsp, rxnnet, numlyrs, which="Jrates")
+
+    if source2 != nothing
+        rxd_prod2, prod_rc2 = get_volume_rates(sp, atmdict, Tn, Ti, Te, allsp, ionsp, source2, numlyrs, which="Jrates")
+        rxd_loss2, loss_rc2 = get_volume_rates(sp, atmdict, Tn, Ti, Te, allsp, ionsp, source2, numlyrs, which="Jrates")
+    end 
+
     fig, ax = subplots(figsize=(8,6))
     plot_bg(ax)
 
@@ -922,31 +926,47 @@ function plot_Jrates(sp, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Ti, Te, 
     maxx = 0
     
     # Collect chem production equations and total 
-    for kv in rxd_prod  # loop through the dict of format reaction => [rates by altitude]
-        lbl = "$(kv[1])"
-        ax.semilogx(kv[2], plotalts, linestyle="-", linewidth=1, label=lbl)
-        
-        # set the xlimits
-        if minimum(kv[2]) <= minx
-            minx = minimum(kv[2])
-        end
-        if maximum(kv[2]) >= maxx
-            maxx = maximum(kv[2])
-        end
-    end
+    if isempty(keys(rxd_prod))
+        println("$(sp) has no photodissociation or photoionization reactions, no plot generated")
+    else 
+        for kv in rxd_prod  # loop through the dict of format reaction => [rates by altitude]
+            lbl = "$(kv[1])"
 
-    suptitle("J rates", fontsize=20)
-    ax.set_ylabel("Altitude (km)")
-    ax.legend(bbox_to_anchor=(1.01, 1))
-    ax.set_xlabel("Chemical reaction rate [check units] ("*L"cm^{-3}s^{-1})")
-    # labels and such 
-    if minx < 1e-20
-        minx = 1e-20
+            if source2 != nothing 
+                if !all(x->x<=1e-10, abs.(kv[2] - rxd_prod2[kv[1]]))
+                    ax.semilogx(kv[2] - rxd_prod2[kv[1]], plotalts, linestyle="-", linewidth=1, label=lbl)
+                else
+                    text(0.5, 0.5, "Everything is basically 0, nothing to plot", transform=ax.transAxes)
+                end
+            else
+                ax.semilogx(kv[2], plotalts, linestyle="-", linewidth=1, label=lbl)
+            end
+            
+            # set the xlimits
+            if minimum(kv[2]) <= minx
+                minx = minimum(kv[2])
+            end
+            if maximum(kv[2]) >= maxx
+                maxx = maximum(kv[2])
+            end
+        end
+
+        if source2 != nothing
+            suptitle("J rate difference between spreadsheet and jl file for $(sp), $(filenameext)", fontsize=20)
+        else
+            suptitle("J rates for $(sp), $(filenameext)", fontsize=20)
+        end
+        ax.set_ylabel("Altitude (km)")
+        ax.legend(bbox_to_anchor=(1.01, 1))
+        ax.set_xlabel(L"Reaction rate (cm$^{-3}$s$^{-1}$)")
+        # labels and such 
+        if minx < 1e-14
+            minx = 1e-14
+        end
+        maxx = 10^(ceil(log10(maxx)))
+        ax.set_xlim([minx, maxx])
+        savefig(results_dir*"J_rates_$(sp)_$(filenameext).png", bbox_inches="tight", dpi=300)
     end
-    maxx = 10^(ceil(log10(maxx)))
-    ax.set_xlim([minx, maxx])
-    savefig(results_dir*"J_rates_$(filenameext).png", bbox_inches="tight", dpi=300)
-    show()
 end
 
 function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Ti, Te, Tp, # params to pass
@@ -1008,6 +1028,10 @@ function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Ti
 
     # ================================================================================
     # Plot the chemical production and loss rates: Panel #1
+
+    if shown_rxns != nothing
+        shown_rxns = [format_chemistry_string(r[1], r[2]) for r in shown_rxns]
+    end
 
     # Arrays to store the total reactions per second for this species of interest
     total_prod_rate = zeros(numlyrs)
@@ -2034,7 +2058,7 @@ end
 #                                                                              #
 # **************************************************************************** #
 
-# Network formatting ===========================================================
+# Network formatting and loading ====================================================
 
 function format_neutral_network(reactions_spreadsheet, used_species)
     #=
@@ -2047,17 +2071,21 @@ function format_neutral_network(reactions_spreadsheet, used_species)
         lists of several reaction types, all neutrals, in form [[R1, R2], [P1, P2], :(k)].
         3 reactants or products are also possible.
     =#
-    n_table = DataFrame(XLSX.readtable(reactions_spreadsheet, "Neutral reactions")...)
+    n_table_raw = DataFrame(XLSX.readtable(reactions_spreadsheet, "Neutral reactions")...)
     
     # Replace missing values with proper stuff 
-    replace!(n_table."R2", missing=>"-0");
-    replace!(n_table."R3", missing=>"-0");
-    replace!(n_table."P2", missing=>"-0");
-    replace!(n_table."P3", missing=>"-0");
-    replace!(n_table."M2", missing=>1);
-    replace!(n_table."M1", missing=>1);
-    replace!(n_table."pow", missing=>0);
-    replace!(n_table."BR", missing=>1);
+    replace!(n_table_raw."R2", missing=>"none");
+    replace!(n_table_raw."R3", missing=>"none");
+    replace!(n_table_raw."P2", missing=>"none");
+    replace!(n_table_raw."P3", missing=>"none");
+    replace!(n_table_raw."M2", missing=>1);
+    replace!(n_table_raw."M1", missing=>1);
+    replace!(n_table_raw."pow", missing=>0);
+    replace!(n_table_raw."BR", missing=>1);
+
+    # Get rid of reactions with a species we don't use
+    n_table = filter(row -> all(x->x in union(used_species, [:E, :M, :none]), [Symbol(row.R1), Symbol(row.R2), Symbol(row.R3)]), n_table_raw)
+    println("Removed reactions: $(filter(row->!all(x->x in union(used_species, [:E, :M, :none]), [Symbol(row.R1), Symbol(row.R2), Symbol(row.R3)]), n_table_raw))")
 
     # Set up the array to store neutral network 
     neutral_network = vec(Array{Any}(undef, nrow(n_table)))
@@ -2073,8 +2101,8 @@ function format_neutral_network(reactions_spreadsheet, used_species)
 
     for i in 1:1+counts[1]-1 # Type 1: Pressure independent unimolecular rxns, high pressure limit
         @assert n_table[i, "type"]==1
-        reactants = [Symbol(j) for j in filter!(j->j!="-0", [n_table[i, "R1"], n_table[i, "R2"]])]
-        products = [Symbol(j) for j in filter!(j->j!="-0", [n_table[i, "P1"], n_table[i, "P2"], n_table[i, "P3"]])]
+        reactants = [Symbol(j) for j in filter!(j->j!="none", [n_table[i, "R1"], n_table[i, "R2"], n_table[i, "R3"]])]
+        products = [Symbol(j) for j in filter!(j->j!="none", [n_table[i, "P1"], n_table[i, "P2"], n_table[i, "P3"]])]
 
         neutral_network[i] = [reactants, products, :($(make_k_expr(n_table[i, "kA"], n_table[i, "kB"], n_table[i, "kC"], "Tn", 
                                                                    n_table[i, "M2"], n_table[i, "M1"], n_table[i, "pow"], n_table[i, "BR"])))]
@@ -2083,8 +2111,8 @@ function format_neutral_network(reactions_spreadsheet, used_species)
 
     for i in n:n+counts[2]-1 # Type 2: P independent bimolecular; use k (same as *k inf), units cm^3 s^-1
         @assert n_table[i, "type"]==2
-        reactants = [Symbol(j) for j in filter!(j->j!="-0", [n_table[i, "R1"], n_table[i, "R2"]])]
-        products = [Symbol(j) for j in filter!(j->j!="-0", [n_table[i, "P1"], n_table[i, "P2"], n_table[i, "P3"]])]
+        reactants = [Symbol(j) for j in filter!(j->j!="none", [n_table[i, "R1"], n_table[i, "R2"], n_table[i, "R3"]])]
+        products = [Symbol(j) for j in filter!(j->j!="none", [n_table[i, "P1"], n_table[i, "P2"], n_table[i, "P3"]])]
         neutral_network[i] = [reactants, products, make_k_expr(n_table[i, "kA"], n_table[i, "kB"], n_table[i, "kC"], "Tn",
                                                                n_table[i, "M2"], n_table[i, "M1"], n_table[i, "pow"], n_table[i, "BR"])]
         n += 1
@@ -2092,8 +2120,8 @@ function format_neutral_network(reactions_spreadsheet, used_species)
 
     for i in n:n+counts[3]-1 # Type 3: P dependent bimolecular.
         @assert n_table[i, "type"]==3
-        reactants = [Symbol(j) for j in filter!(j->j!="-0", [n_table[i, "R1"], n_table[i, "R2"]])]
-        products = [Symbol(j) for j in filter!(j->j!="-0", [n_table[i, "P1"], n_table[i, "P2"], n_table[i, "P3"]])]
+        reactants = [Symbol(j) for j in filter!(j->j!="none", [n_table[i, "R1"], n_table[i, "R2"], n_table[i, "R3"]])]
+        products = [Symbol(j) for j in filter!(j->j!="none", [n_table[i, "P1"], n_table[i, "P2"], n_table[i, "P3"]])]
         neutral_network[i] = [reactants, products, make_Troe([n_table[i, "k0A"], n_table[i, "k0B"], n_table[i, "k0C"]], 
                                                              [n_table[i, "kA"], n_table[i, "kB"], n_table[i, "kC"]],
                                                               n_table[i, "F"], n_table[i, "M2"], n_table[i, "M1"], 
@@ -2103,8 +2131,8 @@ function format_neutral_network(reactions_spreadsheet, used_species)
 
     for i in n:n+counts[4]-1 # Type 4: P dependent association rxns
         @assert n_table[i, "type"]==4
-        reactants = [Symbol(j) for j in filter!(j->j!="-0", [n_table[i, "R1"], n_table[i, "R2"]])]
-        products = [Symbol(j) for j in filter!(j->j!="-0", [n_table[i, "P1"], n_table[i, "P2"], n_table[i, "P3"]])]        
+        reactants = [Symbol(j) for j in filter!(j->j!="none", [n_table[i, "R1"], n_table[i, "R2"], n_table[i, "R3"]])]
+        products = [Symbol(j) for j in filter!(j->j!="none", [n_table[i, "P1"], n_table[i, "P2"], n_table[i, "P3"]])]        
         neutral_network[i] = [reactants, products, make_modified_Troe([n_table[i, "k0A"], n_table[i, "k0B"], n_table[i, "k0C"]], 
                                                                       [n_table[i, "kA"], n_table[i, "kB"], n_table[i, "kC"]],
                                                                       [n_table[i, "kradA"], n_table[i, "kradB"], n_table[i, "kradC"]],
@@ -2115,8 +2143,8 @@ function format_neutral_network(reactions_spreadsheet, used_species)
 
     for i in n:n+counts[5]-1 # Three body reactions 
         @assert n_table[i, "type"]==5
-        reactants = [Symbol(j) for j in filter!(j->j!="-0", [n_table[i, "R1"], n_table[i, "R2"]])]
-        products = [Symbol(j) for j in filter!(j->j!="-0", [n_table[i, "P1"], n_table[i, "P2"], n_table[i, "P3"]])]
+        reactants = [Symbol(j) for j in filter!(j->j!="none", [n_table[i, "R1"], n_table[i, "R2"], n_table[i, "R3"]])]
+        products = [Symbol(j) for j in filter!(j->j!="none", [n_table[i, "P1"], n_table[i, "P2"], n_table[i, "P3"]])]
         
         k0 = make_k_expr(n_table[i, "k0A"], n_table[i, "k0B"], n_table[i, "k0C"], "Tn", 
                          n_table[i, "M2"], n_table[i, "M1"], n_table[i, "pow"], n_table[i, "BR"])             
@@ -2129,8 +2157,8 @@ function format_neutral_network(reactions_spreadsheet, used_species)
 
     for i in n:n+counts[6]-1 # Three body reactions 
         @assert n_table[i, "type"]==6
-        reactants = [Symbol(j) for j in filter!(j->j!="-0", [n_table[i, "R1"], n_table[i, "R2"]])]
-        products = [Symbol(j) for j in filter!(j->j!="-0", [n_table[i, "P1"], n_table[i, "P2"], n_table[i, "P3"]])]
+        reactants = [Symbol(j) for j in filter!(j->j!="none", [n_table[i, "R1"], n_table[i, "R2"], n_table[i, "R3"]])]
+        products = [Symbol(j) for j in filter!(j->j!="none", [n_table[i, "P1"], n_table[i, "P2"], n_table[i, "P3"]])]
         k0 = make_k_expr(n_table[i, "k0A"], n_table[i, "k0B"], n_table[i, "k0C"], "Tn", 
                          n_table[i, "M2"], n_table[i, "M2"], n_table[i, "pow"], n_table[i, "BR"])             
         kinf = make_k_expr(n_table[i, "kA"], n_table[i, "kB"], n_table[i, "kC"], "Tn", 
@@ -2143,7 +2171,7 @@ function format_neutral_network(reactions_spreadsheet, used_species)
     return neutral_network
 end
 
-function format_ion_network(reactions_spreadsheet)
+function format_ion_network(reactions_spreadsheet, used_species)
     #=
     Inputs:
         reactions_spreadsheet: Properly formatted .xlsx of chemical reactions with 
@@ -2153,15 +2181,20 @@ function format_ion_network(reactions_spreadsheet)
         3 reactants or products are also possible.
     =#
     
-    ion_table = DataFrame(XLSX.readtable(reactions_spreadsheet, "Ion reactions")...)
+    ion_table_raw = DataFrame(XLSX.readtable(reactions_spreadsheet, "Ion reactions")...)
     
     # Replace missing values with proper stuff 
-    replace!(ion_table."P2", missing=>"-0");
-    replace!(ion_table."P3", missing=>"-0");
-    replace!(ion_table."M2", missing=>1);
-    replace!(ion_table."M1", missing=>1);
-    replace!(ion_table."pow", missing=>0);
-    replace!(ion_table."BR", missing=>1);
+    replace!(ion_table_raw."R2", missing=>"none");
+    replace!(ion_table_raw."P2", missing=>"none");
+    replace!(ion_table_raw."P3", missing=>"none");
+    replace!(ion_table_raw."M2", missing=>1);
+    replace!(ion_table_raw."M1", missing=>1);
+    replace!(ion_table_raw."pow", missing=>0);
+    replace!(ion_table_raw."BR", missing=>1);
+
+    # Filter out reactions with reactants we don't use
+    ion_table = filter(row->all(x->x in union(used_species, [:E, :M, :none]), [Symbol(row.R1), Symbol(row.R2)]), ion_table_raw)
+    println("Removed reactions: $(filter(row->!all(x->x in union(used_species, [:E, :M, :none]), [Symbol(row.R1), Symbol(row.R2)]), ion_table_raw))")
     
     numrows = size(ion_table)[1]
     ion_network = Array{Any}(undef, numrows, 1)
@@ -2187,11 +2220,28 @@ function format_ion_network(reactions_spreadsheet)
        
         # Fill out the entry
         ion_network[i] = [[Symbol(ion_table[i, "R1"]), Symbol(ion_table[i, "R2"])],  # REACTANT LIST
-                          [Symbol(j) for j in filter!(j->j!="-0", [ion_table[i, "P1"], ion_table[i, "P2"], ion_table[i, "P3"]])], # PRODUCT LIST
+                          [Symbol(j) for j in filter!(j->j!="none", [ion_table[i, "P1"], ion_table[i, "P2"], ion_table[i, "P3"]])], # PRODUCT LIST
                           make_k_expr(kA, kB, kC, Tstr, M2, M1, pow, BR)] # RATE COEFFICIENT EXPRESSION
     end
         
     return ion_network
+end
+
+function load_reaction_network(spreadsheet, Jrl, absorber, photo_prods, allsp)
+    #=
+    Inputs:
+        spreadsheet: path and filename of the reaction network spreadsheet
+        Jrl: Jratelist, defined in PARAMETERS.jl
+        absorber: Photochemistry absorbing species for each Jrate, defined in PARAMETERS.jl
+        photo_prods: list of products for each Jrate, defined in PARAMETERS.jl
+    Output:
+        reaction_network, a vector of vectors in the format
+        [Symbol[reactants...], Symbol[products...], :(rate coefficient expression)
+    =#
+    ionnet = format_ion_network(spreadsheet, allsp)
+    neutral_net = format_neutral_network(spreadsheet, allsp);
+    Jrxns = [[[absorber[Jr]], photo_prods[Jr], Jr] for Jr in Jrl]
+    return [Jrxns..., neutral_net..., ionnet...]
 end
 
 function make_k_expr(A, B, C, T::String, M2, M1, pow, BR)
@@ -3407,21 +3457,21 @@ function populate_xsect_dict(Tn_array::Array, alts::Array; ion_xsects=true) # TO
     #CO2+hv->CO+O
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((l->l>167, 1), (l->95>l, 0.5))),
-              map(t->co2xsect(co2xdata, t), Tn_array)), :JCO2toCOaO)
+              map(t->co2xsect(co2xdata, t), Tn_array)), :JCO2toCOpO)
     #CO2+hv->CO+O1D
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((l->95<l<167, 1), (l->l<95, 0.5))),
-              map(t->co2xsect(co2xdata, t), Tn_array)), :JCO2toCOaO1D)
+              map(t->co2xsect(co2xdata, t), Tn_array)), :JCO2toCOpO1D)
 
     # O2 photodissociation ---------------------------------------------------------
     #O2+hv->O+O
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((x->x>175, 1),)), map(t->o2xsect(o2xdata, o2schr130K, o2schr190K, o2schr280K, t), Tn_array)),
-              :JO2toOaO)
+              :JO2toOpO)
     #O2+hv->O+O1D
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((x->x<175, 1),)), map(t->o2xsect(o2xdata, o2schr130K, o2schr190K, o2schr280K, t), Tn_array)),
-              :JO2toOaO1D)
+              :JO2toOpO1D)
 
     # O3 photodissociation ---------------------------------------------------------
     # O3+hv->O2+O
@@ -3434,7 +3484,7 @@ function populate_xsect_dict(Tn_array::Array, alts::Array; ion_xsects=true) # TO
                                    (l->306<=l<328, l->(1 .- O3O1Dquantumyield(l, t))),
                                    (l->328<=l<340, 0.92),
                                    (l->340<=l, 1.0)
-                                  )), Tn_array), :JO3toO2aO)
+                                  )), Tn_array), :JO3toO2pO)
     # O3+hv->O2+O1D
     setindex!(xsect_dict,
               map(t->quantumyield(o3xdata,
@@ -3445,139 +3495,139 @@ function populate_xsect_dict(Tn_array::Array, alts::Array; ion_xsects=true) # TO
                                    (l->306<=l<328, l->O3O1Dquantumyield(l, t)),
                                    (l->328<=l<340, 0.08),
                                    (l->340<=l, 0.0)
-                                  )), Tn_array), :JO3toO2aO1D)
+                                  )), Tn_array), :JO3toO2pO1D)
     # O3+hv->O+O+O
     setindex!(xsect_dict,
               fill(quantumyield(o3xdata,((x->true, 0.),)),length(alts)),
-              :JO3toOaOaO)
+              :JO3toOpOpO)
 
     # H2 and HD photodissociation --------------------------------------------------
     # H2+hv->H+H
-    setindex!(xsect_dict, fill(h2xdata, length(alts)), :JH2toHaH)
+    setindex!(xsect_dict, fill(h2xdata, length(alts)), :JH2toHpH)
     # HD+hν -> H+D 
-    setindex!(xsect_dict, fill(hdxdata, length(alts)), :JHDtoHaD)
+    setindex!(xsect_dict, fill(hdxdata, length(alts)), :JHDtoHpD)
 
     # OH and OD photodissociation --------------------------------------------------
     # OH+hv->O+H
-    setindex!(xsect_dict, fill(ohxdata, length(alts)), :JOHtoOaH)
+    setindex!(xsect_dict, fill(ohxdata, length(alts)), :JOHtoOpH)
     # OH+hv->O1D+H
-    setindex!(xsect_dict, fill(ohO1Dxdata, length(alts)), :JOHtoO1DaH)
+    setindex!(xsect_dict, fill(ohO1Dxdata, length(alts)), :JOHtoO1DpH)
     # OD + hv -> O+D  
-    setindex!(xsect_dict, fill(odxdata, length(alts)), :JODtoOaD)
+    setindex!(xsect_dict, fill(odxdata, length(alts)), :JODtoOpD)
     # OD + hν -> O(¹D) + D 
-    setindex!(xsect_dict, fill(ohO1Dxdata, length(alts)), :JODtoO1DaD)
+    setindex!(xsect_dict, fill(ohO1Dxdata, length(alts)), :JODtoO1DpD)
 
     # HO2 and DO2 photodissociation ------------------------------------------------
     # HO2 + hν -> OH + O
-    setindex!(xsect_dict, fill(ho2xsect, length(alts)), :JHO2toOHaO)
+    setindex!(xsect_dict, fill(ho2xsect, length(alts)), :JHO2toOHpO)
     # DO2 + hν -> OD + O
-    setindex!(xsect_dict, fill(do2xsect, length(alts)), :JDO2toODaO)
+    setindex!(xsect_dict, fill(do2xsect, length(alts)), :JDO2toODpO)
 
     # H2O and HDO photodissociation ------------------------------------------------
     # H2O+hv->H+OH
     setindex!(xsect_dict,
               fill(quantumyield(h2oxdata,((x->x<145, 0.89),(x->x>145, 1))),length(alts)),
-              :JH2OtoHaOH)
+              :JH2OtoHpOH)
 
     # H2O+hv->H2+O1D
     setindex!(xsect_dict,
               fill(quantumyield(h2oxdata,((x->x<145, 0.11),(x->x>145, 0))),length(alts)),
-              :JH2OtoH2aO1D)
+              :JH2OtoH2pO1D)
 
     # H2O+hv->H+H+O
     setindex!(xsect_dict,
               fill(quantumyield(h2oxdata,((x->true, 0),)),length(alts)),
-              :JH2OtoHaHaO)
+              :JH2OtoHpHpO)
 
     # HDO + hν -> H + OD
     setindex!(xsect_dict,
               fill(quantumyield(hdoxdata,((x->x<145, 0.5*0.89),(x->x>145, 0.5*1))),length(alts)),
-              :JHDOtoHaOD)
+              :JHDOtoHpOD)
 
     # HDO + hν -> D + OH
     setindex!(xsect_dict,
               fill(quantumyield(hdoxdata,((x->x<145, 0.5*0.89),(x->x>145, 0.5*1))),length(alts)),
-              :JHDOtoDaOH)
+              :JHDOtoDpOH)
 
     # HDO + hν -> HD + O1D
     setindex!(xsect_dict,
               fill(quantumyield(hdoxdata,((x->x<145, 0.11),(x->x>145, 0))),length(alts)),
-              :JHDOtoHDaO1D)
+              :JHDOtoHDpO1D)
 
     # HDO + hν -> H + D + O
     setindex!(xsect_dict,
               fill(quantumyield(hdoxdata,((x->true, 0),)),length(alts)),
-              :JHDOtoHaDaO)
+              :JHDOtoHpDpO)
 
 
     # H2O2 and HDO2 photodissociation ----------------------------------------------
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((x->x<230, 0.85),(x->x>230, 1))),
-              map(t->h2o2xsect(h2o2xdata, t), Tn_array)), :JH2O2toOHaOH)
+              map(t->h2o2xsect(h2o2xdata, t), Tn_array)), :JH2O2to2OH)
 
     # H2O2+hv->HO2+H
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((x->x<230, 0.15),(x->x>230, 0))),
-              map(t->h2o2xsect(h2o2xdata, t), Tn_array)), :JH2O2toHO2aH)
+              map(t->h2o2xsect(h2o2xdata, t), Tn_array)), :JH2O2toHO2pH)
 
     # H2O2+hv->H2O+O1D
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((x->true, 0),)), map(t->h2o2xsect(h2o2xdata, t),
-              Tn_array)), :JH2O2toH2OaO1D)
+              Tn_array)), :JH2O2toH2OpO1D)
 
     # HDO2 + hν -> OH + OD
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((x->x<230, 0.85),(x->x>230, 1))),
-              map(t->hdo2xsect(hdo2xdata, t), Tn_array)), :JHDO2toOHaOD)
+              map(t->hdo2xsect(hdo2xdata, t), Tn_array)), :JHDO2toOHpOD)
 
     # HDO2 + hν-> DO2 + H
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((x->x<230, 0.5*0.15),(x->x>230, 0))),
-              map(t->hdo2xsect(hdo2xdata, t), Tn_array)), :JHDO2toDO2aH)
+              map(t->hdo2xsect(hdo2xdata, t), Tn_array)), :JHDO2toDO2pH)
 
     # HDO2 + hν-> HO2 + D
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((x->x<230, 0.5*0.15),(x->x>230, 0))),
-              map(t->hdo2xsect(hdo2xdata, t), Tn_array)), :JHDO2toHO2aD)
+              map(t->hdo2xsect(hdo2xdata, t), Tn_array)), :JHDO2toHO2pD)
 
     # HDO2 + hν -> HDO + O1D
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((x->true, 0),)), map(t->hdo2xsect(hdo2xdata, t),
-              Tn_array)), :JHDO2toHDOaO1D)
+              Tn_array)), :JHDO2toHDOpO1D)
 
     if ion_xsects == true
         # NEW: CO2 photodissociation ---------------------------------------------------------
         # Source: Roger Yelle
         # CO₂ + hν -> C + O + O
-        CO2_totaldiss_data = readdlm(xsecfolder*"$(:JCO2toCaOaO).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(CO2_totaldiss_data, length(alts)), :JCO2toCaOaO)
+        CO2_totaldiss_data = readdlm(xsecfolder*"$(:JCO2toCpOpO).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(CO2_totaldiss_data, length(alts)), :JCO2toCpOpO)
 
         # CO2 + hν -> C + O₂
-        CO2_diss_data = readdlm(xsecfolder*"$(:JCO2toCaO2).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(CO2_diss_data, length(alts)), :JCO2toCaO2)
+        CO2_diss_data = readdlm(xsecfolder*"$(:JCO2toCpO2).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(CO2_diss_data, length(alts)), :JCO2toCpO2)
 
         # NEW: CO photodissociation ---------------------------------------------------------
         # Source: Roger Yelle
 
         # CO + hν -> C + O
-        CO_diss_data = readdlm(xsecfolder*"$(:JCOtoCaO).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(CO_diss_data, length(alts)), :JCOtoCaO)
+        CO_diss_data = readdlm(xsecfolder*"$(:JCOtoCpO).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(CO_diss_data, length(alts)), :JCOtoCpO)
 
 
         # NEW: Nitrogen species photodissociation --------------------------------------------
         # Source: Roger Yelle
 
         # N₂ + hν -> N₂ + O(¹D)
-        N2_diss_data = readdlm(xsecfolder*"$(:JN2OtoN2aO1D).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(N2_diss_data, length(alts)), :JN2OtoN2aO1D)
+        N2_diss_data = readdlm(xsecfolder*"$(:JN2OtoN2pO1D).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(N2_diss_data, length(alts)), :JN2OtoN2pO1D)
 
         # NO₂ + hν -> NO + O
-        NO2_diss_data = readdlm(xsecfolder*"$(:JNO2toNOaO).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(NO2_diss_data, length(alts)), :JNO2toNOaO)
+        NO2_diss_data = readdlm(xsecfolder*"$(:JNO2toNOpO).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(NO2_diss_data, length(alts)), :JNO2toNOpO)
 
         # NO + hν -> N + O
-        NO_diss_data = readdlm(xsecfolder*"$(:JNOtoNaO).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(NO_diss_data, length(alts)), :JNOtoNaO)
+        NO_diss_data = readdlm(xsecfolder*"$(:JNOtoNpO).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(NO_diss_data, length(alts)), :JNOtoNpO)
 
         # Photoionization or ionizing dissociation reactions ============================================
 
@@ -3593,28 +3643,28 @@ function populate_xsect_dict(Tn_array::Array, alts::Array; ion_xsects=true) # TO
         setindex!(xsect_dict, fill(CO2_doubleion_data, length(alts)), :JCO2toCO2plpl)
 
         # CO₂ + hν -> C²⁺ + O₂
-        CO2_ionC2diss_data = readdlm(xsecfolder*"$(:JCO2toCplplaO2).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(CO2_ionC2diss_data, length(alts)), :JCO2toCplplaO2)
+        CO2_ionC2diss_data = readdlm(xsecfolder*"$(:JCO2toCplplpO2).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(CO2_ionC2diss_data, length(alts)), :JCO2toCplplpO2)
 
         # CO₂ + hν -> C⁺ + O₂
-        CO2_ionCdiss_data = readdlm(xsecfolder*"$(:JCO2toCplaO2).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(CO2_ionCdiss_data, length(alts)), :JCO2toCplaO2)
+        CO2_ionCdiss_data = readdlm(xsecfolder*"$(:JCO2toCplpO2).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(CO2_ionCdiss_data, length(alts)), :JCO2toCplpO2)
 
         # CO₂ + hν -> CO⁺ + O⁺
-        CO2_ionCOandOdiss_data = readdlm(xsecfolder*"$(:JCO2toCOplaOpl).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(CO2_ionCOandOdiss_data, length(alts)), :JCO2toCOplaOpl)
+        CO2_ionCOandOdiss_data = readdlm(xsecfolder*"$(:JCO2toCOplpOpl).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(CO2_ionCOandOdiss_data, length(alts)), :JCO2toCOplpOpl)
 
         # CO₂ + hν -> CO⁺ + O
-        CO2_ionCOdiss_data = readdlm(xsecfolder*"$(:JCO2toCOplaO).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(CO2_ionCOdiss_data, length(alts)), :JCO2toCOplaO)
+        CO2_ionCOdiss_data = readdlm(xsecfolder*"$(:JCO2toCOplpO).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(CO2_ionCOdiss_data, length(alts)), :JCO2toCOplpO)
 
         # CO₂ + hν -> CO + O⁺
-        CO2_ionOdiss_data = readdlm(xsecfolder*"$(:JCO2toOplaCO).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(CO2_ionOdiss_data, length(alts)), :JCO2toOplaCO)
+        CO2_ionOdiss_data = readdlm(xsecfolder*"$(:JCO2toOplpCO).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(CO2_ionOdiss_data, length(alts)), :JCO2toOplpCO)
 
         # CO₂ + hν -> C⁺ + O⁺ + O
-        CO2_ionCandOdiss_data = readdlm(xsecfolder*"$(:JCO2toOplaCplaO).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(CO2_ionCandOdiss_data, length(alts)), :JCO2toOplaCplaO)
+        CO2_ionCandOdiss_data = readdlm(xsecfolder*"$(:JCO2toOplpCplpO).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(CO2_ionCandOdiss_data, length(alts)), :JCO2toOplpCplpO)
 
         # NEW: H2O ionization --------------------------------------------------------------
         # Source: Roger Yelle
@@ -3628,16 +3678,16 @@ function populate_xsect_dict(Tn_array::Array, alts::Array; ion_xsects=true) # TO
         setindex!(xsect_dict, fill(hdo_ionize_data, length(alts)), :JHDOtoHDOpl)
 
         # H2O + hν -> O⁺ + H2
-        h2o_ionOdiss_data = readdlm(xsecfolder*"$(:JH2OtoOplaH2).csv", ',', Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(h2o_ionOdiss_data, length(alts)), :JH2OtoOplaH2)
+        h2o_ionOdiss_data = readdlm(xsecfolder*"$(:JH2OtoOplpH2).csv", ',', Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(h2o_ionOdiss_data, length(alts)), :JH2OtoOplpH2)
 
         # H2O + hν -> H⁺ + OH
-        h2o_ionHdiss_data = readdlm(xsecfolder*"$(:JH2OtoHplaOH).csv", ',', Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(h2o_ionHdiss_data, length(alts)), :JH2OtoHplaOH)
+        h2o_ionHdiss_data = readdlm(xsecfolder*"$(:JH2OtoHplpOH).csv", ',', Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(h2o_ionHdiss_data, length(alts)), :JH2OtoHplpOH)
 
         # H2O + hν -> OH⁺ + H
-        h2o_ionOHdiss_data = readdlm(xsecfolder*"$(:JH2OtoOHplaH).csv", ',', Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(h2o_ionOHdiss_data, length(alts)), :JH2OtoOHplaH)
+        h2o_ionOHdiss_data = readdlm(xsecfolder*"$(:JH2OtoOHplpH).csv", ',', Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(h2o_ionOHdiss_data, length(alts)), :JH2OtoOHplpH)
 
         # NEW: CO ionization ----------------------------------------------------------------
         # Source: Roger Yelle
@@ -3647,12 +3697,12 @@ function populate_xsect_dict(Tn_array::Array, alts::Array; ion_xsects=true) # TO
         setindex!(xsect_dict, fill(CO_ionize_data, length(alts)), :JCOtoCOpl)
 
         # CO + hν -> C + O⁺
-        CO_ionOdiss_data = readdlm(xsecfolder*"$(:JCOtoCaOpl).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(CO_ionOdiss_data, length(alts)), :JCOtoCaOpl)
+        CO_ionOdiss_data = readdlm(xsecfolder*"$(:JCOtoCpOpl).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(CO_ionOdiss_data, length(alts)), :JCOtoCpOpl)
 
         # CO + hν -> C⁺ + O
-        CO_ionCdiss_data = readdlm(xsecfolder*"$(:JCOtoOaCpl).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(CO_ionCdiss_data, length(alts)), :JCOtoOaCpl)
+        CO_ionCdiss_data = readdlm(xsecfolder*"$(:JCOtoOpCpl).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(CO_ionCdiss_data, length(alts)), :JCOtoOpCpl)
 
         # NEW: Nitrogen species ionization --------------------------------------------------
         # Source: Roger Yelle
@@ -3662,8 +3712,8 @@ function populate_xsect_dict(Tn_array::Array, alts::Array; ion_xsects=true) # TO
         setindex!(xsect_dict, fill(N2_ionize_data, length(alts)), :JN2toN2pl)
 
         # N₂ + hν -> N⁺ + N
-        N2_iondiss_data = readdlm(xsecfolder*"$(:JN2toNplaN).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(N2_iondiss_data, length(alts)), :JN2toNplaN)
+        N2_iondiss_data = readdlm(xsecfolder*"$(:JN2toNplpN).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(N2_iondiss_data, length(alts)), :JN2toNplpN)
 
         # NO₂ + hν -> NO₂⁺
         NO2_ionize_data = readdlm(xsecfolder*"$(:JNO2toNO2pl).csv",',',Float64, comments=true, comment_char='#')
@@ -3693,8 +3743,8 @@ function populate_xsect_dict(Tn_array::Array, alts::Array; ion_xsects=true) # TO
         setindex!(xsect_dict, fill(HD_ion_data, length(alts)), :JHDtoHDpl)
 
         # H₂ + hν -> H⁺ + H
-        H2_iondiss_data = readdlm(xsecfolder*"$(:JH2toHplaH).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(H2_iondiss_data, length(alts)), :JH2toHplaH)
+        H2_iondiss_data = readdlm(xsecfolder*"$(:JH2toHplpH).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(H2_iondiss_data, length(alts)), :JH2toHplpH)
 
         # H₂O₂ + hν -> H₂O₂⁺
         H2O2_ionize_data = readdlm(xsecfolder*"$(:JH2O2toH2O2pl).csv",',',Float64, comments=true, comment_char='#')

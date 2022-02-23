@@ -76,5 +76,5 @@ const molmass = Dict(:H=>1, :Hpl=>1,
                      :O3=>48, 
                      )
 
-const collision_xsect = Dict(:H=>8.79e-17, :D=>8.79e-17 #  the Bohr radius--depends only on Z, so same for isotopes.
-                            ) # Units of cm^2; 
+const collision_xsect = Dict(:H=>4e-15, :D=>4.5e-15 # Zhang 2009
+                            ) # Units of cm^2; Bohr radius 8.79e-17

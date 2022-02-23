@@ -10,7 +10,12 @@
 # Currently tested for Julia: 1.5.3
 ################################################################################
 
-using Photochemistry: input, search_subfolders, T_updated, create_folder, get_ncurrent, Psat, Psat_HDO, plot_rxns, effusion_velocity, charge_type, scaleH, meanmass
+# Modules and critical files ================================================================================
+photochemistry_source_dir = "$(@__DIR__)/Photochemistry/src/"
+println("loading Photochemistry.jl from $photochemistry_source_dir")
+push!(LOAD_PATH, photochemistry_source_dir)
+using Photochemistry: input, search_subfolders, T_updated, create_folder, get_ncurrent, Psat, Psat_HDO, plot_rxns, 
+                      effusion_velocity, charge_type, scaleH, meanmass, load_reaction_network
 using PyPlot
 using PyCall
 
@@ -21,10 +26,8 @@ user_input_paramfile = input("Enter a parameter file or press enter to use defau
 paramfile = user_input_paramfile == "" ? "PARAMETERS.jl" : user_input_paramfile*".jl"
 include(paramfile)
 
-# Load the new standard reaction network from file if it the parameter file doesn''t have its own network.
-if !@isdefined reactionnet 
-    include("$(@__DIR__)/reaction_network.jl")
-end
+# Load the new standard reaction network from spreadsheet
+reaction_network = load_reaction_network(reaction_network_spreadsheet, Jratelist, absorber, photolysis_products, all_species)
 
 println("Found the folder name: $(sim_folder_name)")
 simfolder = results_dir*sim_folder_name*"/"
@@ -41,6 +44,7 @@ create_folder("chemeq_plots", simfolder)
 
 filelist = search_subfolders(simfolder, "$(converged_file)", type="files")
 println(filelist)
+
 for f in filelist
     ncur = get_ncurrent(simfolder*f)
 
@@ -62,28 +66,26 @@ for f in filelist
         println("Surely there is a better way to do this but for right now this is what I got.")
         pritnln("If you've left them in as Tn, go back and change them to T later. For posterity and such.")
         for sp in fullspecieslist
-            plot_rxns(sp, ncur, Tn_arr, Ti_arr, Te_arr, speciesbclist, reactionnet, fullspecieslist, [:CO2pl], transportspecies, speciesmolmasslist, alt, n_alt_index, dz, nothing, 
+            plot_rxns(sp, ncur, Tn_arr, Ti_arr, Te_arr, speciesbclist, reaction_network, fullspecieslist, [:CO2pl], transportspecies, speciesmolmasslist, alt, n_alt_index, dz, nothing, 
                       num_layers, plot_grid, results_dir, Tprof_for_Hs, Tprof_for_diffusion, subfolder=sim_folder_name, plotsfolder="chemeq_plots", num=dtval, extra_title="dt=$(dtval)")
         end
     else  # The normal case, the new code, where we use all_species and not fullspecieslist. 
         for sp in all_species
             println("Working on $(sp)")
 
-                (sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Ti, Te, Tp, # params to pass
-                   bcdict::Dict{Symbol, Matrix{Any}}, rxnnet, 
-                   allsp, ionsp, transsp, chemsp, mmass::Dict{Symbol, Int64}, alts, n_alt_index::Dict, dz, 
-                   polar::Dict{Symbol, Float64}, numlyrs::Int64, plotalts, 
-                   results_dir::String, T_for_Hs::Dict{String, Vector{Any}}, T_for_diff::Dict{String, Vector{Any}}; 
-                   shown_rxns=nothing, subfolder="", plotsfolder="", dt=nothing, num="", extra_title="", 
-                   plot_timescales=false, plot_total_rate_coefs=false, showonly=false)
-    #=
+            # Uncomment this section in case you want to show individual reactions on the chemistry panel of the plot.
+            # theserxns = []
+            # for rxn in reaction_network
+            #     if occursin(string(sp), string(rxn[1])) | occursin(string(sp), string(rxn[2]))
+            #         push!(theserxns, rxn)
+            #     end
+            # end
 
-            plot_rxns(sp, ncur, Tn_arr, Ti_arr, Te_arr, Tplasma_arr, speciesbclist, reactionnet, 
-                      all_species, ion_species, transport_species, chem_species, 
-                      molmass, alt, n_alt_index, dz, polarizability, 
-                      num_layers, plot_grid, results_dir, Tprof_for_Hs, Tprof_for_diffusion, 
-                      subfolder=sim_folder_name, plotsfolder="chemeq_plots", num=dtval, extra_title="dt=$(dtval)")
+            plot_rxns(sp, ncur, Tn_arr, Ti_arr, Te_arr, Tplasma_arr, speciesbclist, reaction_network, 
+                      all_species, ion_species, transport_species, chem_species, molmass, alt, n_alt_index, dz, polarizability, 
+                      num_layers, plot_grid, results_dir, Tprof_for_Hs, Tprof_for_diffusion, subfolder=sim_folder_name, 
+                      plotsfolder="chemeq_plots", num=dtval, extra_title="dt=$(dtval)")#, shown_rxns=theserxns) # Uncomment to show individual reactions.
+
         end
     end
-
 end

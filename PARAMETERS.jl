@@ -25,10 +25,10 @@
 # Basic simulation parameters
 const simtype = "temp"
 const controltemps = [216., 130., 205.]
-const tag = "internally_screaming"#addN(2D)" # Optional extra bit for the filename to help indicate what it is
-const problem_type = "SS" # "Gear" #"ODE" #  
+const tag = "add_N(2D)" # Optional extra bit for the filename to help indicate what it is
+const global problem_type = "Gear" # "ODE" #"SS" #  
 const converge_which = "both"
-const optional_logging_note = "This is a test run because the stackoverflow error is back and I wanna scream"#This run is to incorporate the species N2D "
+const optional_logging_note = "This run is to add N(2D) into the atmosphere"
 
 # Check that float type is properly set
 if problem_type == "Gear" && (ftype_ncur == Float64 || ftype_chem == Float64)
@@ -39,7 +39,7 @@ end
 
 # Folders and files 
 const sim_folder_name = "$(simtype)_$(Int64(controltemps[1]))_$(Int64(controltemps[2]))_$(Int64(controltemps[3]))_$(problem_type)_$(tag)"
-const initial_atm_file = "converged_gear_20211231.h5"#"converged_full_atmosphere.h5"
+const initial_atm_file = "converged_full_atmosphere.h5"#"converged_gear_20211231.h5"#
 # const initial_atm_file = results_dir*"temp_216_130_205_SS_Newest/final_atmosphere.h5"
 const final_atm_file = "final_atmosphere.h5"
 const reaction_network_spreadsheet = code_dir*"REACTION_NETWORK.xlsx"
@@ -149,7 +149,7 @@ const conv_neutrals = [:Ar, :C, :CH, :CN, :CO, :CO2, :H, :H2, :H2O, :H2O2,
                        :N, :N2, :NH, :NH2, :N2O, :NO, :NO2, 
                        :O, :O1D, :O2, :O3, :OH,
                        :D, :DCO, :DO2, :DOCO, :HD, :HDO, :HDO2, :OD];
-const new_neutrals = []#:Nup2D];
+const new_neutrals = [:Nup2D];
 
 const neutral_species = [];
 append!(neutral_species, conv_neutrals)
@@ -179,30 +179,30 @@ append!(all_species, ion_species)
 # Photolysis and Photoionization rate symbol lists ----------------------------
 
 const conv_Jrates = [# Original neutral photodissociation
-                    :JCO2toCOaO,:JCO2toCOaO1D,:JO2toOaO,:JO2toOaO1D,
-                    :JO3toO2aO,:JO3toO2aO1D,:JO3toOaOaO,:JH2toHaH,:JOHtoOaH,
-                    :JOHtoO1DaH,:JHO2toOHaO,:JH2OtoHaOH,:JH2OtoH2aO1D,:JH2OtoHaHaO,
-                    :JH2O2toOHaOH,:JH2O2toHO2aH,:JH2O2toH2OaO1D,
+                    :JCO2toCOpO,:JCO2toCOpO1D,:JO2toOpO,:JO2toOpO1D,
+                    :JO3toO2pO,:JO3toO2pO1D,:JO3toOpOpO,:JH2toHpH,:JOHtoOpH,
+                    :JOHtoO1DpH,:JHO2toOHpO,:JH2OtoHpOH,:JH2OtoH2pO1D,:JH2OtoHpHpO,
+                    :JH2O2to2OH,:JH2O2toHO2pH,:JH2O2toH2OpO1D,
 
                     # Original deuterated neutral photodissociation
-                    :JHDOtoHaOD, :JHDOtoDaOH, :JHDO2toOHaOD,
-                    :JHDOtoHDaO1D, :JHDOtoHaDaO, :JODtoOaD, :JHDtoHaD, :JDO2toODaO,
-                    :JHDO2toDO2aH, :JHDO2toHO2aD, :JHDO2toHDOaO1D, :JODtoO1DaD,
+                    :JHDOtoHpOD, :JHDOtoDpOH, :JHDO2toOHpOD,
+                    :JHDOtoHDpO1D, :JHDOtoHpDpO, :JODtoOpD, :JHDtoHpD, :JDO2toODpO,
+                    :JHDO2toDO2pH, :JHDO2toHO2pD, :JHDO2toHDOpO1D, :JODtoO1DpD,
 
                     # New neutral photodissociation (from Roger)
-                    :JCO2toCaOaO, :JCO2toCaO2, :JCOtoCaO,
-                    :JN2OtoN2aO1D, :JNO2toNOaO, :JNOtoNaO,
+                    :JCO2toCpOpO, :JCO2toCpO2, :JCOtoCpO,
+                    :JN2OtoN2pO1D, :JNO2toNOpO, :JNOtoNpO,
 
                     # New photoionization/ion-involved photodissociation (Roger)
-                    :JCO2toCO2pl, :JCO2toOplaCO, :JOtoOpl, :JO2toO2pl, # Nair minimal ionosphere
-                    :JCO2toCO2plpl, :JCO2toCplplaO2, :JCO2toCOplaOpl,:JCO2toOplaCplaO, :JCO2toCplaO2, :JCO2toCOplaO, 
-                    :JCOtoCaOpl, :JCOtoCOpl,  :JCOtoOaCpl, 
+                    :JCO2toCO2pl, :JCO2toOplpCO, :JOtoOpl, :JO2toO2pl, # Nair minimal ionosphere
+                    :JCO2toCO2plpl, :JCO2toCplplpO2, :JCO2toCOplpOpl,:JCO2toOplpCplpO, :JCO2toCplpO2, :JCO2toCOplpO, 
+                    :JCOtoCpOpl, :JCOtoCOpl,  :JCOtoOpCpl, 
                     :JHtoHpl, 
-                    :JH2toH2pl, :JH2toHplaH, :JHDtoHDpl, 
+                    :JH2toH2pl, :JH2toHplpH, :JHDtoHDpl, 
                     :JH2OtoH2Opl, 
-                    :JH2OtoOplaH2, :JH2OtoHplaOH, :JH2OtoOHplaH, :JHDOtoHDOpl,
+                    :JH2OtoOplpH2, :JH2OtoHplpOH, :JH2OtoOHplpH, :JHDOtoHDOpl,
                     :JH2O2toH2O2pl, 
-                    :JN2toN2pl, :JN2toNplaN, 
+                    :JN2toN2pl, :JN2toNplpN, 
                     :JN2OtoN2Opl, :JNO2toNO2pl, :JNOtoNOpl, 
                     :JO3toO3pl,
                   ];
@@ -213,7 +213,13 @@ append!(Jratelist, newJrates)
 
 # These dictionaries specify the species absorbing a photon for each J rate, and the products of the reaction.
 const absorber = Dict([x=>Symbol(match(r"(?<=J).+(?=to)", string(x)).match) for x in Jratelist])
-const photolysis_products = Dict([x=>[Symbol(m.match) for m in eachmatch(r"(?<=to|a)[A-Z0-9(pl)]+", string(x))] for x in Jratelist]);
+
+# It's going to be a huge pain to change all the Jrates to use "a" to mean "plus" instead of "p", 
+# since all the old files use p, and I don't want to take the time to figure out how to batch insert
+# characters into submatrices of HDF5 files, but having that format is useful for making the next dictionary,
+# so here we just make another list of symbols and use that to make the dictionary of photolysis products.
+Jratelist_sub_a_for_p = [Symbol(replace(string(j), r"p(?!l)"=>"a", "JH2O2to2OH"=>"JH2O2toOHaOH")) for j in Jratelist]
+const photolysis_products = Dict([x=>[Symbol(m.match) for m in eachmatch(r"(?<=to|a)[A-Z0-9(pl)]+", string(y))] for (x,y) in zip(Jratelist, Jratelist_sub_a_for_p)]);
 
 # **************************************************************************** #
 #                                                                              #
@@ -223,7 +229,7 @@ const photolysis_products = Dict([x=>[Symbol(m.match) for m in eachmatch(r"(?<=t
 # List of D bearing species and their H analogue ions.
 const D_H_analogues = Dict(:ArDpl=>:ArHpl, :Dpl=>:Hpl, :DCOpl=>:HCOpl, :HDpl=>:H2pl, :HD2pl=>:H3pl, :H2Dpl=>:H3pl, :N2Dpl=>:N2Hpl,
                            :DCO2pl=>:HCO2pl, :DOCpl=>:HOCpl, :H2DOpl=>:H3Opl, :HDOpl=>:H2Opl, :ODpl=>:OHpl)  
-const D_bearing_species = [s for s in setdiff(union(neutral_species, ion_species), [:O1D]) if occursin('D', string(s))];
+const D_bearing_species = [s for s in setdiff(union(neutral_species, ion_species), [:O1D, :Nup2D]) if occursin('D', string(s))];
 const D_ions = [s for s in ion_species if occursin('D', string(s))];
 const N_neutrals = [s for s in neutral_species if occursin('N', string(s))];
 
@@ -239,6 +245,8 @@ if assume_photochem_eq
     append!(short_lived_species, [:NO2, :CN, :HNO, :NH, :NH2, :C, :CH])
     append!(short_lived_species, ion_species)
 end
+
+println(short_lived_species)
 
 # Long lived species ------------------------------------------------------------
 const long_lived_species = setdiff(all_species, short_lived_species)

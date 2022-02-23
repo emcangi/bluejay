@@ -116,7 +116,7 @@ const reaction_network = [   #Photodissociation
              [[:OH, :HD], [:HDO, :H], :(5.0e-12 .* exp.(-2130 ./ Tn))], # Yung88: rate (3/20) .* H-ana. Sander2011: 5e-12 .* exp.(-2130 ./ Tn)
              [[:OH, :HD], [:H2O, :D], :((3 ./ 20.) .* 2.8e-12 .* exp.(-1800 ./ Tn))], # see prev line
              [[:OD, :H2], [:HDO, :H], :(2.8e-12 .* exp.(-1800 ./ Tn))], # Yung88: rate same as H-ana (assumed)
-             [[:OD, :H2], [:H2O, :D], :(0)], # Yung88 (assumed)
+             # [[:OD, :H2], [:H2O, :D], :(0)], # Yung88 (assumed)
 
              # recombination of H. Use EITHER the first line OR the 2nd.
              #[[:H, :H, :CO2], [:H2, :CO2],:(1.6e-32 .* (298 ./ Tn) .^ 2.27)],
@@ -151,8 +151,8 @@ const reaction_network = [   #Photodissociation
              [[:H, :HDO2], [:H2O, :OD], :(0.5 .* 1.16e-11 .* exp.(-2110 ./ Tn))], # see previous line
              [[:D, :H2O2], [:HDO, :OH], :(0.5 .* 1.16e-11 .* exp.(-2110 ./ Tn))], # see previous line
              [[:D, :H2O2], [:H2O, :OD], :(0.5 .* 1.16e-11 .* exp.(-2110 ./ Tn))], # see previous line
-             [[:D, :HDO2], [:OD, :HDO], :(0.5 .* 1.16e-11 .* exp.(-2110 ./ Tn))], # TODO: Mass scaling for doubly deuterated? I previously added this and assumed rate.
-             [[:D, :HDO2], [:OH, :D2O], :(0.5 .* 1.16e-11 .* exp.(-2110 ./ Tn))], # see previous line
+             # [[:D, :HDO2], [:OD, :HDO], :(0.5 .* 1.16e-11 .* exp.(-2110 ./ Tn))], # TODO: Mass scaling for doubly deuterated? I previously added this and assumed rate.
+             # [[:D, :HDO2], [:OH, :D2O], :(0.5 .* 1.16e-11 .* exp.(-2110 ./ Tn))], # see previous line
 
              # Interconversion of odd H
              ## H + O2
@@ -189,7 +189,7 @@ const reaction_network = [   #Photodissociation
              ## OH + H2O2
              [[:OH, :H2O2], [:H2O, :HO2], :(2.9e-12 .* exp.(-160 ./ Tn))], # NIST+KIDA 4/3/18, valid 240-460K. Yung89: 3.3e-12 .* exp.(-200/Tn). Sander2011 recommends an average value of 1.8e-12, but this seems too high for martian temps
              [[:OD, :H2O2], [:HDO, :HO2], :(((18 ./ 17) .^ -0.5) .* 2.9e-12 .* exp.(-160 ./ Tn))], # Yung88: same as H-ana (assumed)
-             [[:OD, :H2O2], [:H2O, :DO2], :(0)],  # Yung88 (assumed)
+             # [[:OD, :H2O2], [:H2O, :DO2], :(0)],  # Yung88 (assumed)
              [[:OH, :HDO2], [:HDO, :HO2], :(0.5 .* ((35 ./ 34) .^ -0.5) .* 2.9e-12 .* exp.(-160 ./ Tn))], # Yung88: rate 0.5 .* H-ana.
              [[:OH, :HDO2], [:H2O, :DO2], :(0.5 .* ((35 ./ 34) .^ -0.5) .* 2.9e-12 .* exp.(-160 ./ Tn))], # Yung88: rate 0.5 .* H-ana.
              ## HO2 + O3
@@ -216,7 +216,7 @@ const reaction_network = [   #Photodissociation
 
              # CO2+ attack on molecular hydrogen
              [[:CO2pl, :H2], [:CO2, :H, :H], :(8.7e-10)], # from Kras 2010 ./ Scott 1997
-             [[:CO2pl, :HD], [:CO2pl, :H, :D], :((2/5) .* 8.7e-10)],
+             [[:CO2pl, :HD], [:CO2, :H, :D], :((2/5) .* 8.7e-10)],
 
              # NEW .- Neutral reactions from Roger Yelle
              # Type 1
@@ -233,7 +233,7 @@ const reaction_network = [   #Photodissociation
              [[:CH, :H2], [:CH3], :((2.92e-16 .* Tn .^ -0.71) .* exp.(-11.6 ./ Tn))],  # KIDA: :(3.25e-17 .* (Tn ./ 300) .^ -0.6)
              [[:CH, :N], [:CN, :H], :(2.77e-10 .* Tn .^ -0.09)], # KIDA: :(1.4e-10 .8 (Tn ./ 300) .^ 0.41)
              [[:CH, :O], [:CO, :H], :(6.60e-11)], # KIDA: 7e-11
-             [[:CH, :O], [:HCOpl], :(4.20e-13 .* exp.(-850.0 ./ Tn))], # KIDA: :(2e-11 .* (Tn ./ 300) .^ 0.44)
+             [[:CH, :O], [:HCOpl, :E], :(4.20e-13 .* exp.(-850.0 ./ Tn))], # KIDA: :(2e-11 .* (Tn ./ 300) .^ 0.44)
              [[:CH, :O], [:OH, :C], :(2.52e-11 .* exp.(-2381.0 ./ Tn))],  # KIDA agrees
              [[:CN, :H2], [:HCN, :H], :((1.80e-19 .* Tn .^ 2.6) .* exp.(-960.0 ./ Tn))],  # KIDA: :(4.96e-13 .* ((Tn ./ 300) .^ 2.6) .* exp.(-960  ./ Tn) )
              [[:CN, :N], [:N2, :C], :(9.80e-10 .* Tn .^ -0.4)],  # KIDA: :(8.8e-11 .* (Tn ./ 300) .^ 0.42)
@@ -1260,8 +1260,7 @@ const reaction_network = [   #Photodissociation
              [[:NH3pl, :E], [:NH2, :H], :(2.68e-6 .* (Te .^ -0.5))],
              [[:NHpl, :E], [:N, :H], :(7.45e-7 .* (Te .^ -0.5))],
              [[:NO2pl, :E], [:NO, :O], :(5.2e-6 .* (Te .^ -0.5))],
-             # [[:NOpl, :E], [:O, :N], :(6.93e-6 .* (Te .^ -0.5))], # NEW rate from Fox+ 2015 ("Chemistry of protonated..."). Really, 95% BR to N(2D) and 5% to else. Roger's rate rom a '90 and '77 pub: 8.52e-7 .* (Te .^ -0.37)
-             
+
              [[:NOpl, :E], [:O, :Nup2D], :(0.95 .* 6.928e-6 .* Te .^ -0.5)], # Fox2015 (Vejby-Christensen+1998, Hellberg+2003)
              [[:NOpl, :E], [:O, :N], :(0.05 .* 6.928e-6 .* Te .^ -0.5)], # Fox2015 (Vejby-Christensen+1998, Hellberg+2003)
 

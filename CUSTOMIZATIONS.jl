@@ -20,13 +20,9 @@ const xsecfolder = code_dir*"uvxsect/";
 
 # Float types for calculations =================================================
 # needed by both Photochemistry.jl and converge_new_file so it has to go here
-# if problem_type == "Gear"
-ftype_ncur = Double64 # used to store n_current values
-ftype_chem = Double64 # used to compute chemical reaction rates and chemical jacobian
-# else
-#     ftype_ncur = Float64 # used to store n_current values
-#     ftype_chem = Float64 # used to compute chemical reaction rates and chemical jacobian
-# end
+ftype_ncur = Double64 #Float64 #  used to store n_current values
+ftype_chem = Double64 #Float64 #  used to compute chemical reaction rates and chemical jacobian
+
 
 # Altitude grid specifications =================================================
 const max_alt = 250e5
