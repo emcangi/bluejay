@@ -26,7 +26,8 @@ const DH = 5.5 * 1.6e-4         # SMOW value, Yung 1988
 # Values are given in cm^3
 const polarizability = Dict(# Values available from experiment
                             :Ar=>1.664e-24, :C=>1.760e-24,  :CO=>1.953e-24,  :CO2=>2.507e-24, 
-                            :H=>0.667e-24,  :H2=>0.787e-24, :H2O=>1.501e-24, :HCN=>2.593e-24, :HD=>0.791e-24, 
+                            :H=>0.667e-24,  :H2=>0.8023e-24, # H2 source: Yoon 2010 <-- Kusakabe+ 2004, Phys. Rev. A
+                            :H2O=>1.501e-24, :HCN=>2.593e-24, :HD=>0.7976e-24, # HD source: Yoon 2010 <-- Kusakabe+ 2004, Phys. Rev. A
                             :N=>1.1e-24,    :N2=>1.710e-24, :N2O=>2.998e-24, :NO=>1.698e-24, :NO2=>2.910e-24, 
                             :O=>0.802e-24,  :O2=>1.59e-24,  :O3=>3.079e-24, 
 
