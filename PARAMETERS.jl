@@ -25,21 +25,24 @@
 # Basic simulation parameters
 const simtype = "temp"
 const controltemps = [216., 130., 205.]
-const tag = "add_N(2D)" # Optional extra bit for the filename to help indicate what it is
-const global problem_type = "Gear" # "ODE" #"SS" #  
+const tag = "test_kwargs"#"dnde_fix_vargoodfactor" # Optional extra bit for the filename to help indicate what it is
+const global problem_type = "Gear" #"ODE" #"SS" #   
 const converge_which = "both"
-const optional_logging_note = "This run is to add N(2D) into the atmosphere"
+const optional_logging_note = "testing kwarg use"#"Test full atm after adding differentiation wrt E, M."
+const ediff = true 
+const mdiff = true 
+const ions_included = true
 
 # Check that float type is properly set
-if problem_type == "Gear" && (ftype_ncur == Float64 || ftype_chem == Float64)
-    throw("If problem_type = 'Gear' in PARAMETERS, both ftype_ncur and ftype_chem must = Double64 in CUSTOMIZATIONS.jl")
-elseif problem_type != "Gear" && (ftype_ncur == Double64 || ftype_chem == Double64)
-    println("problem_type != Gear but using Double64 in CUSTOMIZATIONS.jl")
-end
+# if problem_type == "Gear" && (ftype_ncur == Float64 || ftype_chem == Float64)
+#     throw("If problem_type = 'Gear' in PARAMETERS, both ftype_ncur and ftype_chem must = Double64 in CUSTOMIZATIONS.jl")
+# elseif problem_type != "Gear" && (ftype_ncur == Double64 || ftype_chem == Double64)
+#     println("problem_type != Gear but using Double64 in CUSTOMIZATIONS.jl")
+# end
 
 # Folders and files 
 const sim_folder_name = "$(simtype)_$(Int64(controltemps[1]))_$(Int64(controltemps[2]))_$(Int64(controltemps[3]))_$(problem_type)_$(tag)"
-const initial_atm_file = "converged_full_atmosphere.h5"#"converged_gear_20211231.h5"#
+const initial_atm_file = "converged_full_atmosphere_Gear.h5" #"converged_gear_20211231.h5"#
 # const initial_atm_file = results_dir*"temp_216_130_205_SS_Newest/final_atmosphere.h5"
 const final_atm_file = "final_atmosphere.h5"
 const reaction_network_spreadsheet = code_dir*"REACTION_NETWORK.xlsx"
@@ -132,10 +135,10 @@ const speciesbclist=Dict(
                         :H2O=>["n" H2Osat[1]; "f" 0.], # bc doesnt matter if H2O fixed
                         :HDO=>["n" HDOsat[1]; "f" 0.],
                         :O=>["f" 0.; "f" 1.2e8],
-                        :H2=>["f" 0.; "v" effusion_velocity(T_top, 2.0, zmax)],  # velocities are in cm/s
-                        :HD=>["f" 0.; "v" effusion_velocity(T_top, 3.0, zmax)],
-                        :H=>["f" 0.; "v" effusion_velocity(T_top, 1.0, zmax)],
-                        :D=>["f" 0.; "v" effusion_velocity(T_top, 2.0, zmax)],
+                        :H2=>["f" 0.; "v" effusion_velocity(T_top, 2.0; zmax)],  # velocities are in cm/s
+                        :HD=>["f" 0.; "v" effusion_velocity(T_top, 3.0; zmax)],
+                        :H=>["f" 0.; "v" effusion_velocity(T_top, 1.0; zmax)],
+                        :D=>["f" 0.; "v" effusion_velocity(T_top, 2.0; zmax)],
                        );
 
 # **************************************************************************** #
@@ -176,6 +179,11 @@ const all_species = [];
 append!(all_species, neutral_species)
 append!(all_species, ion_species)
 
+# Sort name lists created here -------------------------------------------------
+sort!(all_species)
+sort!(neutral_species)
+sort!(ion_species)
+
 # Photolysis and Photoionization rate symbol lists ----------------------------
 
 const conv_Jrates = [# Original neutral photodissociation
@@ -214,10 +222,9 @@ append!(Jratelist, newJrates)
 # These dictionaries specify the species absorbing a photon for each J rate, and the products of the reaction.
 const absorber = Dict([x=>Symbol(match(r"(?<=J).+(?=to)", string(x)).match) for x in Jratelist])
 
-# It's going to be a huge pain to change all the Jrates to use "a" to mean "plus" instead of "p", 
-# since all the old files use p, and I don't want to take the time to figure out how to batch insert
-# characters into submatrices of HDF5 files, but having that format is useful for making the next dictionary,
-# so here we just make another list of symbols and use that to make the dictionary of photolysis products.
+# To make a dictionary of photolysis products based on the rates, it's easiest to apply regular expressions if 
+# we replace all the "p" meaning "plus" with "a", because "p" also appears in "pl" which is part of the spcies name.
+# Anyway, her's a dict of photolysis products. 
 Jratelist_sub_a_for_p = [Symbol(replace(string(j), r"p(?!l)"=>"a", "JH2O2to2OH"=>"JH2O2toOHaOH")) for j in Jratelist]
 const photolysis_products = Dict([x=>[Symbol(m.match) for m in eachmatch(r"(?<=to|a)[A-Z0-9(pl)]+", string(y))] for (x,y) in zip(Jratelist, Jratelist_sub_a_for_p)]);
 
@@ -233,6 +240,11 @@ const D_bearing_species = [s for s in setdiff(union(neutral_species, ion_species
 const D_ions = [s for s in ion_species if occursin('D', string(s))];
 const N_neutrals = [s for s in neutral_species if occursin('N', string(s))];
 
+# Sort name lists created here -------------------------------------------------
+sort!(D_bearing_species)
+sort!(D_ions)
+sort!(N_neutrals)
+
 # **************************************************************************** #
 #                                                                              #
 #                    Define short- and long-lived species                      #
@@ -246,10 +258,12 @@ if assume_photochem_eq
     append!(short_lived_species, ion_species)
 end
 
-println(short_lived_species)
-
 # Long lived species ------------------------------------------------------------
 const long_lived_species = setdiff(all_species, short_lived_species)
+
+# Sort name lists created here -------------------------------------------------
+sort!(short_lived_species)
+sort!(long_lived_species)
 
 # **************************************************************************** #
 #                                                                              #
@@ -281,6 +295,15 @@ const inactive_species = intersect(no_chem_species, no_transport_species)
 const active_longlived = intersect(active_species, long_lived_species)
 const active_shortlived = intersect(active_species, short_lived_species)
 
+# Sort name lists created here -------------------------------------------------
+sort!(active_species)
+sort!(inactive_species)
+sort!(active_longlived)
+sort!(active_shortlived)
+sort!(chem_species)
+sort!(transport_species)
+sort!(no_chem_species)
+sort!(no_transport_species)
 
 # **************************************************************************** #
 #                                                                              #
@@ -293,7 +316,7 @@ const active_shortlived = intersect(active_species, short_lived_species)
 const speciesstyle = Dict(vcat([s=>"--" for s in setdiff(D_bearing_species, [:HD2pl])], [:HD2pl=>":", :Nup2D=>"-."]) )
 
 # Species-specific scale heights - has to be done here instead of in the param file
-const Hs_dict = Dict{Symbol, Vector{Float64}}([sp=>scaleH(alt, sp, Tprof_for_Hs[charge_type(sp)], molmass) for sp in all_species])
+const Hs_dict = Dict{Symbol, Vector{Float64}}([sp=>scaleH(alt, sp, Tprof_for_Hs[charge_type(sp)]; mm=molmass) for sp in all_species])
 
 # To allow water to be active in the upper atmosphere but not the lower atmosphere, we need 
 # its position with the active species vector 

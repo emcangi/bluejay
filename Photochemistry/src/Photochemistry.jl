@@ -16,15 +16,15 @@ using XLSX
 
 
 export # Basic utility functions
-       charge_type, create_folder, deletefirst, find_nonfinites, fluxsymbol, format_chemistry_string, format_sec_or_min, getpos, input, logrange, nans_present, 
-       next_in_loop, searchdir, searchsortednearest, search_subfolders, subtract_difflength,
+       charge_type, create_folder, deletefirst, find_nonfinites, fluxsymbol, format_chemistry_string, format_sec_or_min, getpos, input, get_paramfile, 
+       logrange, nans_present, next_in_loop, searchdir, searchsortednearest, search_subfolders, subtract_difflength, write_to_log,
+       # Atmospheric basic functions
+       atm_dict_to_matrix, atm_matrix_to_dict, column_density, column_density_above, find_exobase, flatten_atm, get_ncurrent, ncur_with_boundary_layers, n_tot, 
+       precip_microns, setup_water_profile!, unflatten_atm, write_atmosphere,
        # Plotting functions
        get_colors, get_grad_colors, plot_atm, plot_bg, plot_extinction, plot_Jrates, plot_rxns, plot_temp_prof, plot_water_profile,                 
        # Reaction rate functions
-       eval_rate_coef, get_column_rates, get_volume_rates, reactant_density_product, 
-       # Atmosphere array manipulation                                                       
-       atm_dict_to_matrix, atm_matrix_to_dict, column_density, column_density_above, find_exobase, flatten_atm, get_ncurrent, ncur_with_boundary_layers, n_tot, 
-       precip_microns, unflatten_atm, write_atmosphere,
+       eval_rate_coef, get_column_rates, get_volume_rates, reactant_density_product,                                                    
        # Boundary condition functions                                                   
        boundaryconditions, effusion_velocity,
        # transport functions                                                                           
@@ -156,6 +156,27 @@ function get_Jrate_symb(molecs::Array, Jrates::Array)
             break
         end      
     end
+end
+
+function get_paramfile(working_dir)
+    #=
+    Helper function to let the user select a parameter file form working_dir. 
+    =#
+    available_paramfiles = filter(x->(occursin(".jl", x) & occursin("PARAMETERS", x)), readdir(working_dir))
+
+    println("Available parameter files: ")
+    [println("[$(i)] $(available_paramfiles[i])") for i in 1:length(available_paramfiles)]
+
+    if length(available_paramfiles) == 1
+        paramfile = available_paramfiles[1]
+        println("Using the only file available, $(paramfile)")
+    else 
+        paramfile_selection = input("Select a parameter file or enter filename with extension: ")
+        paramfile = available_paramfiles[parse(Int64, paramfile_selection)]
+        println("Using parameter file $(paramfile).")
+    end
+
+    return paramfile
 end
 
 function getpos(array, test::Function, n=Any[])
@@ -298,6 +319,28 @@ function subtract_difflength(a::Array, b::Array)
     return sum(a[1:shared_size] .- b[1:shared_size]) + extra_a - extra_b
 end
 
+function write_to_log(full_path::String, entries; mode="a")
+    #=
+    full_path: full path to log file (folder structure and filename, with extension)
+    entries: List of strings to write to the log file.
+    mode: w or a for write or append.
+    =#
+
+    f = open(full_path, mode) 
+    if isa(entries, Array)
+        for e in entries 
+            write(f, string(e)*"\n")
+        end
+    elseif isa(entries, String)
+        write(f, entries*"\n")
+    else
+        throw("Wrong format for logging: $(typeof(entries))")
+    end
+
+    close(f)
+end
+
+
 # **************************************************************************** #
 #                                                                              #
 #                        Atmosphere - basic functions                          #
@@ -362,7 +405,7 @@ function column_density_above(n_tot_by_alt::Vector)
     return col_above
 end
 
-function find_exobase(s::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, nbl::Vector, neutral_temps::Vector, molmass::Dict{Symbol, Int64}, allsp::Vector, alts::Vector; returntype="index")
+function find_exobase(s::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}; returntype="index", globvars...)
     #=
     Finds the exobase altitude, where mean free path is equal to a scale height.
 
@@ -370,24 +413,35 @@ function find_exobase(s::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, nbl:
         s: species 
         atmdict: Atmospheric state dictionary
         returntype: whether to return the "altitude" in km or the "index" in the n_alt_index dictionary. 
+    Output:
+        Altitude of exobase in cm
     =#
 
-    H_s = scaleH(nbl, s, neutral_temps, molmass)
-    mfp_s = 1 ./ (collision_xsect[s] .* n_tot(atmdict, allsp))
+    GV = values(globvars)
+    @assert all(x->x in keys(GV),  [:nbl, :all_species, :Tn, :molmass, :alt, :xsects])
 
-    for i in 50:length(nbl) # extremely unlikely the exobase will ever be at 100 km in alt lol
+    H_s = scaleH(GV.nbl, s, GV.Tn; globvars...)# GV.molmass)
+    try
+        mfp_s = 1 ./ (GV.xsects[s] .* n_tot(atmdict; GV.all_species, GV.n_alt_index))
+    catch KeyError
+        throw("You need to implement handling for collisional cross section of species heavier than D")
+    end
+
+    for i in 50:length(GV.nbl) # extremely unlikely the exobase will ever be at 100 km (i=50) in alt lol
         if mfp_s[i] < H_s[i]
             continue
         else
             # println("Exobase found for species $(s) at altitude $(alts[i]/1e5) km")
-            returnme = Dict("altitude"=>alts[i], "index"=>n_alt_index[alts[i]])
+            returnme = Dict("altitude"=>GV.alt[i], "index"=>n_alt_index[GV.alt[i]])
             return returnme[returntype]
             break
         end
+
     end
+    throw("Didn't find an exobase so the whole atmosphere is collisional I guess, this should probably be addressed")
 end
 
-function flatten_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, species_list, numlyrs::Int64) # params to pass
+function flatten_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, species_list; globvars...) 
     #=
     Input:
         atmdict: atmospheric densities by altitude
@@ -398,7 +452,10 @@ function flatten_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, species_list, nu
     This function is the reverse of unflatten_atm. 
     =#
 
-    return deepcopy(ftype_ncur[[atmdict[sp][ialt] for sp in species_list, ialt in 1:numlyrs]...])
+    GV = values(globvars)
+    @assert all(x->x in keys(GV),  [:num_layers])
+
+    return deepcopy(ftype_ncur[[atmdict[sp][ialt] for sp in species_list, ialt in 1:GV.num_layers]...])
 end
 
 function get_ncurrent(readfile::String)
@@ -426,7 +483,7 @@ function get_ncurrent(readfile::String)
     return n_current
 end
 
-function meanmass(atmdict::Dict{Symbol, Vector{ftype_ncur}}, z, allsp)   # params to pass
+function meanmass(atmdict::Dict{Symbol, Vector{ftype_ncur}}, z; globvars...)
     #= 
     find the mean molecular mass at a given altitude z
 
@@ -435,13 +492,16 @@ function meanmass(atmdict::Dict{Symbol, Vector{ftype_ncur}}, z, allsp)   # param
 
     return: mean molecular mass in amu
     =#
-    thisaltindex = n_alt_index[z]
-    c = [atmdict[sp][thisaltindex] for sp in allsp]
-    m = [molmass[sp] for sp in allsp]
+    GV = values(globvars)
+    @assert all(x->x in keys(GV),  [:all_species, :molmass, :n_alt_index])
+
+    thisaltindex = GV.n_alt_index[z]
+    c = [atmdict[sp][thisaltindex] for sp in GV.all_species]
+    m = [GV.molmass[sp] for sp in GV.all_species]
     return sum(c.*m)/sum(c)
 end
 
-function meanmass(atmdict::Dict{Symbol, Vector{ftype_ncur}}, allsp, mmass::Dict{Symbol, Int64}) # params to pass
+function meanmass(atmdict::Dict{Symbol, Vector{ftype_ncur}}; globvars...)
     #= 
     Override for vector form. Calculates mean molecular mass at all atmospheric layers.
 
@@ -449,21 +509,24 @@ function meanmass(atmdict::Dict{Symbol, Vector{ftype_ncur}}, allsp, mmass::Dict{
     returns: mean molecular mass in amu for all atmospheric layers.
     =#
 
+    GV = values(globvars)
+    @assert all(x->x in keys(GV),  [:all_species, :molmass, :n_alt_index])
+
     # Gets the atmosphere as a matrix with rows = altitudes and cols = species
     # so we can do matrix multiplication.
-    n_mat = transpose(atm_dict_to_matrix(atmdict, allsp))
+    n_mat = transpose(atm_dict_to_matrix(atmdict, GV.all_species))
 
-    m = [mmass[sp] for sp in allsp] # this will always be 1D
+    m = [GV.molmass[sp] for sp in GV.all_species] # this will always be 1D
 
     weighted_mm = zeros(size(n_mat)[1]) # This will store the result
 
     # Multiply densities of each species by appropriate molecular mass 
     mul!(weighted_mm, n_mat, m)
 
-    return weighted_mm ./ n_tot(atmdict, allsp)
+    return weighted_mm ./ n_tot(atmdict; GV.all_species, GV.n_alt_index)
 end
 
-function ncur_with_boundary_layers(atmdict_no_bdys::Dict{Symbol, Vector{ftype_ncur}}, allsp) # params to pass
+function ncur_with_boundary_layers(atmdict_no_bdys::Dict{Symbol, Vector{ftype_ncur}}; globvars...)
     #=
     Here's a weird one. The atmospheric density matrix stores values for each
     species (column of the matrix) at each altitude (row of the matrix) of the atmosphere. 
@@ -484,20 +547,22 @@ function ncur_with_boundary_layers(atmdict_no_bdys::Dict{Symbol, Vector{ftype_nc
     atmdict_no_bdys: This is the atmospheric state DICTIONARY without the boundary layers,
                        i.e. only num_layers rows.
     =#
-    
+    GV = values(globvars)
+    @assert all(x->x in keys(GV),  [:n_alt_index, :all_species])
+
     # This gets a sorted list of the clamped indices, so it's [1, 1, 2, 3...end-1, end, end].
-    clamped_n_alt_index = sort(collect(values(n_alt_index)))
+    clamped_n_alt_index = sort(collect(values(GV.n_alt_index)))
     
     atmdict_with_bdy_layers = Dict{Symbol, Vector{ftype_ncur}}()
     
     # Fill the dictionary with the profile. This duplicates the lowest and highest altitude values.
-    for i in 1:length(allsp)
-        atmdict_with_bdy_layers[allsp[i]] = atmdict_no_bdys[allsp[i]][clamped_n_alt_index]
+    for i in 1:length(GV.all_species)
+        atmdict_with_bdy_layers[GV.all_species[i]] = atmdict_no_bdys[GV.all_species[i]][clamped_n_alt_index]
     end
     return atmdict_with_bdy_layers
 end
 
-function n_tot(atmdict::Dict{Symbol, Vector{ftype_ncur}}, z, allsp) # params to pass
+function n_tot(atmdict::Dict{Symbol, Vector{ftype_ncur}}, z; globvars...)
     #= 
     Calculates total atmospheric density at altitude z.
 
@@ -507,34 +572,37 @@ function n_tot(atmdict::Dict{Symbol, Vector{ftype_ncur}}, z, allsp) # params to 
     Output: 
         Density of the atmosphere at altitude z
     =#
-    thisaltindex = n_alt_index[z]
-    return sum( [atmdict[s][thisaltindex] for s in allsp] )
+    GV = values(globvars)
+    @assert all(x->x in keys(GV), [:n_alt_index, :all_species])
+
+    thisaltindex = GV.n_alt_index[z]
+    return sum( [atmdict[s][thisaltindex] for s in GV.all_species] )
 end
 
-function n_tot(atmdict::Dict{Symbol, Vector{ftype_ncur}}, allsp) # params to pass
+function n_tot(atmdict::Dict{Symbol, Vector{ftype_ncur}}; globvars...)
     #= 
     Override to calculate total atmospheric density at all altitudes.
 
     Input: 
         atmdict: dictionary of atmospheric density profiles by altitude
-        z: altitude, in cm
     Output: 
-        Density of the atmosphere at altitude z
+        Density of the atmosphere at all non-boundary layer altitudes.
 
-    This function is agnostic as to the size of the altitude grid--
-    it collects it directly from atmdict.
+    This function is agnostic as to the number of atmospheric layers. it collects it directly from atmdict.
     =#
+    GV = values(globvars)
+    @assert all(x->x in keys(GV),  [:all_species])
 
-    ndensities = zeros(length(allsp), length(atmdict[collect(keys(atmdict))[1]]))
-    for i in 1:length(allsp)
-        ndensities[i, :] = atmdict[allsp[i]]
+    ndensities = zeros(length(GV.all_species), length(atmdict[collect(keys(atmdict))[1]]))
+    for i in 1:length(GV.all_species)
+        ndensities[i, :] = atmdict[GV.all_species[i]]
     end
 
     # returns the sum over all species at each altitude as a vector.
     return vec(sum(ndensities, dims=1)) 
 end
 
-function precip_microns(sp, sp_profile, allsp, dz, alts, mmass::Dict{Symbol, Int64})
+function precip_microns(sp, sp_profile; globvars...)
     #=
     Calculates precipitable microns of a species in the atmosphere.
     I guess you could use this for anything but it's probably only correct for H2O and HDO.
@@ -546,15 +614,63 @@ function precip_microns(sp, sp_profile, allsp, dz, alts, mmass::Dict{Symbol, Int
     Outputs:
         Total precipitable micrometers of species sp
     =#
+    GV = values(globvars)
+    @assert all(x->x in keys(GV),  [:molmass])
+
     col_abundance = column_density(sp_profile)
-    cc_per_g = mmass[sp] / mmass[:H2O] # Water is 1 g/cm^3. Scale appropriately.
+    cc_per_g = GV.molmass[sp] / GV.molmass[:H2O] # Water is 1 g/cm^3. Scale appropriately.
 
     #pr μm = (#/cm²) * (1 mol/molecules) * (g/1 mol) * (1 cm^3/g) * (10^4 μm/cm)
-    pr_microns = col_abundance * (1/6.02e23) * (mmass[sp]/1) * (cc_per_g / 1) * (1e4/1)
+    pr_microns = col_abundance * (1/6.02e23) * (GV.molmass[sp]/1) * (cc_per_g / 1) * (1e4/1)
     return pr_microns
 end
 
-function unflatten_atm(n_vec, species_list, numlyrs) # params to pass
+function setup_water_profile!(atmdict; dust_storm_on=false, globvars...)
+    #=
+    Sets up the water profile as a fraction of the initial atmosphere. 
+    Input:
+        atmdict: dictionary of atmospheric density profiles by altitude
+    Output: 
+        atmdict: Modified in place with the new water profile. 
+    =#
+
+    GV = values(globvars)
+    @assert all(x->x in keys(GV), [:all_species, :num_layers, :DH, :alt, :plot_grid, :n_alt_index,
+                                   :hygropause_alt, :H2O_excess, :HDO_excess, :ealt, :non_bdy_layers, :H2Osat, :water_mixing_ratio,
+                                   :results_dir, :sim_folder_name])
+
+    # H2O Water Profile ================================================================================================================
+    H2Osatfrac = GV.H2Osat ./ map(z->n_tot(atmdict, z; GV.all_species, GV.n_alt_index), GV.alt)  # get SVP as fraction of total atmo
+    # set H2O SVP fraction to minimum for all alts above first time min is reached
+    H2Oinitfrac = H2Osatfrac[1:something(findfirst(isequal(minimum(H2Osatfrac)), H2Osatfrac), 0)]
+    H2Oinitfrac = [H2Oinitfrac;   # ensures no supersaturation
+                   fill(minimum(H2Osatfrac), GV.num_layers-length(H2Oinitfrac))]
+
+    # Set lower atmospheric water to be well-mixed (constant with altitude) below the hygropause
+    H2Oinitfrac[findall(x->x<GV.hygropause_alt, GV.alt)] .= GV.water_mixing_ratio
+
+    for i in [1:length(H2Oinitfrac);]
+        H2Oinitfrac[i] = H2Oinitfrac[i] < H2Osatfrac[i+1] ? H2Oinitfrac[i] : H2Osatfrac[i+1]
+    end
+
+    # set the water profiles ===========================================================================================================
+    atmdict[:H2O] = H2Oinitfrac.*n_tot(atmdict; GV.n_alt_index, GV.all_species)
+    atmdict[:HDO] = 2 * GV.DH * atmdict[:H2O] # This should be the correct way to set the HDO profile.
+    HDOinitfrac = atmdict[:HDO] ./ n_tot(atmdict; GV.n_alt_index, GV.all_species)  # Needed to make water plots.
+
+    # Plot the water profile ===========================================================================================================
+    plot_water_profile(H2Oinitfrac, HDOinitfrac, atmdict[:H2O], atmdict[:HDO], GV.results_dir*GV.sim_folder_name, watersat=H2Osatfrac, plot_grid=GV.plot_grid)
+
+    # ADD EXCESS WATER AS FOR DUST STORMS.
+    if dust_storm_on
+        H2Oppm = 1e-6*map(x->GV.H2O_excess .* exp(-((x-GV.ealt)/12.5)^2), GV.non_bdy_layers/1e5) + H2Oinitfrac
+        HDOppm = 1e-6*map(x->GV.HDO_excess .* exp(-((x-GV.ealt)/12.5)^2), GV.non_bdy_layers/1e5) + HDOinitfrac  # 350 ppb at 38 km (peak)
+        atmdict[:H2O] = H2Oppm .* n_tot(atmdict; GV.n_alt_index, GV.all_species)
+        atmdict[:HDO] = HDOppm .* n_tot(atmdict; GV.all_species)
+    end
+end 
+
+function unflatten_atm(n_vec, species_list; globvars...)
     #=
     Input:
         n_vec: flattened density vector for the species in species_list: [n_sp1(z=0), n_sp2(z=0)...n_sp1(z=250)...n_spN(z=250)] 
@@ -563,12 +679,15 @@ function unflatten_atm(n_vec, species_list, numlyrs) # params to pass
 
     This function is the reverse of flatten_atm.
     =#
-    n_matrix = reshape(n_vec, (length(species_list), numlyrs))
+    GV = values(globvars)
+    @assert all(x->x in keys(GV),  [:num_layers])
+
+    n_matrix = reshape(n_vec, (length(species_list), GV.num_layers))
 
     return atm_matrix_to_dict(n_matrix, species_list)
 end
 
-function write_atmosphere(atmdict::Dict{Symbol, Vector{ftype_ncur}}, filename::String, alts, numlyrs::Int64) # params to pass 
+function write_atmosphere(atmdict::Dict{Symbol, Vector{ftype_ncur}}, filename::String; globvars...) 
     #=
     Writes out the current atmospheric state to an .h5 file
 
@@ -577,17 +696,22 @@ function write_atmosphere(atmdict::Dict{Symbol, Vector{ftype_ncur}}, filename::S
         filename: filename to write to
     Output: none
     =# 
-    atm_mat = Array{Float64}(undef, numlyrs, length(collect(keys(atmdict))));
-    for ispecies in [1:length(collect(keys(atmdict)));]
-        for ialt in [1:numlyrs;]
-            atm_mat[ialt, ispecies] = convert(Float64, atmdict[collect(keys(atmdict))[ispecies]][ialt])
+    GV = values(globvars)
+    @assert all(x->x in keys(GV),  [:alt, :num_layers])
+
+    sorted_keys = sort(collect(keys(atmdict)))
+    atm_mat = Array{Float64}(undef, GV.num_layers, length(sorted_keys));
+
+    for ispecies in [1:length(sorted_keys);]
+        for ialt in [1:GV.num_layers;]
+            atm_mat[ialt, ispecies] = convert(Float64, atmdict[sorted_keys[ispecies]][ialt])
         end
     end
     delete_old_h5file(filename)
     h5open(filename, "w") do f # this syntax is ok because we never write multiple times to a file.
         write(f, "n_current/n_current_mat", atm_mat)
-        write(f, "n_current/alt", alts)
-        write(f, "n_current/species", map(string, collect(keys(atmdict))))
+        write(f, "n_current/alt", GV.alt)
+        write(f, "n_current/species", map(string, sorted_keys))
     end
 end
 
@@ -647,9 +771,7 @@ function get_grad_colors(L::Int64, cmap; strt=0, stp=1)
     return c
 end
 
-function plot_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, species_lists::Vector{Vector{Any}}, savepath::String, # params to pass
-                  plotalts, scolor::Dict{Symbol, String}, sstyle::Dict{Symbol, String}, zmax, atol; 
-                  t="", showonly=false, xlab="", xlim_1=(1e-12, 1e18), xlim_2=(1e-5, 1e5))
+function plot_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, savepath::String, atol; t="", showonly=false, xlab="", xlim_1=(1e-12, 1e18), xlim_2=(1e-5, 1e5), globvars...)
     #=
     Makes a "spaghetti plot" of the species concentrations by altitude in the
     atmosphere. 
@@ -663,6 +785,9 @@ function plot_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, species_lists::Vect
     xlim_1: override for x axis limits in column 1 or entire plot of length(species_lists)==1
     xlim_2: override for x axis limits in column 2
     =#
+
+    GV = values(globvars)
+    @assert all(x->x in keys(GV),  [:neutral_species, :plot_grid, :speciescolor, :speciesstyle, :zmax])
 
     rcParams = PyDict(matplotlib."rcParams")
     rcParams["font.sans-serif"] = ["Louis George Caf?"]
@@ -716,7 +841,7 @@ function plot_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, species_lists::Vect
     end
 
     # Plot neutrals and ions together =========================================================
-    if length(species_lists)==2  # neutrals and ions 
+    if haskey(GV, :ion_species)#length(species_lists)==2  # neutrals and ions 
         
         # set up the overall plot -------------------------------------------------------------
         atm_fig, atm_ax = subplots(3, 2, sharex=false, sharey=true, figsize=(14, 16))
@@ -728,7 +853,7 @@ function plot_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, species_lists::Vect
         for i in 1:3
             plot_bg(atm_ax[i, 1])
             atm_ax[i, 1].set_xlim(xlim_1[1], xlim_1[2])
-            atm_ax[i, 1].fill_betweenx(plotalts, xlim_1[1] .* ones(size(plotalts)), x2=atol, alpha=0.1, color=medgray, zorder=10)
+            atm_ax[i, 1].fill_betweenx(GV.plot_grid,#=plotalts,=# xlim_1[1] .* ones(size(GV.plot_grid,)), x2=atol, alpha=0.1, color=medgray, zorder=10)
             atm_ax[i, 1].tick_params(which="both", labeltop=false, top=true, labelbottom=true, bottom=true)
         end
 
@@ -740,7 +865,7 @@ function plot_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, species_lists::Vect
         for i in 1:3
             plot_bg(atm_ax[i, 2])
             atm_ax[i, 2].set_xlim(xlim_2[1], xlim_2[2])
-            atm_ax[i, 2].fill_betweenx(plotalts, xlim_2[1] .* ones(size(plotalts)), x2=atol, alpha=0.1, color=medgray, zorder=10)
+            atm_ax[i, 2].fill_betweenx(GV.plot_grid, xlim_2[1] .* ones(size(GV.plot_grid#=plotalts=#)), x2=atol, alpha=0.1, color=medgray, zorder=10)
             atm_ax[i, 2].tick_params(which="both", labeltop=false, top=true, labelbottom=true, bottom=true)
         end
         atm_ax[3, 2].set_xlabel(x_axis_label)
@@ -751,20 +876,20 @@ function plot_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, species_lists::Vect
         end
         
         # plot the neutrals according to logical groups -------------------------------------------------------
-        for sp in species_lists[1]
-            atm_ax[axes_by_sp[sp], 1].plot(convert(Array{Float64}, atmdict[sp]), plotalts, color=get(scolor, sp, "black"),
-                                           linewidth=2, label=sp, linestyle=get(sstyle, sp, "-"), zorder=10)
+        for sp in GV.neutral_species #species_lists[1]
+            atm_ax[axes_by_sp[sp], 1].plot(convert(Array{Float64}, atmdict[sp]), GV.plot_grid#=plotalts=#, color=get(GV.speciescolor#=scolor=#, sp, "black"),
+                                           linewidth=2, label=sp, linestyle=get(GV.speciesstyle#=sstyle=#, sp, "-"), zorder=10)
         end
         
         # plot the ions according to logical groups ------------------------------------------------------------
-        for sp in species_lists[2]
-            atm_ax[axes_by_sp[sp], 2].plot(convert(Array{Float64}, atmdict[sp]), plotalts, color=get(scolor, sp, "black"),
-                                           linewidth=2, label=sp, linestyle=get(sstyle, sp, "-"), zorder=10)
+        for sp in GV.ion_species #species_lists[2]
+            atm_ax[axes_by_sp[sp], 2].plot(convert(Array{Float64}, atmdict[sp]), GV.plot_grid#=plotalts=#, color=get(GV.speciescolor#=scolor=#, sp, "black"),
+                                           linewidth=2, label=sp, linestyle=get(GV.speciesstyle#=sstyle=#, sp, "-"), zorder=10)
         end
 
         # stuff that applies to all axes
         for a in atm_ax
-            a.set_ylim(0, zmax/1e5)
+            a.set_ylim(0, GV.zmax/1e5)
             a.set_xscale("log")
             handles, labels = a.get_legend_handles_labels()
             if isempty(handles) == false
@@ -773,24 +898,22 @@ function plot_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, species_lists::Vect
         end
 
     # Plot only neutrals - to support the fractionation factor project ==========================================
-    elseif length(species_lists)==1
+    else # ion species is not defined 
         atm_fig, atm_ax = subplots(figsize=(16,6))
         tight_layout()
-        for sp in species_lists[1]
-            atm_ax.plot(convert(Array{Float64}, atmdict[sp]), plotalts, color=get(scolor, sp, "black"),
-                        linewidth=2, label=sp, linestyle=get(sstyle, sp, "-"), zorder=1)
+        for sp in GV.neutral_species #species_lists[1]
+            atm_ax.plot(convert(Array{Float64}, atmdict[sp]), GV.plot_grid#=plotalts=#, color=get(GV.speciescolor, sp, "black"),
+                        linewidth=2, label=sp, linestyle=get(GV.speciesstyle, sp, "-"), zorder=1)
             atm_ax.set_xlim(xlim_1[1], xlim_1[2])
             atm_ax.set_ylabel("Altitude [km]")
             # atm_ax.set_title("Neutrals")
         end
         atm_ax.tick_params(which="both", labeltop=true, top=true)
         plot_bg(atm_ax)
-        atm_ax.set_ylim(0, zmax/1e5)
+        atm_ax.set_ylim(0, GV.zmax/1e5)
         atm_ax.set_xscale("log")
         atm_ax.set_xlabel(x_axis_label)
         atm_ax.legend(bbox_to_anchor=[1.01,1], loc=2, borderaxespad=0, fontsize=16)
-    else
-        throw("unexpected number of species lists to plot")
     end
 
     suptitle(t, y=1.05)
@@ -816,8 +939,7 @@ function plot_bg(axob; bg="#ededed")
     end
 end
 
-function plot_extinction(solabs, path::String, dt, iter::Int64, zmax=zmax; # Not currently called. params to pass
-                         tauonly=false, xsect_info=nothing, solflux=nothing) 
+function plot_extinction(solabs, path::String, dt, iter::Int64; tauonly=false, xsect_info=nothing, solflux=nothing, globvars...)
     #=
     Used to plot the extinction in the atmosphere by wavelength and altitude
 
@@ -832,13 +954,17 @@ function plot_extinction(solabs, path::String, dt, iter::Int64, zmax=zmax; # Not
                 xsect_sp: string representation of a chemical species which is absorbing using xsect
     solflux: solar flux values of shape (1, 2000), optional
     =#
+
+    GV = values(globvars)
+    @assert all(x->x in keys(GV),  [:zmax])
+
     
     fig, ax = subplots()
 
     num_x = length(solabs[1])  # extinction is in an awkward format
     num_y = size(solabs)[1]
     X = 1:num_x  # start with 0 because we are sending it into a python plotting library, not julia 
-    Y = 0:2:(zmax/1e5 - 2)
+    Y = 0:2:(GV.zmax/1e5 - 2)
 
     # Don't mess with this line. It is witchcraft that translates the row vector that is extinction
     # into an actual 2D matrix so that we can do normal math on it. 
@@ -867,7 +993,6 @@ function plot_extinction(solabs, path::String, dt, iter::Int64, zmax=zmax; # Not
         titlestr = L"e^{-\tau}\sigma_{\lambda}"
         if xsect != nothing  # multiply by the crosssection if we want to plot the Jrates
             xsect = transpose(reshape(collect(Iterators.flatten(xsect[:,:])), (num_x,num_y)))
-            # println(maximum(xsect))
             z = z .* xsect
             titlestr = L"e^{-\tau}\sigma_{\lambda}" * " for $(xsect_sp)"
             savestr = "extinction_$(dt)_$(iter)_$(xsect_sp).png"
@@ -875,7 +1000,6 @@ function plot_extinction(solabs, path::String, dt, iter::Int64, zmax=zmax; # Not
 
         if solflux != nothing
             solflux = reshape(solflux, (1, length(solflux)))
-            # println(maximum(solflux))
             z = solflux .* z # solflux is an an array (actually a vector, tbh) of shape (1, 2000);
                              # exp.(-solabs) is an array of shape (124, 2000). This multiplies the solar flux
                              # values by the extinction across the 2000 wavelengths. Unbelievably, this 
@@ -890,7 +1014,7 @@ function plot_extinction(solabs, path::String, dt, iter::Int64, zmax=zmax; # Not
     cbar.set_label(cbarlbl, rotation=270, fontsize=14, labelpad=15)
     xlabel("Wavelength (nm)")
     ylabel("Altitude (km)")
-    yticks(0:50:(zmax/1e5))
+    yticks(0:50:(GV.zmax/1e5))
 
     ax.xaxis.set_major_locator(matplotlib.ticker.MultipleLocator(50))
     ax.xaxis.set_minor_locator(matplotlib.ticker.MultipleLocator(25))
@@ -904,9 +1028,8 @@ function plot_extinction(solabs, path::String, dt, iter::Int64, zmax=zmax; # Not
     close(fig)
 end
 
-function plot_Jrates(sp, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Ti, Te, bcdict::Dict{Symbol, Matrix{Any}}, # Not currently called. params to pass
-                     allsp, ionsp, rxnnet, numlyrs::Int64, plotalts, results_dir::String; 
-                     filenameext="", source2=nothing)
+function plot_Jrates(sp, atmdict::Dict{Symbol, Vector{ftype_ncur}}, results_dir::String; 
+                     filenameext="", source2=nothing, globvars...)                
     #=
     Plots the Jrates for each photodissociation or photoionizaiton reaction. Override for small groups of species.
 
@@ -914,6 +1037,9 @@ function plot_Jrates(sp, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Ti, Te, 
 
     TODO: Needs to be worked on especially get_volume_rates works as expected
     =#
+
+    GV = values(globvars)
+    @assert all(x->x in keys(GV),  [:rxnnet, :plot_grid, :Tn, :Ti, :Te, :all_species, :ion_species, :bcdict, :num_layers, :plot_grid ])
 
     # Plot setup
     rcParams = PyCall.PyDict(matplotlib."rcParams")
@@ -924,16 +1050,15 @@ function plot_Jrates(sp, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Ti, Te, 
     rcParams["xtick.labelsize"] = 16
     rcParams["ytick.labelsize"] = 16
 
-
     # --------------------------------------------------------------------------------
     # make plot
     
-    rxd_prod, prod_rc = get_volume_rates(sp, atmdict, Tn, Ti, Te, allsp, ionsp, rxnnet, numlyrs, which="Jrates")
-    rxd_loss, loss_rc = get_volume_rates(sp, atmdict, Tn, Ti, Te, allsp, ionsp, rxnnet, numlyrs, which="Jrates")
+    rxd_prod, prod_rc = get_volume_rates(sp, atmdict; which="Jrates", globvars...) # Tn, Ti, Te, GV.all_species, GV.ion_species, GV.rxnnet, numlyrs, which="Jrates")
+    rxd_loss, loss_rc = get_volume_rates(sp, atmdict; which="Jrates", globvars...) # Tn, Ti, Te, GV.all_species, GV.ion_species, GV.rxnnet, numlyrs, which="Jrates")
 
     if source2 != nothing
-        rxd_prod2, prod_rc2 = get_volume_rates(sp, atmdict, Tn, Ti, Te, allsp, ionsp, source2, numlyrs, which="Jrates")
-        rxd_loss2, loss_rc2 = get_volume_rates(sp, atmdict, Tn, Ti, Te, allsp, ionsp, source2, numlyrs, which="Jrates")
+        rxd_prod2, prod_rc2 = get_volume_rates(sp, atmdict; which="Jrates", globvars...) # Tn, Ti, Te, GV.all_species, GV.ion_species, source2, numlyrs, which="Jrates")
+        rxd_loss2, loss_rc2 = get_volume_rates(sp, atmdict; which="Jrates", globvars...) # Tn, Ti, Te, GV.all_species, GV.ion_species, source2, numlyrs, which="Jrates")
     end 
 
     fig, ax = subplots(figsize=(8,6))
@@ -951,12 +1076,12 @@ function plot_Jrates(sp, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Ti, Te, 
 
             if source2 != nothing 
                 if !all(x->x<=1e-10, abs.(kv[2] - rxd_prod2[kv[1]]))
-                    ax.semilogx(kv[2] - rxd_prod2[kv[1]], plotalts, linestyle="-", linewidth=1, label=lbl)
+                    ax.semilogx(kv[2] - rxd_prod2[kv[1]], GV.plot_grid, linestyle="-", linewidth=1, label=lbl)
                 else
                     text(0.5, 0.5, "Everything is basically 0, nothing to plot", transform=ax.transAxes)
                 end
             else
-                ax.semilogx(kv[2], plotalts, linestyle="-", linewidth=1, label=lbl)
+                ax.semilogx(kv[2], GV.plot_grid, linestyle="-", linewidth=1, label=lbl)
             end
             
             # set the xlimits
@@ -986,13 +1111,9 @@ function plot_Jrates(sp, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Ti, Te, 
     end
 end
 
-function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Ti, Te, Tp, # params to pass
-                   bcdict::Dict{Symbol, Matrix{Any}}, rxnnet, 
-                   allsp, ionsp, transsp, chemsp, mmass::Dict{Symbol, Int64}, alts, n_alt_index::Dict{Float64, Int64}, dz, 
-                   polar::Dict{Symbol, Float64}, numlyrs::Int64, plotalts, 
-                   results_dir::String, T_for_Hs::Dict{String, Vector{Float64}}, T_for_diff::Dict{String, Vector{Float64}}; 
+function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, results_dir::String; 
                    shown_rxns=nothing, subfolder="", plotsfolder="", dt=nothing, num="", extra_title="", 
-                   plot_timescales=false, plot_total_rate_coefs=false, showonly=false)
+                   plot_timescales=false, plot_total_rate_coefs=false, showonly=false, globvars...)
     #=
     Plots the production and loss rates from chemistry, transport, and both together by altitude for a given species, sp, 
     at a given snapshot in time of the atmosphere atmdict. 
@@ -1014,6 +1135,17 @@ function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Ti
         plot_total_rate_coefs: plots chemical produciton and loss rates only (not multiplied by density)
         showonly: if true, will show the plots instead of saving them
     =#
+
+    GV = values(globvars)
+    @assert all(x->x in keys(GV),  [:Tn, :Ti, :Te, :Tp, :bcdict, :rxnnet, 
+                                    :all_species, :neutral_species, :ion_species, :transport_species, :chem_species, 
+                                    :molmass, :polarizability, :Tprof_for_Hs, :Tprof_for_diffusion, :Hs_dict,
+                                    :alt, :n_alt_index, :dz, :num_layers, :n_all_layers, :plot_grid, :upper_lower_bdy_i, :upper_lower_bdy])
+
+    # @assert length(GV.Tn)==GV.num_layers 
+    # @assert length(GV.Ti)==GV.num_layers
+    # @assert length(GV.Te)==GV.num_layers
+
 
     # ================================================================================
     # Plot setup stuff
@@ -1051,28 +1183,30 @@ function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Ti
     end
 
     # Arrays to store the total reactions per second for this species of interest
-    total_prod_rate = zeros(numlyrs)
-    total_loss_rate = zeros(numlyrs)
+    total_prod_rate = zeros(GV.num_layers)
+    total_loss_rate = zeros(GV.num_layers)
 
     # Arrays to hold the total chemical production and loss 
-    total_chem_prod = zeros(numlyrs)
-    total_chem_loss = zeros(numlyrs)
-    total_chem_prod_ratecoef = zeros(numlyrs)
-    total_chem_loss_ratecoef = zeros(numlyrs)
+    total_chem_prod = zeros(GV.num_layers)
+    total_chem_loss = zeros(GV.num_layers)
+    total_chem_prod_ratecoef = zeros(GV.num_layers)
+    total_chem_loss_ratecoef = zeros(GV.num_layers)
 
-    if sp in chemsp
+    if sp in GV.chem_species
         # --------------------------------------------------------------------------------
         # calculate reaction rates x density for all reactions of the species at each level of the atmosphere.
         # Temperature arrays include boundary layers so that diffusion can be calculated later, so we have to 
         # index these in this way to make the evaluation of chemistry reaction rate coefficients work. 
-        rxd_prod, rate_coefs_prod = get_volume_rates(sp, atmdict, Tn[2:end-1], Ti[2:end-1], Te[2:end-1], allsp, ionsp, rxnnet, numlyrs, species_role="product")
-        rxd_loss, rate_coefs_loss = get_volume_rates(sp, atmdict, Tn[2:end-1], Ti[2:end-1], Te[2:end-1], allsp, ionsp, rxnnet, numlyrs, species_role="reactant")
+        # Entering them separately from globvars allows us to keep passing globvars as a "packed" variable but 
+        # use the most recent Tn, Ti, Te according to rightmost taking precedence.
+        rxd_prod, rate_coefs_prod = get_volume_rates(sp, atmdict; species_role="product", globvars..., Tn=GV.Tn[2:end-1], Ti=GV.Ti[2:end-1], Te=GV.Te[2:end-1])
+        rxd_loss, rate_coefs_loss = get_volume_rates(sp, atmdict; species_role="reactant", globvars..., Tn=GV.Tn[2:end-1], Ti=GV.Ti[2:end-1], Te=GV.Te[2:end-1])
 
         # Water is turned off in the lower atmosphere, so we should represent that.
         if sp in [:H2O, :HDO] 
             for (prod_k, loss_k) in zip(keys(rxd_prod), keys(rxd_loss))
-                rxd_prod[prod_k][1:upper_lower_bdy_i] .= NaN
-                rxd_loss[loss_k][1:upper_lower_bdy_i] .= NaN
+                rxd_prod[prod_k][1:GV.upper_lower_bdy_i] .= NaN
+                rxd_loss[loss_k][1:GV.upper_lower_bdy_i] .= NaN
             end
         end
 
@@ -1091,7 +1225,7 @@ function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Ti
         for kv in rxd_prod  # loop through the dict of format reaction => [rates by altitude]
             if shown_rxns != nothing
                 if kv[1] in shown_rxns 
-                    ax[1].semilogx(kv[2], plotalts, linestyle=ls[ls_i], marker=9, markevery=20, color=cols[col_i], linewidth=1, label=kv[1])
+                    ax[1].semilogx(kv[2], GV.plot_grid, linestyle=ls[ls_i], marker=9, markevery=20, color=cols[col_i], linewidth=1, label=kv[1])
                     col_i = next_in_loop(col_i, length(cols))
                     ls_i = next_in_loop(ls_i, length(ls))
                 end
@@ -1109,7 +1243,7 @@ function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Ti
         for kv in rxd_loss
             if shown_rxns != nothing
                 if kv[1] in shown_rxns
-                    ax[1].semilogx(kv[2], plotalts, linestyle=ls[ls_i], marker=8, markevery=20, color=cols[col_i], linewidth=1, label=kv[1])
+                    ax[1].semilogx(kv[2], GV.plot_grid, linestyle=ls[ls_i], marker=8, markevery=20, color=cols[col_i], linewidth=1, label=kv[1])
                     col_i = next_in_loop(col_i, length(cols))
                     ls_i = next_in_loop(ls_i, length(ls))
                 end
@@ -1121,8 +1255,8 @@ function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Ti
         end
 
         # Plot the totals 
-        ax[1].semilogx(total_chem_prod, plotalts, color="xkcd:forest green", linestyle=(0, (4,2)), marker=9, markevery=20, linewidth=2, label="Total chemical production", zorder=5)
-        ax[1].semilogx(total_chem_loss, plotalts, color="xkcd:shamrock", linestyle=(0, (4,2)), marker=8, markevery=20, linewidth=2, label="Total chemical loss", zorder=5)
+        ax[1].semilogx(total_chem_prod, GV.plot_grid, color="xkcd:forest green", linestyle=(0, (4,2)), marker=9, markevery=20, linewidth=2, label="Total chemical production", zorder=5)
+        ax[1].semilogx(total_chem_loss, GV.plot_grid, color="xkcd:shamrock", linestyle=(0, (4,2)), marker=8, markevery=20, linewidth=2, label="Total chemical loss", zorder=5)
 
         # set the x lims for chem axis
         prod_without_nans = filter(x->!isnan(x), total_chem_prod)
@@ -1138,8 +1272,8 @@ function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Ti
             ax_1_2 = ax[1].twiny()
             ax_1_2.tick_params(axis="x", labelcolor="xkcd:royal purple")
             ax_1_2.set_ylabel("Rate coefficient (cm^3/s)", color="xkcd:royal purple")
-            ax_1_2.semilogx(total_chem_prod_ratecoef, plotalts, color="xkcd:royal purple", linestyle=":", linewidth=3, label="Total chemical production rate coef", zorder=6)
-            ax_1_2.semilogx(total_chem_loss_ratecoef, plotalts, color="xkcd:lavender", linestyle=":", linewidth=3, label="Total chemical loss rate coef", zorder=6)
+            ax_1_2.semilogx(total_chem_prod_ratecoef, GV.plot_grid, color="xkcd:royal purple", linestyle=":", linewidth=3, label="Total chemical production rate coef", zorder=6)
+            ax_1_2.semilogx(total_chem_loss_ratecoef, GV.plot_grid, color="xkcd:lavender", linestyle=":", linewidth=3, label="Total chemical loss rate coef", zorder=6)
             ax_1_2.legend()
         end
 
@@ -1155,9 +1289,8 @@ function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Ti
 
     # Calculate the transport fluxes for the species
     plottitle_ext = "" # no extra info in the plot title if flux==false 
-    if sp in transsp
-        transportPL = get_transport_PandL_rate(sp, atmdict, Tn, Ti, Te, Tp, bcdict, allsp, setdiff(allsp, ionsp), transsp, 
-                                                              mmass, alts, n_alt_index, polar, dz, T_for_Hs, T_for_diff)
+    if sp in GV.transport_species
+        transportPL = get_transport_PandL_rate(sp, atmdict; globvars...)
         # now separate into two different arrays for ease of addition.
         production_i = transportPL .>= 0  # boolean array for where transport entries > 0 (production),
         loss_i = transportPL .< 0 # and for where transport entries < 0 (loss).
@@ -1165,8 +1298,8 @@ function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Ti
         total_transport_loss = loss_i .* abs.(transportPL)
 
         if sp in [:H2O, :HDO] # Water is turned off in the lower atmosphere, so we should represent that.
-            total_transport_prod[1:upper_lower_bdy_i] .= NaN
-            total_transport_loss[1:upper_lower_bdy_i] .= NaN
+            total_transport_prod[1:GV.upper_lower_bdy_i] .= NaN
+            total_transport_loss[1:GV.upper_lower_bdy_i] .= NaN
         end
 
         # set the x lims for transport axis. Special because total_transport_prod, and etc are incomplete arrays.
@@ -1174,16 +1307,16 @@ function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Ti
         maxx[2] = 10.0^(ceil(log10(maximum(abs.(transportPL)))))
 
         # Plot the transport production and loss without the boundary layers
-        ax[2].scatter(total_transport_prod, plotalts, color="red", marker=9, label="Total gain this layer", zorder=4)
-        ax[2].scatter(total_transport_loss, plotalts, color="blue", marker=8, label="Total loss this layer", zorder=4)
+        ax[2].scatter(total_transport_prod, GV.plot_grid, color="red", marker=9, label="Total gain this layer", zorder=4)
+        ax[2].scatter(total_transport_loss, GV.plot_grid, color="blue", marker=8, label="Total loss this layer", zorder=4)
         ax[2].set_xscale("log")
 
         ax[2].legend(fontsize=12)
 
         plottitle_ext = " by chemistry & transport"
     else
-        total_transport_prod = zeros(numlyrs)
-        total_transport_loss = zeros(numlyrs)
+        total_transport_prod = zeros(GV.num_layers)
+        total_transport_loss = zeros(GV.num_layers)
         minx[2] = 0
         maxx[2] = 1
         ax[2].text(0.1, 225, "Vertical transport is off for $(sp).")
@@ -1198,8 +1331,8 @@ function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Ti
     prod_without_nans = filter(x->!isnan(x), total_prod_rate)
     loss_without_nans = filter(x->!isnan(x), total_loss_rate)
 
-    ax[3].semilogx(total_prod_rate, plotalts, color="black", marker=9, markevery=15, linewidth=2, label="Total production", zorder=3) #linestyle=(2, (1,2)), 
-    ax[3].semilogx(total_loss_rate, plotalts, color="gray", marker=8, markevery=15, linewidth=2, label="Total loss", zorder=3) #linestyle=(2, (1,2)),
+    ax[3].semilogx(total_prod_rate, GV.plot_grid, color="black", marker=9, markevery=15, linewidth=2, label="Total production", zorder=3) #linestyle=(2, (1,2)), 
+    ax[3].semilogx(total_loss_rate, GV.plot_grid, color="gray", marker=8, markevery=15, linewidth=2, label="Total loss", zorder=3) #linestyle=(2, (1,2)),
 
     minx[3] = minimum([minimum(prod_without_nans), minimum(loss_without_nans)])
     maxx[3] = maximum([maximum(prod_without_nans), maximum(loss_without_nans)])
@@ -1214,7 +1347,7 @@ function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Ti
         timescale_of_change = atmdict[sp] ./ abs.(total_prod_rate .- total_loss_rate)
         c = "teal"
         ax[total_ax].set_xscale("log")
-        ax[total_ax].plot(timescale_of_change, plotalts, color=c, zorder=5)
+        ax[total_ax].plot(timescale_of_change, GV.plot_grid, color=c, zorder=5)
     end
 
     # Final plotting tasks ============================================================
@@ -1226,9 +1359,9 @@ function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Ti
     end
 
     titles = ["Chemistry", "Transport", "Total chem+trans"]
-    notes = ["Chemical production/loss is off for $(sp) below $(Int64(upper_lower_bdy /1e5)) km.", 
-             "Vertical transport is off for $(sp) below $(Int64(upper_lower_bdy /1e5)) km.", 
-             "Abundance of $(sp) below $(Int64(upper_lower_bdy /1e5)) km is fixed."] 
+    notes = ["Chemical production/loss is off for $(sp) below $(Int64(GV.upper_lower_bdy /1e5)) km.", 
+             "Vertical transport is off for $(sp) below $(Int64(GV.upper_lower_bdy /1e5)) km.", 
+             "Abundance of $(sp) below $(Int64(GV.upper_lower_bdy /1e5)) km is fixed."] 
     if plot_timescales==true
         titles = ["Chemistry", "Transport", "Total chem+trans", "Timescale of dn/dt (s)"]
     end
@@ -1263,18 +1396,20 @@ function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Ti
     end
 end
 
-function plot_temp_prof(n_temps, alts; # params to pass
-                        i_temps=nothing, e_temps=nothing, savepath=nothing, showonly=false) 
+function plot_temp_prof(Tprof_1; lbls=["Neutrals", "Ions", "Electrons"], Tprof_2=nothing, Tprof_3=nothing, savepath=nothing, showonly=false, globvars...)
     #=
     Creates a .png image of the tepmeratures plotted by altitude in the atmosphere
 
     Inputs:
-        n_temps: an array of neutral temperature by altitude
-        ion_temps: same, but for the ions
-        e_temps: same but for the electrons
+        Tprof_1: an array of neutral temperature by altitude
+        Tprof_2: same, but for the ions
+        Tprof_3: same but for the electrons
         savepath: where to save the resulting .png image
         showonly: whether to just show() the figure. If false, must be accompanied by a value for savepath.
     =#
+
+    GV = values(globvars)
+    @assert all(x->x in keys(GV),  [:alt])
 
     rcParams = PyDict(matplotlib."rcParams")
     rcParams["font.sans-serif"] = ["Louis George Caf?"]
@@ -1287,15 +1422,15 @@ function plot_temp_prof(n_temps, alts; # params to pass
     fig, ax = subplots(figsize=(4,6))
     plot_bg(ax)
 
-    plot(n_temps, alts./1e5, label="Neutrals", color=medgray)
+    plot(Tprof_1, GV.alt./1e5, label="Neutrals", color=medgray)
 
-    if i_temps != nothing
-        ax.plot(i_temps, alts./1e5, label="Ions", color="xkcd:bright orange")
+    if Tprof_2 != nothing
+        ax.plot(Tprof_2, GV.alt./1e5, label="Ions", color="xkcd:bright orange")
         ax.legend(fontsize=16)
         ax.set_xscale("log")
     end
-    if e_temps != nothing
-        ax.plot(e_temps, alts./1e5, label="Electrons", color="cornflowerblue")
+    if Tprof_3 != nothing
+        ax.plot(Tprof_3, GV.alt./1e5, label="Electrons", color="cornflowerblue")
         ax.legend(fontsize=16, loc=(1.05,0.8))#"center right")
         ax.set_xscale("log")
     end
@@ -1303,23 +1438,23 @@ function plot_temp_prof(n_temps, alts; # params to pass
     # plot the control temps
 
     # surface
-    ax.scatter(n_temps[1], 0, marker="o", color=medgray, zorder=10)
-    ax.text(n_temps[1], 0, L"\mathrm{T}_{\mathrm{surface}}"*" = $(Int64(round(n_temps[1], digits=0))) K ")
+    ax.scatter(Tprof_1[1], 0, marker="o", color=medgray, zorder=10)
+    ax.text(Tprof_1[1], 0, L"\mathrm{T}_{\mathrm{surface}}"*" = $(Int64(round(Tprof_1[1], digits=0))) K ")
 
     # mesosphere
-    meso_ind = findfirst(x->x==minimum(n_temps), n_temps)# Int64(length(n_temps)/2)
+    meso_ind = findfirst(x->x==minimum(Tprof_1), Tprof_1)# Int64(length(Tprof_1)/2)
     # println(meso_ind)
-    ax.scatter(n_temps[meso_ind], alts[meso_ind+5]/1e5, marker="o", color=medgray, zorder=10)
-    ax.text(n_temps[meso_ind]+5, alts[meso_ind+5]/1e5, L"\mathrm{T}_{\mathrm{meso}}"*" = $(Int64(round(n_temps[meso_ind], digits=0))) K ")
+    ax.scatter(Tprof_1[meso_ind], GV.alt[meso_ind+5]/1e5, marker="o", color=medgray, zorder=10)
+    ax.text(Tprof_1[meso_ind]+5, GV.alt[meso_ind+5]/1e5, L"\mathrm{T}_{\mathrm{meso}}"*" = $(Int64(round(Tprof_1[meso_ind], digits=0))) K ")
 
     # exosphere
-    ax.scatter(n_temps[end], 250, marker="o", color=medgray, zorder=10)
-    ax.text(n_temps[end]*1.05, 240, L"\mathrm{T}_{\mathrm{exo}}"*" = $(Int64(round(n_temps[end], digits=0))) K ")
+    ax.scatter(Tprof_1[end], 250, marker="o", color=medgray, zorder=10)
+    ax.text(Tprof_1[end]*1.05, 240, L"\mathrm{T}_{\mathrm{exo}}"*" = $(Int64(round(Tprof_1[end], digits=0))) K ")
     
     # final labels
     ax.set_ylabel("Altitude [km]")
-    ax.set_yticks(collect(0:50:alts[end]/1e5))
-    ax.set_yticklabels(collect(0:50:alts[end]/1e5))
+    ax.set_yticks(collect(0:50:GV.alt[end]/1e5))
+    ax.set_yticklabels(collect(0:50:GV.alt[end]/1e5))
     ax.set_xlabel("Temperature [K]")
     ax.set_xlim(95, 2e3)
     ax.tick_params(which="both", axis="x", top=true, labeltop=true)
@@ -1335,9 +1470,7 @@ function plot_temp_prof(n_temps, alts; # params to pass
     end
 end
 
-function plot_water_profile(H2Oinitf, HDOinitf, nH2O, nHDO, savepath::String, # params to pass
-                            plotalts; 
-                            showonly=false, watersat=nothing) 
+function plot_water_profile(H2Oinitf, HDOinitf, nH2O, nHDO, savepath::String; showonly=false, watersat=nothing, globvars...) 
     #=
     Plots the water profile in mixing ratio and number densities, in two panels.
 
@@ -1352,6 +1485,9 @@ function plot_water_profile(H2Oinitf, HDOinitf, nH2O, nHDO, savepath::String, # 
                   i.e. [H2Osatfrac, HDOsatfrac]
     =#
 
+    GV = values(globvars)
+    @assert all(x->x in keys(GV), [:plot_grid])
+
     fig = figure(figsize=(4,6))
     ax = gca()
     plot_bg(ax)
@@ -1361,8 +1497,8 @@ function plot_water_profile(H2Oinitf, HDOinitf, nH2O, nHDO, savepath::String, # 
     ax1col = "#88527F"
     
     # mixing ratio in PPM axis
-    ax.semilogx(convert(Array{Float64}, H2Oinitf)/1e-6, plotalts, color=ax1col, linewidth=2)
-    ax.semilogx(convert(Array{Float64}, HDOinitf)/1e-6, plotalts, color=ax1col, linestyle="--", linewidth=2)
+    ax.semilogx(convert(Array{Float64}, H2Oinitf)/1e-6, GV.plot_grid, color=ax1col, linewidth=2)
+    ax.semilogx(convert(Array{Float64}, HDOinitf)/1e-6, GV.plot_grid, color=ax1col, linestyle="--", linewidth=2)
     ax.set_xlabel("Volume Mixing Ratio [ppm]", color=ax1col)
     ax.set_ylabel("Altitude [km]")
     ax.tick_params(axis="x", labelcolor=ax1col)
@@ -1377,8 +1513,8 @@ function plot_water_profile(H2Oinitf, HDOinitf, nH2O, nHDO, savepath::String, # 
     ax2 = ax.twiny()
     ax2col = "#429EA6" 
     ax2.tick_params(axis="x", labelcolor=ax2col)
-    ax2.semilogx(convert(Array{Float64}, nH2O), plotalts, color=ax2col, linewidth=2, label=L"H$_2$O")
-    ax2.semilogx(convert(Array{Float64}, nHDO), plotalts, color=ax2col, linestyle="--", linewidth=2, label="HDO")
+    ax2.semilogx(convert(Array{Float64}, nH2O), GV.plot_grid, color=ax2col, linewidth=2, label=L"H$_2$O")
+    ax2.semilogx(convert(Array{Float64}, nHDO), GV.plot_grid, color=ax2col, linestyle="--", linewidth=2, label="HDO")
     ax2.set_xlabel(L"Number density [cm$^{-3}$]", color=ax2col, y=1.07)
     ax2.set_xticks(collect(logrange(1e-4, 1e16, 6)))
     for side in ["top", "bottom", "left", "right"]
@@ -1397,8 +1533,8 @@ function plot_water_profile(H2Oinitf, HDOinitf, nH2O, nHDO, savepath::String, # 
     if watersat != nothing
         fig, ax = subplots(figsize=(6,9))
         plot_bg(ax)
-        semilogx(convert(Array{Float64}, H2Oinitf), plotalts, color=ax1col, linewidth=3, label=L"H$_2$O initial fraction")
-        semilogx(convert(Array{Float64}, watersat[2:end-1]), plotalts, color="black", alpha=0.5, linewidth=3, label=L"H$_2$O saturation")
+        semilogx(convert(Array{Float64}, H2Oinitf), GV.plot_grid, color=ax1col, linewidth=3, label=L"H$_2$O initial fraction")
+        semilogx(convert(Array{Float64}, watersat[2:end-1]), GV.plot_grid, color="black", alpha=0.5, linewidth=3, label=L"H$_2$O saturation")
         xlabel("Mixing ratio", fontsize=18)
         ylabel("Altitude [km]", fontsize=18)
         title(L"H$_2$O saturation fraction", fontsize=20)
@@ -1413,7 +1549,8 @@ end
 #                        Boundary condition functions                          #
 #                                                                              #
 # **************************************************************************** #
-function boundaryconditions(fluxcoef_dict::Dict, bcdict::Dict{Symbol, Matrix{Any}}, allsp, notranssp, dz) # params to pass
+
+function boundaryconditions(fluxcoef_dict::Dict; globvars...)
     #= 
     Inputs:
         fluxcoef_dict: a dictionary containing the K and D flux coefficients for every species throughout
@@ -1446,15 +1583,18 @@ function boundaryconditions(fluxcoef_dict::Dict, bcdict::Dict{Symbol, Matrix{Any
         state dictionary, and the second element will be used as-is. That way, eventually the total
         change recorded in other functions is always #/cm³/s. 
     =#
+
+    GV = values(globvars)
+    @assert all(x->x in keys(GV),  [:all_species, :transport_species, :dz, :bcdict])
     
     # This is where we will store all the boundary condition numbers that will be returned 
-    bc_dict = Dict{Symbol, Array{ftype_ncur}}([s=>[0 0; 0 0] for s in allsp])
+    bc_dict = Dict{Symbol, Array{ftype_ncur}}([s=>[0 0; 0 0] for s in GV.all_species])
 
-    for s in allsp
+    for s in GV.all_species
         # retrieves user-supplied boundary conditions. When unsupplied, falls back to flux = 0 at both boundaries.
-        bcs = get(bcdict, s, ["f" 0.; "f" 0.]) 
+        bcs = get(GV.bcdict, s, ["f" 0.; "f" 0.]) 
         
-        if issubset([s], notranssp)
+        if issubset([s], setdiff(GV.all_species, GV.transport_species)) # non transporting species.
             bcs = ["f" 0.; "f" 0.] # Flux = 0 at both boundaries for no_transport_species.
         end
 
@@ -1471,9 +1611,9 @@ function boundaryconditions(fluxcoef_dict::Dict, bcdict::Dict{Symbol, Matrix{Any
                         fluxcoef_dict[s][1, :][2]*bcs[1,2]]
         elseif bcs[1, 1] == "f"
             bcvec[1,:] = [0.0,            # no depositional flux. Could be changed if desired. 
-                          -bcs[1, 2]/dz]  # boundary layer to bulk layer flux. I think the negative sign actually represents depositional flux also...
+                          -bcs[1, 2]/GV.dz]  # boundary layer to bulk layer flux. I think the negative sign actually represents depositional flux also...
         elseif bcs[1, 1] == "v"
-            bcvec[1,:] = [bcs[1, 2]/dz,   # depositional velocity.
+            bcvec[1,:] = [bcs[1, 2]/GV.dz,   # depositional velocity.
                           0.0] 
             throw("Improper lower boundary condition!")
         end
@@ -1486,9 +1626,9 @@ function boundaryconditions(fluxcoef_dict::Dict, bcdict::Dict{Symbol, Matrix{Any
             # n_(top+1) -> n_top flux is constrained to this value (negative because of the way transport is encoded as chemistry.)
             # allows terms not proportional to density - requires another reaction.
             bcvec[2,:] = [0.0,            # bulk layer to boundary layer
-                          -bcs[2, 2]/dz]  # boundary layer to bulk layer. A negative sign here represents removal from the atmosphere. If it was positive it would be incoming. 
+                          -bcs[2, 2]/GV.dz]  # boundary layer to bulk layer. A negative sign here represents removal from the atmosphere. If it was positive it would be incoming. 
         elseif bcs[2, 1] == "v"
-            bcvec[2,:] = [bcs[2, 2]/dz,   # bulk layer to boundary layer: velocity of escaping particles
+            bcvec[2,:] = [bcs[2, 2]/GV.dz,   # bulk layer to boundary layer: velocity of escaping particles
                           0.0]            # boundary layer to bulk layer: who cares what the velocity of incoming particles from space is?
         else
             throw("Improper upper boundary condition!")
@@ -1500,7 +1640,7 @@ function boundaryconditions(fluxcoef_dict::Dict, bcdict::Dict{Symbol, Matrix{Any
     return bc_dict
 end
 
-function effusion_velocity(Texo, m, zmax) # params to pass
+function effusion_velocity(Texo, m; globvars...)
     #=
     Returns effusion velocity for a species in cm/s
 
@@ -1511,10 +1651,13 @@ function effusion_velocity(Texo, m, zmax) # params to pass
     Outputs:
         v: effusion velocity for species of mass m 
     =#
+
+    GV = values(globvars)
+    @assert all(x->x in keys(GV),  [:zmax])
     
     # lambda is the Jeans parameter (Gronoff 2020), basically the ratio of the 
     # escape velocity GmM/z to the thermal energy, kT.
-    lambda = (m*mH*bigG*marsM)/(kB*Texo*(radiusM+zmax))
+    lambda = (m*mH*bigG*marsM)/(kB*Texo*(radiusM+GV.zmax))
     vth = sqrt(2*kB*Texo/(m*mH))
     v = exp(-lambda)*vth*(lambda+1)/(2*pi^0.5)
 
@@ -1564,8 +1707,7 @@ These coefficients then describe the diffusion velocity at the top
 and bottom of the atmosphere.
 =#
 
-function Dcoef!(D_arr, T_arr, sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, bcdict::Dict{Symbol, Matrix{Any}}, # params to pass
-                allsp, mmass::Dict{Symbol, Int64}, polarizability::Dict{Symbol, Float64}, neutralsp) 
+function Dcoef!(D_arr, T_arr, sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}; globvars...) 
     #=
     Calculates the molecular diffusion coefficient for an atmospheric layer.
     For neutrals, returns D = AT^s/n, from Banks and Kockarts Aeronomy, part B, pg 41, eqn 
@@ -1583,9 +1725,12 @@ function Dcoef!(D_arr, T_arr, sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncu
     Outputs:
         D_arr: An array of the diffusion coefficients by altitude for species
     =#
+
+    GV = values(globvars)
+    @assert all(x->x in keys(GV), [:all_species, :bcdict, :molmass, :polarizability, :neutral_species])
    
     # Calculate as if it was a neutral
-    D_arr[:] .= (diffparams(sp)[1] .* 1e17 .* T_arr .^ (diffparams(sp)[2])) ./ n_tot(atmdict, allsp)
+    D_arr[:] .= (diffparams(sp)[1] .* 1e17 .* T_arr .^ (diffparams(sp)[2])) ./ n_tot(atmdict; GV.all_species, GV.n_alt_index)
 
     # a place to store the density array
     species_density = zeros(size(T_arr))
@@ -1594,14 +1739,14 @@ function Dcoef!(D_arr, T_arr, sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncu
     if charge_type(sp) == "ion"
         sum_nu_in = zeros(size(T_arr))
 
-        mi = mmass[sp] .* mH
+        mi = GV.molmass[sp] .* mH
         # create the sum of nu_in. Note that this depends on density, but we only have density for the real layers,
         # so we have to assume the density at the boundary layers is the same as at the real layers.
-        for n in neutralsp
+        for n in GV.neutral_species
             species_density = atmdict[n]
 
             # This sets the species density to a boundary condition if it exists. 
-            bccheck = get(bcdict, n, ["f" 0.; "f" 0.])
+            bccheck = get(GV.bcdict, n, ["f" 0.; "f" 0.])
             if bccheck[1,1] == "n"
                 species_density[1] = bccheck[1,2]
             end
@@ -1609,8 +1754,8 @@ function Dcoef!(D_arr, T_arr, sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncu
                 species_density[end] = bccheck[2,2]
             end
 
-            mu_in = (1 ./ mi .+ 1 ./ (mmass[n] .* mH)) .^ (-1) # reduced mass in g
-            sum_nu_in .+= 2 .* pi .* (((polarizability[n] .* q .^ 2) ./ mu_in) .^ 0.5) .* species_density
+            mu_in = (1 ./ mi .+ 1 ./ (GV.molmass[n] .* mH)) .^ (-1) # reduced mass in g
+            sum_nu_in .+= 2 .* pi .* (((GV.polarizability[n] .* q .^ 2) ./ mu_in) .^ 0.5) .* species_density
 
         end
         
@@ -1643,8 +1788,7 @@ diffparams(s) = get(Dict(:H=>[8.4, 0.597], :H2=>[2.23, 0.75],
                              :Dpl=>[5.98, 0.597], :HDpl=>[1.84, 0.75]),
                         s,[1.0, 0.75])
 
-function fluxcoefs(sp::Symbol, z, dz, Kv, Dv, Tv_n, Tv_p, # Checked - global free
-                   Hsv, H0v) 
+function fluxcoefs(sp::Symbol, Kv, Dv, H0v; globvars...)
     #= 
     base function to generate flux coefficients of the transport network. 
     
@@ -1652,7 +1796,7 @@ function fluxcoefs(sp::Symbol, z, dz, Kv, Dv, Tv_n, Tv_p, # Checked - global fre
 
     Inputs:
         sp: species symbol 
-        z: altitude in cm.
+        z: altitude array in cm.
         dz: altitude layer thickness ("resolution")
         for all the following, length = num_layers 
         Kv: eddy diffusion coefficient
@@ -1671,87 +1815,90 @@ function fluxcoefs(sp::Symbol, z, dz, Kv, Dv, Tv_n, Tv_p, # Checked - global fre
     l refers to "lower" (a given layer coupled to the one below)
     =#
 
-    # Initialize arrays for downward (i to i-1) and upward (i to i+1) coefficients
-    Dl = zeros(length(z))
-    Kl = zeros(length(z))
-    Tl_n = zeros(length(z))
-    Tl_p = zeros(length(z))
-    dTdzl_n = zeros(length(z))
-    dTdzl_p = zeros(length(z))
-    Hsl = zeros(length(z))
-    H0l = zeros(length(z))
+    GV = values(globvars)
+    @assert all(x->x in keys(GV), [:Tn, :Tp, :Hs_dict, :n_all_layers, :dz])
 
-    Du = zeros(length(z))
-    Ku = zeros(length(z))
-    Tu_n = zeros(length(z))
-    Tu_p = zeros(length(z))
-    dTdzu_n = zeros(length(z))
-    dTdzu_p = zeros(length(z))
-    Hsu = zeros(length(z))
-    H0u = zeros(length(z))
+    # Initialize arrays for downward (i to i-1) and upward (i to i+1) coefficients
+    Dl = zeros(GV.n_all_layers)
+    Kl = zeros(GV.n_all_layers)
+    Tl_n = zeros(GV.n_all_layers)
+    Tl_p = zeros(GV.n_all_layers)
+    dTdzl_n = zeros(GV.n_all_layers)
+    dTdzl_p = zeros(GV.n_all_layers)
+    Hsl = zeros(GV.n_all_layers)
+    H0l = zeros(GV.n_all_layers)
+
+    Du = zeros(GV.n_all_layers)
+    Ku = zeros(GV.n_all_layers)
+    Tu_n = zeros(GV.n_all_layers)
+    Tu_p = zeros(GV.n_all_layers)
+    dTdzu_n = zeros(GV.n_all_layers)
+    dTdzu_p = zeros(GV.n_all_layers)
+    Hsu = zeros(GV.n_all_layers)
+    H0u = zeros(GV.n_all_layers)
 
     # Calculate the coefficients between this layer and the lower layer. 
     Dl[2:end] = @. (Dv[sp][1:end-1] + Dv[sp][2:end]) /  2.0
     Kl[2:end] = @. (Kv[1:end-1] + Kv[2:end]) / 2.0
-    Tl_n[2:end] = @. (Tv_n[1:end-1] + Tv_n[2:end]) / 2.0
-    Tl_p[2:end] = @. (Tv_p[1:end-1] + Tv_p[2:end]) / 2.0
-    dTdzl_n[2:end] = @. (Tv_n[2:end] - Tv_n[1:end-1]) / dz
-    dTdzl_p[2:end] = @. (Tv_p[2:end] - Tv_p[1:end-1]) / dz
-    Hsl[2:end] = @. (Hsv[sp][1:end-1] + Hsv[sp][2:end]) / 2.0
+    Tl_n[2:end] = @. (GV.Tn[1:end-1] + GV.Tn[2:end]) / 2.0
+    Tl_p[2:end] = @. (GV.Tp[1:end-1] + GV.Tp[2:end]) / 2.0
+    dTdzl_n[2:end] = @. (GV.Tn[2:end] - GV.Tn[1:end-1]) / GV.dz
+    dTdzl_p[2:end] = @. (GV.Tp[2:end] - GV.Tp[1:end-1]) / GV.dz
+    Hsl[2:end] = @. (GV.Hs_dict[sp][1:end-1] + GV.Hs_dict[sp][2:end]) / 2.0
     H0l[2:end] = @. (H0v[charge_type(sp)][1:end-1] + H0v[charge_type(sp)][2:end]) / 2.0
 
     # Handle the lower boundary layer:
     Dl[1] = @. (1 + Dv[sp][1]) /  2.0
     Kl[1] = @. (1 + Kv[1]) / 2.0
-    Tl_n[1] = @. (1 + Tv_n[1]) / 2.0
-    Tl_p[1] = @. (1 + Tv_p[1]) / 2.0
-    dTdzl_n[1] = @. (Tv_n[1] - 1) / dz
-    dTdzl_p[1] = @. (Tv_p[1] - 1) / dz
-    Hsl[1] = @. (1 + Hsv[sp][1]) / 2.0
+    Tl_n[1] = @. (1 + GV.Tn[1]) / 2.0
+    Tl_p[1] = @. (1 + GV.Tp[1]) / 2.0
+    dTdzl_n[1] = @. (GV.Tn[1] - 1) / GV.dz
+    dTdzl_p[1] = @. (GV.Tp[1] - 1) / GV.dz
+    Hsl[1] = @. (1 + GV.Hs_dict[sp][1]) / 2.0
     H0l[1] = @. (1 + H0v[charge_type(sp)][1]) / 2.0
 
     # Now the coefficients between this layer and upper layer
     Du[1:end-1] = @. (Dv[sp][1:end-1] + Dv[sp][2:end]) /  2.0
     Ku[1:end-1] = @. (Kv[1:end-1] + Kv[2:end]) / 2.0
-    Tu_n[1:end-1] = @. (Tv_n[1:end-1] + Tv_n[2:end]) / 2.0
-    Tu_p[1:end-1] = @. (Tv_p[1:end-1] + Tv_p[2:end]) / 2.0
-    dTdzu_n[1:end-1] = @. (Tv_n[2:end] - Tv_n[1:end-1]) / dz
-    dTdzu_p[1:end-1] = @. (Tv_p[2:end] - Tv_p[1:end-1]) / dz
-    Hsu[1:end-1] = @. (Hsv[sp][1:end-1] + Hsv[sp][2:end]) / 2.0
+    Tu_n[1:end-1] = @. (GV.Tn[1:end-1] + GV.Tn[2:end]) / 2.0
+    Tu_p[1:end-1] = @. (GV.Tp[1:end-1] + GV.Tp[2:end]) / 2.0
+    dTdzu_n[1:end-1] = @. (GV.Tn[2:end] - GV.Tn[1:end-1]) / GV.dz
+    dTdzu_p[1:end-1] = @. (GV.Tp[2:end] - GV.Tp[1:end-1]) / GV.dz
+    Hsu[1:end-1] = @. (GV.Hs_dict[sp][1:end-1] + GV.Hs_dict[sp][2:end]) / 2.0
     H0u[1:end-1] = @. (H0v[charge_type(sp)][1:end-1] + H0v[charge_type(sp)][2:end]) / 2.0
 
     # Handle upper boundary layer:
     Du[end] = @. (Dv[sp][end] + 1) /  2.0
     Ku[end] = @. (Kv[end] + 1) / 2.0
-    Tu_n[end] = @. (Tv_n[end] + 1) / 2.0
-    Tu_p[end] = @. (Tv_p[end] + 1) / 2.0
-    dTdzu_n[end] = @. (1 - Tv_n[end]) / dz
-    dTdzu_p[end] = @. (1 - Tv_p[end]) / dz
-    Hsu[end] = @. (Hsv[sp][end] + 1) / 2.0
+    Tu_n[end] = @. (GV.Tn[end] + 1) / 2.0
+    Tu_p[end] = @. (GV.Tp[end] + 1) / 2.0
+    dTdzu_n[end] = @. (1 - GV.Tn[end]) / GV.dz
+    dTdzu_p[end] = @. (1 - GV.Tp[end]) / GV.dz
+    Hsu[end] = @. (GV.Hs_dict[sp][end] + 1) / 2.0
     H0u[end] = @. (H0v[charge_type(sp)][end] + 1) / 2.0
 
 
     # two flux terms: eddy diffusion and gravity/thermal diffusion.
     # these are found in line 5 of Mike's transport_as_chemistry.pdf:
     # sumeddy = (D+K)/(Δz²), gravthermal = ☐/(2Δz), where ☐ = {D(1/H + 1+(α/T)(dT/dz)) + K(1/H_H + (1/T)(dT/dz))}
-    sumeddyl = @. (Dl+Kl)/dz/dz
+    sumeddyl = @. (Dl+Kl)/GV.dz/GV.dz
     if charge_type(sp) == "neutral"
         gravthermall = @. (Dl*((1/Hsl) + ((1+thermaldiff(sp))/Tl_n)*dTdzl_n) +
-                        Kl*((1/H0l) + (1/Tl_n)*dTdzl_n))/(2*dz)
+                        Kl*((1/H0l) + (1/Tl_n)*dTdzl_n))/(2*GV.dz)
     elseif charge_type(sp) == "ion"
         gravthermall = @. (Dl*((1/Hsl) + ((1+thermaldiff(sp))/Tl_p)*dTdzl_p) +
-                        Kl*((1/H0l) + (1/Tl_n)*dTdzl_n))/(2*dz)
+                        Kl*((1/H0l) + (1/Tl_n)*dTdzl_n))/(2*GV.dz)
     elseif charge_type(sp) == "electron"
         throw("Electrons not handled as individual species")
     end
 
-    sumeddyu = @. (Du+Ku)/dz/dz  # this is the line where we divide by cm^2
+    sumeddyu = @. (Du+Ku)/GV.dz/GV.dz  # this is the line where we divide by cm^2
     if charge_type(sp) == "neutral"
         gravthermalu = @. (Du*((1/Hsu) + ((1 + thermaldiff(sp))/Tu_n)*dTdzu_n) +
-                        Ku*((1/H0u) + (1/Tu_n)*dTdzu_n))/(2*dz)
+                        Ku*((1/H0u) + (1/Tu_n)*dTdzu_n))/(2*GV.dz)
     elseif charge_type(sp) == "ion"
         gravthermalu = @. (Du*((1/Hsu) + ((1 + thermaldiff(sp))/Tu_p)*dTdzu_p) +
-                        Ku*((1/H0u) + (1/Tu_n)*dTdzu_n))/(2*dz)
+                        Ku*((1/H0u) + (1/Tu_n)*dTdzu_n))/(2*GV.dz)
     elseif charge_type(sp) == "electron"
         throw("Electrons not handled as individual species")
     end
@@ -1763,8 +1910,7 @@ function fluxcoefs(sp::Symbol, z, dz, Kv, Dv, Tv_n, Tv_p, # Checked - global fre
             sumeddyu .- gravthermalu # up; negative because gravity points down. I think that's why.
 end
 
-function fluxcoefs(species_list::Vector{Any}, T_neutral, T_plasma, K, D, # params to pass
-                   H0, Hs, alts, dz) 
+function fluxcoefs(species_list::Vector{Any}, K, D, H0; globvars...) # T_neutral, T_plasma, Hs, alts, dz) 
     #=
     New optimized version of fluxcoefs that calls the lower level version of fluxcoefs,
     producing a dictionary that contains both up and down flux coefficients for each layer of
@@ -1779,9 +1925,9 @@ function fluxcoefs(species_list::Vector{Any}, T_neutral, T_plasma, K, D, # param
     
     Inputs:
         species_list: Species for which to generate transport coefficients. This allows the code to only do it for
-                transport species during th emain simulation run, and for all species when trying to plot 
+                transport species during the main simulation run, and for all species when trying to plot 
                 rate balances after the run.
-            T_neutral: 1D neutral temperature profile
+        T_neutral: 1D neutral temperature profile
         T_plasma: the same, but for the plasma temperature
         K: Array; 1D eddy diffusion profile by altitude for current atmospheric state
         D: Dictionary (key=species); 1D molecular diffusion profiles for current atmospheric state
@@ -1791,12 +1937,15 @@ function fluxcoefs(species_list::Vector{Any}, T_neutral, T_plasma, K, D, # param
         fluxcoef_dict: dictionary of flux coefficients of the form [flux down, flux up] by altitude 
 
     =#
+
+    GV = values(globvars)
+    @assert all(x->x in keys(GV), [:Tn, :Tp, :Hs_dict, :n_all_layers, :dz])
     
     # the return dictionary: Each species has 2 entries for every layer of the atmosphere.
-    fluxcoef_dict = Dict{Symbol, Array{ftype_ncur}}([s=>fill(0., length(alts), 2) for s in species_list])
+    fluxcoef_dict = Dict{Symbol, Array{ftype_ncur}}([s=>fill(0., length(GV.alt), 2) for s in species_list])
 
     for s in species_list
-        layer_below_coefs, layer_above_coefs = fluxcoefs(s, alts, dz, K, D, T_neutral, T_plasma, Hs, H0) 
+        layer_below_coefs, layer_above_coefs = fluxcoefs(s, K, D, H0; globvars...) #alts, dz, T_neutral, T_plasma, Hs) 
         fluxcoef_dict[s][:, 1] .= layer_below_coefs
         fluxcoef_dict[s][:, 2] .= layer_above_coefs
     end
@@ -1828,10 +1977,7 @@ function flux_pos_and_neg(fluxarr)
     return pos, abs_val_neg
 end
 
-function get_flux(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Ti, Te, Tp,  # params to pass
-                  bcdict::Dict{Symbol, Matrix{Any}}, 
-                  allsp, neutralsp, transsp, mmass::Dict{Symbol,Int64}, alts, n_alt_index::Dict, 
-                  polar::Dict{Symbol,Float64}, numlyrs::Int64, dz, T_for_Hs::Dict{String,Vector{Any}}, T_for_diff::Dict{String,Vector{Any}}) 
+function get_flux(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, globvars...)
     #=
     NEW VERSION : THIS IS THE BETTER VERSION NOW! But only for fluxes.
     
@@ -1846,28 +1992,31 @@ function get_flux(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Ti,
         i = 1 in the net_bulk_flow array corresponds to the boundary at 1 km,
         and the end of the array is the boundary at 249 km.
     =#
+
+    GV = values(globvars)
+    @assert all(x->x in keys(GV), [:Tn, :Ti, :Te, :Tp, :bcdict, :all_species, :neutral_species, :transport_species, :molmass, :alt, :n_alt_index, :polarizability, 
+                                   :num_layers, :dz, :Tprof_for_Hs, :Tprof_for_diffusion, :n_all_layers])
     
     # Generate the fluxcoefs dictionary and boundary conditions dictionary
-    D_arr = zeros(size(Tn))
-    Keddy_arr, H0_dict, Dcoef_dict = update_diffusion_and_scaleH(allsp, atmdict, Tn, Tp, D_arr, bcdict, allsp, neutralsp, 
-                                                                 mmass, alts, n_alt_index, polar, T_for_diff)
-    Hs_dict = Dict{Symbol, Vector{ftype_ncur}}([sp=>scaleH(alts, sp, T_for_Hs[charge_type(sp)], molmass) for sp in allsp])  
-    fluxcoefs_all = fluxcoefs(allsp, Tn, Tp, Keddy_arr, Dcoef_dict, H0_dict, Hs_dict, alts, dz)
-    bc_dict = boundaryconditions(fluxcoefs_all, bcdict, allsp, setdiff(allsp, transsp), dz)
+    D_arr = zeros(size(GV.Tn))
+    Keddy_arr, H0_dict, Dcoef_dict = update_diffusion_and_scaleH(GV.all_species, atmdict, globvars...)
+    Hs_dict = Dict{Symbol, Vector{ftype_ncur}}([sp=>scaleH(GV.alt, sp, GV.Tprof_for_Hs[charge_type(sp)]; globvars...) for sp in GV.all_species])
+    fluxcoefs_all = fluxcoefs(GV.all_species, Keddy_arr, Dcoef_dict, H0_dict; globvars...)
+    bc_dict = boundaryconditions(fluxcoefs_all; globvars...)
 
     # each element in bulk_layer_coefs has the format [downward flow (i to i-1), upward flow (i to i+1)].  units 1/s
     bulk_layer_coefs = fluxcoefs_all[sp][2:end-1]
 
     bcs = bc_dict[sp]
     
-    net_bulk_flow = fill(convert(ftype_ncur, NaN), length(alt)-1)  # units #/cm^3/s; tracks the cell boundaries, of which there are length(alt)-1
+    net_bulk_flow = fill(convert(ftype_ncur, NaN), GV.n_all_layers-1)  # units #/cm^3/s; tracks the cell boundaries, of which there are length(alt)-1
 
     # We will calculate the net flux across each boundary, with sign indicating direction of travel.
     # Units for net bulk flow are always: #/cm³/s. 
     net_bulk_flow[1] = (bcs[1, 2]                  # increase of the lowest atmospheric layer's density. 0 unless the species has a density or flux condition
                        - atmdict[sp][1]*bcs[1, 1]) # lowest atmospheric layer --> surface ("depositional" term). UNITS: #/cm³/s. 
                         
-    for ialt in 2:numlyrs  # now iterate through every cell boundary within the atmosphere. boundaries at 3 km, 5...247. 123 elements.
+    for ialt in 2:GV.num_layers  # now iterate through every cell boundary within the atmosphere. boundaries at 3 km, 5...247. 123 elements.
         # UNITS for both of these terms:  #/cm³/s. 
         net_bulk_flow[ialt] = (atmdict[sp][ialt-1]*bulk_layer_coefs[ialt-1][2]   # coming up from below: cell i-1 to cell i. Should be positive * positive
                               - atmdict[sp][ialt]*bulk_layer_coefs[ialt][1])     # leaving to the layer below: downwards: cell i to cell i-1
@@ -1877,12 +2026,10 @@ function get_flux(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Ti,
     net_bulk_flow[end] = (atmdict[sp][end]*bcs[2, 1] # into exosphere from the cell. UNITS: #/cm³/s. 
                          - bcs[2, 2]) # into top layer from exosphere. negative because the value in bcs is negative. do not question this. UNITS: #/cm³/s. 
                 
-    return net_bulk_flow .* dz # now it is a flux. hurrah.
+    return net_bulk_flow .* GV.dz # now it is a flux. hurrah.
 end
 
-function get_transport_PandL_rate(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Ti, Te, Tp, bcdict::Dict{Symbol, Matrix{Any}}, # params to pass
-                                  allsp, neutralsp, transsp, mmass::Dict{Symbol,Int64}, alts, n_alt_index::Dict, polar::Dict{Symbol,Float64}, dz, 
-                                  T_for_Hs, T_for_diff::Dict{String,Vector{Float64}}) 
+function get_transport_PandL_rate(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}; globvars...)
     #=
     Input:
         sp: species for which to return the transport production and loss
@@ -1894,25 +2041,27 @@ function get_transport_PandL_rate(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype
         i = 1 in the net_bulk_flow array corresponds to the boundary at 1 km,
         and the end of the array is the boundary at 249 km.
     =#
-    
-    # Generate the fluxcoefs dictionary and boundary conditions dictionary
-    D_arr = zeros(size(Tn))
-    Keddy_arr, H0_dict, Dcoef_dict = update_diffusion_and_scaleH(allsp, atmdict, Tn, Tp, D_arr, bcdict, allsp, neutralsp, 
-                                                                 mmass, alts, n_alt_index, polar, T_for_diff)
 
-    Hs_dict = Dict{Symbol, Vector{ftype_ncur}}([sp=>scaleH(alts, sp, T_for_Hs[charge_type(sp)], molmass) for sp in allsp]) 
-    fluxcoefs_all = fluxcoefs(allsp, Tn, Tp, Keddy_arr, Dcoef_dict, H0_dict, Hs_dict, alts, dz)
+    GV = values(globvars)
+    @assert all(x->x in keys(GV), [:Tn, :Ti, :Te, :Tp, :bcdict, :all_species, :neutral_species, :transport_species, :molmass, :alt, :n_alt_index, :polarizability, 
+                                   :num_layers, :dz, :Hs_dict, :Tprof_for_Hs, :Tprof_for_diffusion, :n_all_layers])
+
+    # Generate the fluxcoefs dictionary and boundary conditions dictionary
+    D_arr = zeros(size(GV.Tn))
+    Keddy_arr, H0_dict, Dcoef_dict = update_diffusion_and_scaleH(GV.all_species, atmdict, D_arr; globvars...) 
+    # Hs_dict = Dict{Symbol, Vector{ftype_ncur}}([sp=>scaleH(GV.alt, sp, GV.Tprof_for_Hs[charge_type(sp)]; globvars...) for sp in all_species]) 
+    fluxcoefs_all = fluxcoefs(GV.all_species, Keddy_arr, Dcoef_dict, H0_dict; globvars...)
 
     # For the bulk layers only to make the loops below more comprehendable: 
     fluxcoefs_bulk_layers = Dict([s=>fluxcoefs_all[s][2:end-1, :] for s in keys(fluxcoefs_all)])
 
-    bc_dict = boundaryconditions(fluxcoefs_all, bcdict, allsp, setdiff(allsp, transsp), dz)  # here we are passing in no_transport_species
+    bc_dict = boundaryconditions(fluxcoefs_all; globvars...)
 
     # each element in thesebcs has the format [downward, upward]
     thesebcs = bc_dict[sp]
 
     # Fill array 
-    transport_PL = fill(convert(ftype_ncur, NaN), length(alts)-2)
+    transport_PL = fill(convert(ftype_ncur, NaN), GV.num_layers)
 
     # These are the derivatives, which should be what we want (check math)
     transport_PL[1] = ((atmdict[sp][2]*fluxcoefs_bulk_layers[sp][2, 1]  # in from layer above
@@ -1956,7 +2105,7 @@ function Keddy(z, nt)
     return k
 end
 
-function scaleH(z::Vector{Float64}, sp::Symbol, T::Array, mmass) # params to pass
+function scaleH(z::Vector{Float64}, sp::Symbol, T::Array; globvars...)
     #=
     Input:
         z: Altitudes in cm
@@ -1965,23 +2114,27 @@ function scaleH(z::Vector{Float64}, sp::Symbol, T::Array, mmass) # params to pas
     Output: 
         species-specific scale height at all altitudess
     =#  
+    GV = values(globvars)
+    @assert all(x->x in keys(GV), [:molmass])
 
-    mm = mmass[sp]
-    return @. kB*T/(mm*mH*marsM*bigG)*(((z+radiusM))^2)
+    return @. kB*T/(GV.molmass[sp]*mH*marsM*bigG)*(((z+radiusM))^2)
 end
 
-function scaleH(z::Vector{Float64}, atmdict::Dict{Symbol, Vector{ftype_ncur}}, T::Vector, allsp::Array, mmass) # params to pass
+function scaleH(atmdict::Dict{Symbol, Vector{ftype_ncur}}, T::Vector; globvars...)
     #= 
     Input:
-        z: altitudes in cm
         atmdict: Present atmospheric state dictionary
         T: temperature array for the neutral atmosphere
     Output:
         Mean atmospheric scale height at all altitudes
     =#
-    mm_vec = meanmass(atmdict, allsp, mmass) # vector version.
 
-    return @. kB*T/(mm_vec*mH*marsM*bigG)*(((z+radiusM))^2)
+    GV = values(globvars)
+    @assert all(x->x in keys(GV), [:all_species, :alt, :molmass, :n_alt_index])
+
+    mm_vec = meanmass(atmdict; globvars...)#, all_species, mmass) # vector version.
+
+    return @. kB*T/(mm_vec*mH*marsM*bigG)*(((GV.alt+radiusM))^2)
 end
 
 # thermal diffusion factors
@@ -1990,9 +2143,7 @@ thermaldiff(sp) = get(Dict(:H=>-0.25, :H2=>-0.25, :D=>-0.25, :HD=>-0.25,
                                 :Hpl=>-0.25, :H2pl=>-0.25, :Dpl=>-0.25, :HDpl=>-0.25,
                                 :Hepl=>-0.25), sp, 0)
 
-function update_diffusion_and_scaleH(species_list, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Tp, # params to pass
-                                     D_coefs, bcdict, 
-                                     allsp, neutralsp, mmass, alts, n_alt_index, polar, T_for_diff) 
+function update_diffusion_and_scaleH(species_list, atmdict::Dict{Symbol, Vector{ftype_ncur}}, D_coefs; globvars...) 
     #=
     Input:
         atmdict: Atmospheric state dictionary without boundary layers
@@ -2008,28 +2159,28 @@ function update_diffusion_and_scaleH(species_list, atmdict::Dict{Symbol, Vector{
         Dcoefs: Dictionary of molecular diffusion by altitude. Keys are species: species=>[D by altitude] 
         H0: Dictionary of mean atmospheric scale height by altitude. Keys are "neutral" and "ion". 
     =#
+    GV = values(globvars)
+    @assert all(x->x in keys(GV), [:Tn, :Tp, :bcdict, :all_species, :neutral_species, :molmass, :alt, :n_alt_index, :polarizability, 
+                                   :Tprof_for_diffusion])
 
-    ncur_with_bdys = ncur_with_boundary_layers(atmdict, allsp)
+    ncur_with_bdys = ncur_with_boundary_layers(atmdict; GV.n_alt_index, GV.all_species)
     
-    K = Keddy(alts, n_tot(ncur_with_bdys, allsp))
-    H0_dict = Dict{String, Vector{ftype_ncur}}("neutral"=>scaleH(alts, ncur_with_bdys, Tn, allsp, mmass),
-                                            "ion"=>scaleH(alts, ncur_with_bdys, Tp, allsp, mmass))
+    K = Keddy(GV.alt, n_tot(ncur_with_bdys; GV.all_species, GV.n_alt_index))
+    H0_dict = Dict{String, Vector{ftype_ncur}}("neutral"=>scaleH(ncur_with_bdys, GV.Tn; globvars...),
+                                               "ion"=>scaleH(ncur_with_bdys, GV.Tp; globvars...))
     
     # Molecular diffusion is only needed for transport species, though.  
-    Dcoef_dict = Dict{Symbol, Vector{ftype_ncur}}([s=>deepcopy(Dcoef!(D_coefs, T_for_diff[charge_type(s)], s, ncur_with_bdys, bcdict, 
-                                                                   allsp, mmass, polar, neutralsp)) for s in species_list])
+    Dcoef_dict = Dict{Symbol, Vector{ftype_ncur}}([s=>deepcopy(Dcoef!(D_coefs, GV.Tprof_for_diffusion[charge_type(s)], s, ncur_with_bdys; globvars...)) for s in species_list])
 
     return K, H0_dict, Dcoef_dict
 end
 
-function update_transport_coefficients(species_list, atmdict::Dict{Symbol, Vector{ftype_ncur}}, activellsp, Tn, Tp, # params to pass
-                                       D_coefs, Hs, bcdict, 
-                                       allsp, neutralsp, transsp, mmass, n_alt_index, polar, alts, numlyrs, dz, T_for_diff) 
+function update_transport_coefficients(species_list, atmdict::Dict{Symbol, Vector{ftype_ncur}}, activellsp, D_coefs; globvars...) 
     #=
     Input:
         species_list: Species which will have transport coefficients updated
         atmdict: Atmospheric state dictionary for bulk layers
-        activellsp: active long-lived species symbol list
+        tspecies: species which need transport coefficients calculated. May vary depending on sim parameters.
         Tn, Tp: Neutrals and plasma temperatures
         D_coefs: placeholder for molecular diffusion coefficients
         bcdict: Dictionary of boundary conditions, needed for pretty much everything.
@@ -2045,26 +2196,29 @@ function update_transport_coefficients(species_list, atmdict::Dict{Symbol, Vecto
         tdown: downward coefficients at inner bulk layers. shape: #TODO 
         tupper: at the upper boundary layer. shape: #TODO 
     =#
+
+    GV = values(globvars)
+    @assert all(x->x in keys(GV), [:Tn, :Tp, :Hs_dict, :bcdict, :all_species, :neutral_species, :transport_species, :molmass, :alt, :n_alt_index, :polarizability, 
+                                   :num_layers, :dz, :Tprof_for_diffusion, :n_all_layers])
     
     # Update the diffusion coefficients and scale heights
-    K_eddy_arr, H0_dict, Dcoef_dict = update_diffusion_and_scaleH(species_list, atmdict, Tn, Tp, D_coefs, bcdict, allsp, neutralsp, 
-                                                                  mmass, alts, n_alt_index, polar, T_for_diff)
+    K_eddy_arr, H0_dict, Dcoef_dict = update_diffusion_and_scaleH(species_list, atmdict, D_coefs; globvars...)
     
     # Get flux coefficients
-    fluxcoefs_all = fluxcoefs(species_list, Tn, Tp, K_eddy_arr, Dcoef_dict, H0_dict, Hs, alts, dz)
+    fluxcoefs_all = fluxcoefs(species_list, K_eddy_arr, Dcoef_dict, H0_dict; globvars...)
     
     # Transport coefficients, non-boundary layers
-    tup = fill(-999., length(activellsp), numlyrs)
-    tdown = fill(-999., length(activellsp), numlyrs)
-    for (i, s) in enumerate(activellsp)
+    tup = fill(-999., length(GV.transport_species), GV.num_layers)
+    tdown = fill(-999., length(GV.transport_species), GV.num_layers)
+    for (i, s) in enumerate(GV.transport_species)
         tup[i, :] .= fluxcoefs_all[s][2:end-1, 2]
         tdown[i, :] .= fluxcoefs_all[s][2:end-1, 1]
     end
 
     # transport coefficients for boundary layers
-    bc_dict = boundaryconditions(fluxcoefs_all, bcdict, allsp, setdiff(allsp, transsp), dz)
-    tlower = permutedims(reduce(hcat, [bc_dict[sp][1,:] for sp in activellsp]))
-    tupper = permutedims(reduce(hcat, [bc_dict[sp][2,:] for sp in activellsp]))
+    bc_dict = boundaryconditions(fluxcoefs_all; globvars...)
+    tlower = permutedims(reduce(hcat, [bc_dict[sp][1,:] for sp in GV.transport_species]))
+    tupper = permutedims(reduce(hcat, [bc_dict[sp][2,:] for sp in GV.transport_species]))
 
     return tlower, tup, tdown, tupper
 end
@@ -2077,7 +2231,7 @@ end
 
 # Network formatting and loading ====================================================
 
-function format_neutral_network(reactions_spreadsheet, used_species)
+function format_neutral_network(reactions_spreadsheet, used_species; verbose=false)
     #=
     Inputs:
         reactions_spreadsheet: Properly formatted .xlsx of chemical reactions with 
@@ -2102,7 +2256,9 @@ function format_neutral_network(reactions_spreadsheet, used_species)
 
     # Get rid of reactions with a species we don't use
     n_table = filter(row -> all(x->x in union(used_species, [:E, :M, :none]), [Symbol(row.R1), Symbol(row.R2), Symbol(row.R3)]), n_table_raw)
-    println("Removed reactions: $(filter(row->!all(x->x in union(used_species, [:E, :M, :none]), [Symbol(row.R1), Symbol(row.R2), Symbol(row.R3)]), n_table_raw))")
+    if verbose
+        println("Removed reactions: $(filter(row->!all(x->x in union(used_species, [:E, :M, :none]), [Symbol(row.R1), Symbol(row.R2), Symbol(row.R3)]), n_table_raw))")
+    end
 
     # Set up the array to store neutral network 
     neutral_network = vec(Array{Any}(undef, nrow(n_table)))
@@ -2185,10 +2341,10 @@ function format_neutral_network(reactions_spreadsheet, used_species)
         n += 1
     end
 
-    return neutral_network
+    return neutral_network, n_table."Num"
 end
 
-function format_ion_network(reactions_spreadsheet, used_species)
+function format_ion_network(reactions_spreadsheet, used_species; verbose=false)
     #=
     Inputs:
         reactions_spreadsheet: Properly formatted .xlsx of chemical reactions with 
@@ -2211,8 +2367,10 @@ function format_ion_network(reactions_spreadsheet, used_species)
 
     # Filter out reactions with reactants we don't use
     ion_table = filter(row->all(x->x in union(used_species, [:E, :M, :none]), [Symbol(row.R1), Symbol(row.R2)]), ion_table_raw)
-    println("Removed reactions: $(filter(row->!all(x->x in union(used_species, [:E, :M, :none]), [Symbol(row.R1), Symbol(row.R2)]), ion_table_raw))")
-    
+    if verbose
+        println("Removed reactions: $(filter(row->!all(x->x in union(used_species, [:E, :M, :none]), [Symbol(row.R1), Symbol(row.R2)]), ion_table_raw))")
+    end 
+
     numrows = size(ion_table)[1]
     ion_network = Array{Any}(undef, numrows, 1)
 
@@ -2241,10 +2399,10 @@ function format_ion_network(reactions_spreadsheet, used_species)
                           make_k_expr(kA, kB, kC, Tstr, M2, M1, pow, BR)] # RATE COEFFICIENT EXPRESSION
     end
         
-    return ion_network
+    return ion_network, ion_table."Num"
 end
 
-function load_reaction_network(spreadsheet, Jrl, absorber, photo_prods, allsp)
+function load_reaction_network(spreadsheet; ions_on=true, get_inds=false, globvars...)
     #=
     Inputs:
         spreadsheet: path and filename of the reaction network spreadsheet
@@ -2255,10 +2413,25 @@ function load_reaction_network(spreadsheet, Jrl, absorber, photo_prods, allsp)
         reaction_network, a vector of vectors in the format
         [Symbol[reactants...], Symbol[products...], :(rate coefficient expression)
     =#
-    ionnet = format_ion_network(spreadsheet, allsp)
-    neutral_net = format_neutral_network(spreadsheet, allsp);
-    Jrxns = [[[absorber[Jr]], photo_prods[Jr], Jr] for Jr in Jrl]
-    return [Jrxns..., neutral_net..., ionnet...]
+    GV = values(globvars)
+    @assert all(x->x in keys(GV), [:all_species, :Jratelist, :absorber, :photolysis_products])
+
+    if ions_on == true
+        ionnet, i_nums = format_ion_network(spreadsheet, GV.all_species)
+    else 
+        ionnet = []
+        i_nums = []
+    end 
+
+    neutral_net, n_nums = format_neutral_network(spreadsheet, GV.all_species)
+    Jrxns = [[[GV.absorber[Jr]], GV.photolysis_products[Jr], Jr] for Jr in GV.Jratelist]
+    whole_network = [Jrxns..., neutral_net..., ionnet...]
+    
+    if get_inds
+        return whole_network, n_nums, i_nums
+    else
+        return whole_network
+    end
 end
 
 function make_k_expr(A, B, C, T::String, M2, M1, pow, BR)
@@ -2428,7 +2601,20 @@ function check_jacobian_eigenvalues(J, path)
     end
 end
 
-function chemical_jacobian(chemnet, transportnet, specieslist, dspecieslist, chemsp, transportsp; chem_on=true, trans_on=true)
+function replace_E(eqn, insertme)
+    i = findall(x->x==:E, eqn)
+
+    if length(i)!=0
+        deleteat!(eqn, i)
+        for j in 1:length(insertme)
+            insert!(eqn, i[1], insertme[j])
+        end
+    end
+    
+    return eqn 
+end
+
+function chemical_jacobian(specieslist, dspecieslist; diff_wrt_e=true, diff_wrt_m=true, globvars...)
     #= 
     Compute the symbolic chemical jacobian of a supplied chemnet and transportnet
     for the specified specieslist. 
@@ -2438,14 +2624,19 @@ function chemical_jacobian(chemnet, transportnet, specieslist, dspecieslist, che
         transportnet: transport equations
         specieslist: list of species to calculate for; i.e. the species whose equation is differentiated
         dspecieslist: species with respect to which the equations are differentiated
-        chemsp: list of chemistry species
+        chem_species: list of chemistry species
         transportsp: list of transport species
+        ionsp: the list of ions, needed to add in the terms arising from dependence on E, 
+               since density of electrons is just the sum of all the ion densities.
     Output:
         three arrays suitable for constructing a sparse matrix: 
             i: row indices
             j: column indices
             v: values to place at (i, j)
     =#
+
+    GV = values(globvars)
+    @assert all(x->x in keys(GV), [:chem_species, :transport_species, :chemnet, :transportnet])
 
     # set up output vectors: indices and values
     ivec = Int64[] # list of first indices (corresponding to the species being produced and lost)
@@ -2454,19 +2645,40 @@ function chemical_jacobian(chemnet, transportnet, specieslist, dspecieslist, che
 
     nspecies = length(specieslist)  # this is the active species. 
     ndspecies = length(dspecieslist)  # this is the species with respect to which we differentiate
+    if diff_wrt_e==true
+        @assert all(x->x in keys(GV), [:ion_species])
+        ion_cols = indexin(GV.ion_species, specieslist) # for filling in the derivatives wrt electrons 
+        # println("The ion columns are $(ion_cols), expect to see new terms in those columns") # For testing
+    end
 
     for i in 1:nspecies # for each species
         ispecies = specieslist[i]
+
         # get the production and loss equations
         peqn = []
         leqn = []
-        if issubset([ispecies], chemsp)
-            peqn = [peqn; production_equations(ispecies, chemnet)] 
-            leqn = [leqn; loss_equations(ispecies, chemnet)]
+        if issubset([ispecies], GV.chem_species)
+            peqn = [peqn; production_equations(ispecies, GV.chemnet)] 
+            leqn = [leqn; loss_equations(ispecies, GV.chemnet)]
         end
-        if issubset([ispecies],transportsp)
-            peqn = [peqn; production_equations(ispecies, transportnet)]
-            leqn = [leqn; loss_equations(ispecies, transportnet)]
+        if issubset([ispecies],GV.transport_species)
+            peqn = [peqn; production_equations(ispecies, GV.transportnet)]
+            leqn = [leqn; loss_equations(ispecies, GV.transportnet)]
+        end
+
+        # Account for e's
+        if diff_wrt_e
+            ppos_electrons = map(x->deletefirst(peqn[x[1]], :E), getpos(peqn, :E))
+            lpos_electrons = map(x->deletefirst(leqn[x[1]], :E), getpos(leqn, :E)) # differentiate wrt e term using deletefirst
+            # Following line will keep track of other reactants in the case you have molecules and an electron reacting. 
+            # Presently this is not used as there are no reactions like that. 
+            # other_reactants = [i[1:end-1] for i in lpos_electrons] 
+        end
+
+        # Account for dependence on M
+        if diff_wrt_m
+            ppos_M = map(x->deletefirst(peqn[x[1]], :M), getpos(peqn, :M))
+            lpos_M = map(x->deletefirst(leqn[x[1]], :M), getpos(leqn, :M))
         end
 
         for j in 1:ndspecies # now take the derivative with respect to the other species
@@ -2476,10 +2688,25 @@ function chemical_jacobian(chemnet, transportnet, specieslist, dspecieslist, che
             occurrance of jspecies deleted. (Note: this seamlessly
             deals with multiple copies of a species on either side of
             an equation, because it is found twice wherever it lives) =#
+
             ppos = map(x->deletefirst(peqn[x[1]],jspecies), getpos(peqn, jspecies))
             lpos = map(x->deletefirst(leqn[x[1]],jspecies), getpos(leqn, jspecies))
+
+            # Add in dependence on M. Since M is a sum of all species, this has to be added to every column. 
+            if diff_wrt_m
+                append!(ppos, ppos_M)
+                append!(lpos, lpos_M)
+            end
+
+            if diff_wrt_e
+                if j in ion_cols
+                    append!(ppos, ppos_electrons)
+                    append!(lpos, lpos_electrons)
+                end
+            end
+
             if length(ppos)+length(lpos)>0 #if there is a dependence
-                #make note of where this dependency exists
+                #make note of where this dependency exists 
                 append!(ivec,[i])
                 append!(jvec,[j])
 
@@ -2500,14 +2727,17 @@ function chemical_jacobian(chemnet, transportnet, specieslist, dspecieslist, che
                 end
                 # attach the symbolic expression to the return values
                 append!(tvec,[tval])
+
             end
         end
     end
-    return (ivec, jvec, tvec) # Expr(:vcat, tvec...))  # 
+
+    # println(ivec, jvec, tvec) # TEST
+
+    return (ivec, jvec, tvec)
 end
 
-function eval_rate_coef(atmdict::Dict{Symbol, Vector{ftype_ncur}}, krate::Expr, tn, ti, te, # params to pass 
-                        allsp, ionsp, numlyrs::Int64) 
+function eval_rate_coef(atmdict::Dict{Symbol, Vector{ftype_ncur}}, krate::Expr; globvars...)
     #=
     Evaluates a chemical reaction rate coefficient, krate, for all levels of the atmosphere. 
 
@@ -2519,20 +2749,16 @@ function eval_rate_coef(atmdict::Dict{Symbol, Vector{ftype_ncur}}, krate::Expr, 
         rate_coefficient: evaluated rate coefficient at all atmospheric layers
     =#
 
+    GV = values(globvars)
+    @assert all(x->x in keys(GV), [:Tn, :Ti, :Te, :all_species, :ion_species])
+
     # Set stuff up
-    # rate_coefficient = zeros(numlyrs)
     eval_k = mk_function(:((Tn, Ti, Te, M, E) -> $krate))
 
-    # old, bad form, SLOW code, does work, but has to compile literally every time it's called:
-    # @eval ratefunc(Tn, Ti, Te, M, E) = $krate
-    # rate_coefficient .= Base.invokelatest(ratefunc, tn, ti, te, M_by_alt, E_by_alt)
-
-    return eval_k(tn, ti, te, sum([atmdict[sp] for sp in allsp]), sum([atmdict[sp] for sp in ionsp]))
+    return eval_k(GV.Tn, GV.Ti, GV.Te, sum([atmdict[sp] for sp in GV.all_species]), sum([atmdict[sp] for sp in GV.ion_species]))
 end 
 
-function get_column_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Ti, Te, bcdict::Dict{Symbol, Matrix{Any}}, # params to pass
-                          allsp, ionsp, dz, rxnnet, numlyrs::Int64; 
-                          which="all", sp2=nothing, role="product", startalt_i=1) 
+function get_column_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}; which="all", sp2=nothing, role="product", startalt_i=1, globvars...)
     #=
     Input:
         sp: species for which to search for reactions
@@ -2548,25 +2774,25 @@ function get_column_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}},
         sorted: Total column rates for all reactions of species sp. Sorted, in order of largest rate to smallest. NOT a dictionary.
                 sorted[1] is the top production mechanism, e.g.
     =#
+    GV = values(globvars)
+    @assert all(x->x in keys(GV), [:Tn, :Ti, :Te, :all_species, :ion_species, :rxnnet, :num_layers, :dz])
     
-    rxd, coefs = get_volume_rates(sp, atmdict, Tn[2:end-1], Ti[2:end-1], Te[2:end-1], allsp, ionsp, rxnnet, numlyrs, 
-                                   species_role=role, which=which);
-    
+    rxd, coefs = get_volume_rates(sp, atmdict; species_role=role, which=which, globvars...)# Tn[2:end-1], Ti[2:end-1], Te[2:end-1], all_species, ionsp, rxnnet, numlyrs, 
+                                   
     # Make the column rates dictionary for production
     columnrate = Dict()
     for k in keys(rxd)
-        columnrate[k] = sum(rxd[k][startalt_i:end] .* dz)
+        columnrate[k] = sum(rxd[k][startalt_i:end] .* GV.dz)
     end
     
     # Optionally one can specify a second species to include in the sorted result, i.e. a species' ion.
     if sp2 != nothing
-        rxd2, coefs2 = get_volume_rates(sp2, atmdict, Tn[2:end-1], Ti[2:end-1], Te[2:end-1], allsp, ionsp, rxnnet, numlyrs, 
-                                         species_role=role, which=which);
+        rxd2, coefs2 = get_volume_rates(sp2, atmdict; species_role=role, which=which, globvars...) # Tn[2:end-1], Ti[2:end-1], Te[2:end-1], all_species, ionsp, rxnnet, numlyrs, 
 
         columnrate2 = Dict()
 
         for k in keys(rxd2)
-            columnrate2[k] = sum(rxd2[k][startalt_i:end] .* dz)
+            columnrate2[k] = sum(rxd2[k][startalt_i:end] .* GV.dz)
         end
 
         colrate_dict = merge(columnrate, columnrate2)
@@ -2579,7 +2805,7 @@ function get_column_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}},
     return sorted
 end
 
-function get_volume_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Ti, Te, allsp, ionsp, rxnnet, numlyrs::Int64; species_role="both", which="all") 
+function get_volume_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}; species_role="both", which="all", globvars...)
     #=
     Input:
         sp: Species name
@@ -2593,10 +2819,13 @@ function get_volume_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}},
         rate_coefs: Evaluated rate coefficients for each reaction 
     =#
 
+    GV = values(globvars)
+    @assert all(x->x in keys(GV), [:Tn, :Ti, :Te, :all_species, :ion_species, :rxnnet, :num_layers])
+
     # Make sure temperatures are correct format
-    @assert length(Tn)==numlyrs 
-    @assert length(Ti)==numlyrs
-    @assert length(Te)==numlyrs
+    @assert length(GV.Tn)==GV.num_layers 
+    @assert length(GV.Ti)==GV.num_layers
+    @assert length(GV.Te)==GV.num_layers
 
     # Fill in the rate x density dictionary ------------------------------------------------------------------------------
     rxn_dat =  Dict{String, Array{ftype_ncur, 1}}()
@@ -2604,11 +2833,11 @@ function get_volume_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}},
 
     # Select either photodissociation or bi-/tri-molecular reactions
     if which=="Jrates"
-        selected_rxns = filter(x->occursin("J", string(x[3])), rxnnet)
+        selected_rxns = filter(x->occursin("J", string(x[3])), GV.rxnnet)
     elseif which=="krates" 
-        selected_rxns = filter(x->!occursin("J", string(x[3])), rxnnet)
+        selected_rxns = filter(x->!occursin("J", string(x[3])), GV.rxnnet)
     elseif which=="all"
-        selected_rxns = deepcopy(rxnnet)
+        selected_rxns = deepcopy(GV.rxnnet)
     end
 
     # now select only the reactions with the species in question (there is probably a less repetative way to write this)
@@ -2631,7 +2860,6 @@ function get_volume_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}},
     end
 
     filtered_rxn_list = unique(filtered_rxn_list)  # gets rid of duplicates since occursin() is greedy
-
     
     for rxn in filtered_rxn_list
         # get the reactants and products in string form for use in plot labels
@@ -2642,14 +2870,14 @@ function get_volume_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}},
             rxn_dat[rxn_str] = atmdict[rxn[1][1]] .* atmdict[rxn[3]]
             rate_coefs[rxn_str] = atmdict[rxn[3]]
         else                        # bi- and ter-molecular chemistry
-            density_prod = reactant_density_product(atmdict, rxn[1], allsp, ionsp, numlyrs)
+            density_prod = reactant_density_product(atmdict, rxn[1]; globvars...)
             thisrate = typeof(rxn[3]) != Expr ? :($rxn[3] + 0) : rxn[3]
-            rate_coef = eval_rate_coef(atmdict, thisrate, Tn, Ti, Te, allsp, ionsp, numlyrs)
+            rate_coef = eval_rate_coef(atmdict, thisrate; globvars...)
 
 
             rxn_dat[rxn_str] = density_prod .* rate_coef # This is k * [R1] * [R2] where [] is density of a reactant. 
             if typeof(rate_coef) == Float64
-                rate_coef = rate_coef * ones(numlyrs)
+                rate_coef = rate_coef * ones(GV.num_layers)
             end
             rate_coefs[rxn_str] = rate_coef
         end
@@ -2658,7 +2886,7 @@ function get_volume_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}},
     return rxn_dat, rate_coefs
 end
 
-function get_volume_rates(sp::Symbol, source_rxn::Vector{Any}, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Tn, Ti, Te, allsp, ionsp, numlyrs::Int64) 
+function get_volume_rates(sp::Symbol, source_rxn::Vector{Any}, atmdict::Dict{Symbol, Vector{ftype_ncur}}; globvars...)
     #=
     Override to call for a single reaction. Useful for doing non-thermal flux boundary conditions.
     Input:
@@ -2670,13 +2898,16 @@ function get_volume_rates(sp::Symbol, source_rxn::Vector{Any}, atmdict::Dict{Sym
         vol_rates: Evaluated rates, i.e. k[A][B], units #/cm^3/s for bimolecular rxns, for the whole atmosphere.
     =#
 
+    GV = values(globvars)
+    @assert all(x->x in keys(GV),  [:Tn, :Ti, :Te, :all_species, :ion_species, :num_layers])
+
     # Make sure temperatures are correct format
-    @assert length(Tn)==numlyrs 
-    @assert length(Ti)==numlyrs
-    @assert length(Te)==numlyrs
+    @assert length(GV.Tn)==GV.num_layers 
+    @assert length(GV.Ti)==GV.num_layers
+    @assert length(GV.Te)==GV.num_layers
 
     # Fill in the rate x density dictionary ------------------------------------------------------------------------------
-    vol_rates = Array{ftype_ncur}(undef, numlyrs, 1)
+    vol_rates = Array{ftype_ncur}(undef, GV.num_layers, 1)
 
     # get the reactants and products in string form for use in plot labels
     rxn_str = format_chemistry_string(source_rxn[1], source_rxn[2])
@@ -2686,14 +2917,14 @@ function get_volume_rates(sp::Symbol, source_rxn::Vector{Any}, atmdict::Dict{Sym
         vol_rates = atmdict[source_rxn[1][1]] .* atmdict[source_rxn[3]]
     else                        # bi- and ter-molecular chemistry
         thisrate = typeof(source_rxn[3]) != Expr ? :($source_rxn[3] + 0) : source_rxn[3]
-        rate_coef = eval_rate_coef(atmdict, thisrate, Tn, Ti, Te, allsp, ionsp, numlyrs)
-        vol_rates = reactant_density_product(atmdict, source_rxn[1], allsp, ionsp, numlyrs) .* rate_coef # This is k * [R1] * [R2] where [] is density of a reactant. 
+        rate_coef = eval_rate_coef(atmdict, thisrate; globvars...)#, Tn, Ti, Te, all_species, ionsp, numlyrs)
+        vol_rates = reactant_density_product(atmdict, source_rxn[1]; globvars...)#=, all_species, ionsp, numlyrs)=# .* rate_coef # This is k * [R1] * [R2] where [] is density of a reactant. 
     end
     
     return vol_rates
 end
 
-function getrate(sp::Symbol, chemnet, transportnet, chemsp, transportsp; chemistry_on=true, transport_on=true, sepvecs=false) 
+function getrate(sp::Symbol; chemistry_on=true, transport_on=true, sepvecs=false, globvars...)
     #=
     Creates a symbolic expression for the rate at which a given species is
     either produced or lost due to chemical reactions or transport.
@@ -2702,8 +2933,8 @@ function getrate(sp::Symbol, chemnet, transportnet, chemsp, transportsp; chemist
         sp: species for which to get the rate 
         chemnet: chemistry reaction array
         transportnet: transport network array
-        chemsp: species with active chemistry
-        transportsp: species which transport
+        chem_species: species with active chemistry
+        transport_species: species which transport
         chemistry_on: set to false to disallow chemical changes to species
         transport_on: set to false to disallow transport of a species
         sepvecs: Allows this function to return a vector of expressions for chemical production and loss 
@@ -2713,34 +2944,38 @@ function getrate(sp::Symbol, chemnet, transportnet, chemsp, transportsp; chemist
         chemprod_rate, chemloss_rate, transprod_rate, transloss_rate: dn/dt for sp due to these processes, calculated separately.
     =#
 
+    GV = values(globvars)
+    @assert all(x->x in keys(GV),  [:chemnet, :transportnet, :chem_species, :transport_species])
+
+
     # This block will return the total net change for the species, P - L.
     if sepvecs == false
         rate = :(0.0)
-        if issubset([sp], chemsp) && chemistry_on
+        if issubset([sp], GV.chem_species) && chemistry_on
             rate = :($rate 
-                     + $(production_rate(sp, chemnet, sepvecs=sepvecs)) 
-                     - $(loss_rate(sp, chemnet, sepvecs=sepvecs)) 
+                     + $(production_rate(sp, GV.chemnet, sepvecs=sepvecs)) 
+                     - $(loss_rate(sp, GV.chemnet, sepvecs=sepvecs)) 
                     )
         end
-        if issubset([sp],transportsp) && transport_on
+        if issubset([sp], GV.transport_species) && transport_on
             rate = :($rate 
-                     + $(production_rate(sp, transportnet, sepvecs=sepvecs)) 
-                     - $(loss_rate(sp, transportnet, sepvecs=sepvecs))
+                     + $(production_rate(sp, GV.transportnet, sepvecs=sepvecs)) 
+                     - $(loss_rate(sp, GV.transportnet, sepvecs=sepvecs))
                     )
         end
         return rate
     else  # if we want a vector of expressions for each production and loss (4 terms, 2 each for chemistry and transport)
-        if issubset([sp],chemsp) && chemistry_on
-            chemprod_rate = production_rate(sp, chemnet, sepvecs=sepvecs)
-            chemloss_rate = loss_rate(sp, chemnet, sepvecs=sepvecs)
+        if issubset([sp], GV.chem_species) && chemistry_on
+            chemprod_rate = production_rate(sp, GV.chemnet, sepvecs=sepvecs)
+            chemloss_rate = loss_rate(sp, GV.chemnet, sepvecs=sepvecs)
         else
             chemprod_rate = [:(0.0 + 0.0)]  # Doing it this way because it's the easiest way to make a vector of one expression that's just 0
             chemloss_rate = [:(0.0 + 0.0)]
         end
         
-        if issubset([sp],transportsp) && transport_on
-            transprod_rate = production_rate(sp, transportnet, sepvecs=sepvecs)
-            transloss_rate = loss_rate(sp, transportnet, sepvecs=sepvecs)
+        if issubset([sp], GV.transport_species) && transport_on
+            transprod_rate = production_rate(sp, GV.transportnet, sepvecs=sepvecs)
+            transloss_rate = loss_rate(sp, GV.transportnet, sepvecs=sepvecs)
         else
             transprod_rate = [:(0.0 + 0.0)]
             transloss_rate = [:(0.0 + 0.0)]
@@ -2756,7 +2991,7 @@ function loss_equations(sp::Symbol, network)
     Input:
         sp: Species for which to construct a loss equation
         network: The type of loss process to consider, i.e. either a chemical reaction network or a transport network
-    Output:
+    Output: 
         losseqns: loss equations and relevant rate coefficients for species sp.
                   the form is an array where each entry is of the form [reactants..., rate].
                   For example, [[:O2, :JO2toOpO], [:O1D, :O2, :k]] are two possible entries 
@@ -2917,8 +3152,7 @@ function production_rate(sp::Symbol, network; return_peqn_unmapped=false, sepvec
     end
 end
 
-function reactant_density_product(atmdict::Dict{Symbol, Vector{ftype_ncur}}, reactants, 
-                                  allsp, ionsp, numlyrs::Int64)
+function reactant_density_product(atmdict::Dict{Symbol, Vector{ftype_ncur}}, reactants; globvars...)
     #=
     Calculates the product of all reactant densities for a chemical reaction for the whole atmosphere, 
     i.e. for A + B --> C + D, return n_A * n_B.
@@ -2930,15 +3164,19 @@ function reactant_density_product(atmdict::Dict{Symbol, Vector{ftype_ncur}}, rea
         density_product: returns n_A * n_B for all altitudes for the reaction A + B --> ...
     =#
 
-    density_product = ones(numlyrs)
+    GV = values(globvars)
+    @assert all(x->x in keys(GV),  [:all_species, :ion_species, :num_layers])
+
+
+    density_product = ones(GV.num_layers)
     for r in reactants
         if r != :M && r != :E
             # species densities by altitude
             density_product .*= atmdict[r]  # multiply by each reactant density
         elseif r == :M
-            density_product .*= sum([atmdict[sp] for sp in allsp]) 
+            density_product .*= sum([atmdict[sp] for sp in GV.all_species]) 
         elseif r == :E
-            density_product .*= sum([atmdict[sp] for sp in ionsp])
+            density_product .*= sum([atmdict[sp] for sp in GV.ion_species])
         else
             throw("Got an unknown symbol in a reaction rate: $(r)")
         end
@@ -3127,7 +3365,7 @@ function group_terms(prod_rxn_arr, loss_rxn_arr)
     return terms_exprs
 end
 
-function loss_coef(leqn_vec, sp::Symbol; calc_tau_chem=false)  # Checked - global-free
+function loss_coef(leqn_vec, sp::Symbol; calc_tau_chem=false)
     #=
     Input:
         leqn: output of loss_equations (a vector of vectors of symbols)
@@ -3192,7 +3430,6 @@ function linear_in_species_density(sp, lossnet)
     end
     return true 
 end
-
 
 # **************************************************************************** #
 #                                                                              #
@@ -3388,7 +3625,7 @@ function padtosolar(solarflux, crosssection::Array{Float64, 2})
     return retxsec
 end
 
-function populate_xsect_dict(pd_dataf, Tn_array::Array, alts::Array, Jrates; ion_xsects=true)
+function populate_xsect_dict(pd_dataf; ion_xsects=true, globvars...)
     #=
     Creates a dictionary of the 1-nm photodissociation or photoionization
     cross-sections important in the atmosphere. keys are symbols found in
@@ -3408,6 +3645,10 @@ function populate_xsect_dict(pd_dataf, Tn_array::Array, alts::Array, Jrates; ion
     Output
         crosssections: dictionary of cross sections by wavelength for each species. 
     =#
+
+    GV = values(globvars)
+    @assert all(x->x in keys(GV), [:Tn, :n_all_layers, :Jratelist])
+    
 
     # Set up =======================================================================
     xsect_dict = Dict{Symbol, Array{Array{Float64}}}()
@@ -3477,21 +3718,21 @@ function populate_xsect_dict(pd_dataf, Tn_array::Array, alts::Array, Jrates; ion
     #CO2+hv->CO+O
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((l->l>167, 1), (l->95>l, 0.5))),
-              map(t->co2xsect(co2xdata, t), Tn_array)), get_Jrate_symb(["CO2", "CO", "O")], Jrates)
+              map(t->co2xsect(co2xdata, t), GV.Tn)), get_Jrate_symb(["CO2", "CO", "O"], GV.Jratelist))
     #CO2+hv->CO+O1D
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((l->95<l<167, 1), (l->l<95, 0.5))),
-              map(t->co2xsect(co2xdata, t), Tn_array)), get_Jrate_symb(["CO2", "CO", "O1D"], Jrates)
+              map(t->co2xsect(co2xdata, t), GV.Tn)), get_Jrate_symb(["CO2", "CO", "O1D"], GV.Jratelist))
 
     # O2 photodissociation ---------------------------------------------------------
     #O2+hv->O+O
     setindex!(xsect_dict,
-              map(xs->quantumyield(xs,((x->x>175, 1),)), map(t->o2xsect(o2xdata, o2schr130K, o2schr190K, o2schr280K, t), Tn_array)),
-              get_Jrate_symb(["O2", "O", "O"], Jrates))
+              map(xs->quantumyield(xs,((x->x>175, 1),)), map(t->o2xsect(o2xdata, o2schr130K, o2schr190K, o2schr280K, t), GV.Tn)),
+              get_Jrate_symb(["O2", "O", "O"], GV.Jratelist))
     #O2+hv->O+O1D
     setindex!(xsect_dict,
-              map(xs->quantumyield(xs,((x->x<175, 1),)), map(t->o2xsect(o2xdata, o2schr130K, o2schr190K, o2schr280K, t), Tn_array)),
-              get_Jrate_symb(["O2", "O", "O1D"], Jrates))
+              map(xs->quantumyield(xs,((x->x<175, 1),)), map(t->o2xsect(o2xdata, o2schr130K, o2schr190K, o2schr280K, t), GV.Tn)),
+              get_Jrate_symb(["O2", "O", "O1D"], GV.Jratelist))
 
     # O3 photodissociation ---------------------------------------------------------
     # O3+hv->O2+O
@@ -3504,7 +3745,7 @@ function populate_xsect_dict(pd_dataf, Tn_array::Array, alts::Array, Jrates; ion
                                    (l->306<=l<328, l->(1 .- O3O1Dquantumyield(l, t))),
                                    (l->328<=l<340, 0.92),
                                    (l->340<=l, 1.0)
-                                  )), Tn_array), get_Jrate_symb(["O3", "O2", "O"], Jrates))
+                                  )), GV.Tn), get_Jrate_symb(["O3", "O2", "O"], GV.Jratelist))
     # O3+hv->O2+O1D
     setindex!(xsect_dict,
               map(t->quantumyield(o3xdata,
@@ -3515,145 +3756,145 @@ function populate_xsect_dict(pd_dataf, Tn_array::Array, alts::Array, Jrates; ion
                                    (l->306<=l<328, l->O3O1Dquantumyield(l, t)),
                                    (l->328<=l<340, 0.08),
                                    (l->340<=l, 0.0)
-                                  )), Tn_array), get_Jrate_symb(["O3", "O2", "O1D"], Jrates))
+                                  )), GV.Tn), get_Jrate_symb(["O3", "O2", "O1D"], GV.Jratelist))
     # O3+hv->O+O+O
     setindex!(xsect_dict,
-              fill(quantumyield(o3xdata,((x->true, 0.),)),length(alts)),
-              get_Jrate_symb(["O3", "O", "O", "O"], Jrates))
+              fill(quantumyield(o3xdata,((x->true, 0.),)),GV.n_all_layers),
+              get_Jrate_symb(["O3", "O", "O", "O"], GV.Jratelist))
 
     # H2 and HD photodissociation --------------------------------------------------
     # H2+hv->H+H
-    setindex!(xsect_dict, fill(h2xdata, length(alts)), get_Jrate_symb(["H2", "H", "H"], Jrates))
+    setindex!(xsect_dict, fill(h2xdata, GV.n_all_layers), get_Jrate_symb(["H2", "H", "H"], GV.Jratelist))
     # HD+hν -> H+D 
-    setindex!(xsect_dict, fill(hdxdata, length(alts)), get_Jrate_symb(["HD", "H", "D"], Jrates))
+    setindex!(xsect_dict, fill(hdxdata, GV.n_all_layers), get_Jrate_symb(["HD", "H", "D"], GV.Jratelist))
 
     # OH and OD photodissociation --------------------------------------------------
     # OH+hv->O+H
-    setindex!(xsect_dict, fill(ohxdata, length(alts)), get_Jrate_symb(["OH", "O", "H"], Jrates))
+    setindex!(xsect_dict, fill(ohxdata, GV.n_all_layers), get_Jrate_symb(["OH", "O", "H"], GV.Jratelist))
     # OH + hv -> O(¹D) + H
-    setindex!(xsect_dict, fill(ohO1Dxdata, length(alts)), get_Jrate_symb(["OH", "O1D", "H"], Jrates))
+    setindex!(xsect_dict, fill(ohO1Dxdata, GV.n_all_layers), get_Jrate_symb(["OH", "O1D", "H"], GV.Jratelist))
     # OD + hv -> O+D  
-    setindex!(xsect_dict, fill(odxdata, length(alts)), get_Jrate_symb(["OD", "O", "D"], Jrates))
+    setindex!(xsect_dict, fill(odxdata, GV.n_all_layers), get_Jrate_symb(["OD", "O", "D"], GV.Jratelist))
     # OD + hν -> O(¹D) + D 
-    setindex!(xsect_dict, fill(ohO1Dxdata, length(alts)), get_Jrate_symb(["OD", "O1D", "D"], Jrates))
+    setindex!(xsect_dict, fill(ohO1Dxdata, GV.n_all_layers), get_Jrate_symb(["OD", "O1D", "D"], GV.Jratelist))
 
     # HO2 and DO2 photodissociation ------------------------------------------------
     # HO2 + hν -> OH + O
-    setindex!(xsect_dict, fill(ho2xsect, length(alts)), get_Jrate_symb(["HO2", "OH", "O"], Jrates))
+    setindex!(xsect_dict, fill(ho2xsect, GV.n_all_layers), get_Jrate_symb(["HO2", "OH", "O"], GV.Jratelist))
     # DO2 + hν -> OD + O
-    setindex!(xsect_dict, fill(do2xsect, length(alts)), get_Jrate_symb(["DO2", "OD", "O"], Jrates))
+    setindex!(xsect_dict, fill(do2xsect, GV.n_all_layers), get_Jrate_symb(["DO2", "OD", "O"], GV.Jratelist))
 
     # H2O and HDO photodissociation ------------------------------------------------
     # H2O+hv->H+OH
     setindex!(xsect_dict,
-              fill(quantumyield(h2oxdata,((x->x<145, 0.89),(x->x>145, 1))),length(alts)),
-              get_Jrate_symb(["H2O", "H", "OH"], Jrates))
+              fill(quantumyield(h2oxdata,((x->x<145, 0.89),(x->x>145, 1))),GV.n_all_layers),
+              get_Jrate_symb(["H2O", "H", "OH"], GV.Jratelist))
 
     # H2O+hv->H2+O1D
     setindex!(xsect_dict,
-              fill(quantumyield(h2oxdata,((x->x<145, 0.11),(x->x>145, 0))),length(alts)),
-              get_Jrate_symb(["H2O", "H2", "O1D"], Jrates))
+              fill(quantumyield(h2oxdata,((x->x<145, 0.11),(x->x>145, 0))),GV.n_all_layers),
+              get_Jrate_symb(["H2O", "H2", "O1D"], GV.Jratelist))
 
     # H2O+hv->H+H+O
     setindex!(xsect_dict,
-              fill(quantumyield(h2oxdata,((x->true, 0),)),length(alts)),
-              get_Jrate_symb(["H2O", "H", "H", "O"], Jrates))
+              fill(quantumyield(h2oxdata,((x->true, 0),)),GV.n_all_layers),
+              get_Jrate_symb(["H2O", "H", "H", "O"], GV.Jratelist))
 
     # HDO + hν -> H + OD
     setindex!(xsect_dict,
-              fill(quantumyield(hdoxdata,((x->x<145, 0.5*0.89),(x->x>145, 0.5*1))),length(alts)),
-              get_Jrate_symb(["HDO", "H", "OD"], Jrates))
+              fill(quantumyield(hdoxdata,((x->x<145, 0.5*0.89),(x->x>145, 0.5*1))),GV.n_all_layers),
+              get_Jrate_symb(["HDO", "H", "OD"], GV.Jratelist))
 
     # HDO + hν -> D + OH
     setindex!(xsect_dict,
-              fill(quantumyield(hdoxdata,((x->x<145, 0.5*0.89),(x->x>145, 0.5*1))),length(alts)),
-              get_Jrate_symb(["HDO", "D", "OH"], Jrates))
+              fill(quantumyield(hdoxdata,((x->x<145, 0.5*0.89),(x->x>145, 0.5*1))),GV.n_all_layers),
+              get_Jrate_symb(["HDO", "D", "OH"], GV.Jratelist))
 
     # HDO + hν -> HD + O1D
     setindex!(xsect_dict,
-              fill(quantumyield(hdoxdata,((x->x<145, 0.11),(x->x>145, 0))),length(alts)),
-              get_Jrate_symb(["HDO", "HD", "O1D"], Jrates))
+              fill(quantumyield(hdoxdata,((x->x<145, 0.11),(x->x>145, 0))),GV.n_all_layers),
+              get_Jrate_symb(["HDO", "HD", "O1D"], GV.Jratelist))
 
     # HDO + hν -> H + D + O
     setindex!(xsect_dict,
-              fill(quantumyield(hdoxdata,((x->true, 0),)),length(alts)),
-              get_Jrate_symb(["HDO", "H", "D", "O"], Jrates))
+              fill(quantumyield(hdoxdata,((x->true, 0),)),GV.n_all_layers),
+              get_Jrate_symb(["HDO", "H", "D", "O"], GV.Jratelist))
 
 
     # H2O2 and HDO2 photodissociation ----------------------------------------------
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((x->x<230, 0.85),(x->x>230, 1))),
-              map(t->h2o2xsect(h2o2xdata, t), Tn_array)), get_Jrate_symb(["H2O2", "2OH"], Jrates))
+              map(t->h2o2xsect(h2o2xdata, t), GV.Tn)), get_Jrate_symb(["H2O2", "2OH"], GV.Jratelist))
 
     # H2O2+hv->HO2+H
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((x->x<230, 0.15),(x->x>230, 0))),
-              map(t->h2o2xsect(h2o2xdata, t), Tn_array)), get_Jrate_symb(["H2O2", "HO2", "H"], Jrates))
+              map(t->h2o2xsect(h2o2xdata, t), GV.Tn)), get_Jrate_symb(["H2O2", "HO2", "H"], GV.Jratelist))
 
     # H2O2+hv->H2O+O1D
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((x->true, 0),)), map(t->h2o2xsect(h2o2xdata, t),
-              Tn_array)), get_Jrate_symb(["H2O2", "H2O", "O1D"], Jrates))
+              GV.Tn)), get_Jrate_symb(["H2O2", "H2O", "O1D"], GV.Jratelist))
 
     # HDO2 + hν -> OH + OD
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((x->x<230, 0.85),(x->x>230, 1))),
-              map(t->hdo2xsect(hdo2xdata, t), Tn_array)), get_Jrate_symb(["HDO2", "OH", "OD"], Jrates))
+              map(t->hdo2xsect(hdo2xdata, t), GV.Tn)), get_Jrate_symb(["HDO2", "OH", "OD"], GV.Jratelist))
 
     # HDO2 + hν-> DO2 + H
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((x->x<230, 0.5*0.15),(x->x>230, 0))),
-              map(t->hdo2xsect(hdo2xdata, t), Tn_array)), get_Jrate_symb(["HDO2", "DO2", "H"], Jrates))
+              map(t->hdo2xsect(hdo2xdata, t), GV.Tn)), get_Jrate_symb(["HDO2", "DO2", "H"], GV.Jratelist))
 
     # HDO2 + hν-> HO2 + D
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((x->x<230, 0.5*0.15),(x->x>230, 0))),
-              map(t->hdo2xsect(hdo2xdata, t), Tn_array)), get_Jrate_symb(["HDO2", "HO2", "D"], Jrates))
+              map(t->hdo2xsect(hdo2xdata, t), GV.Tn)), get_Jrate_symb(["HDO2", "HO2", "D"], GV.Jratelist))
 
     # HDO2 + hν -> HDO + O1D
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((x->true, 0),)), map(t->hdo2xsect(hdo2xdata, t),
-              Tn_array)), get_Jrate_symb(["HDO2", "HDO", "O1D"], Jrates))
+              GV.Tn)), get_Jrate_symb(["HDO2", "HDO", "O1D"], GV.Jratelist))
 
     if ion_xsects == true
         # NEW: CO2 photodissociation ---------------------------------------------------------
         # Source: Roger Yelle
         # CO₂ + hν -> C + O + O; JCO2toCpOpO
-        thisjr = get_Jrate_symb(["CO2", "C", "O", "O"], Jrates)
+        thisjr = get_Jrate_symb(["CO2", "C", "O", "O"], GV.Jratelist)
         CO2_totaldiss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(CO2_totaldiss_data, length(alts)), thisjr)
+        setindex!(xsect_dict, fill(CO2_totaldiss_data, GV.n_all_layers), thisjr)
 
         # CO2 + hν -> C + O₂; JCO2toCpO2
-        thisjr = get_Jrate_symb(["CO2", "C", "O2"], Jrates)
+        thisjr = get_Jrate_symb(["CO2", "C", "O2"], GV.Jratelist)
         CO2_diss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(CO2_diss_data, length(alts)), thisjr)
+        setindex!(xsect_dict, fill(CO2_diss_data, GV.n_all_layers), thisjr)
 
         # NEW: CO photodissociation ---------------------------------------------------------
         # Source: Roger Yelle
 
         # CO + hν -> C + O; JCOtoCpO
-        thisjr = get_Jrate_symb(["CO", "C", "O"], Jrates)
+        thisjr = get_Jrate_symb(["CO", "C", "O"], GV.Jratelist)
         CO_diss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(CO_diss_data, length(alts)), thisjr)
+        setindex!(xsect_dict, fill(CO_diss_data, GV.n_all_layers), thisjr)
 
 
         # NEW: Nitrogen species photodissociation --------------------------------------------
         # Source: Roger Yelle
 
         # N₂ + hν -> N₂ + O(¹D); JN2OtoN2pO1D
-        thisjr = get_Jrate_symb(["N2O", "N2", "O1D"], Jrates)
+        thisjr = get_Jrate_symb(["N2O", "N2", "O1D"], GV.Jratelist)
         N2_diss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(N2_diss_data, length(alts)), thisjr)
+        setindex!(xsect_dict, fill(N2_diss_data, GV.n_all_layers), thisjr)
 
         # NO₂ + hν -> NO + O; JNO2toNOpO
-        thisjr = get_Jrate_symb(["NO2", "NO", "O"], Jrates)
+        thisjr = get_Jrate_symb(["NO2", "NO", "O"], GV.Jratelist)
         NO2_diss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(NO2_diss_data, length(alts)), thisjr)
+        setindex!(xsect_dict, fill(NO2_diss_data, GV.n_all_layers), thisjr)
 
         # NO + hν -> N + O; JNOtoNpO
-        thisjr = get_Jrate_symb(["NO", "N", "O"], Jrates)
+        thisjr = get_Jrate_symb(["NO", "N", "O"], GV.Jratelist)
         NO_diss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(NO_diss_data, length(alts)), thisjr)
+        setindex!(xsect_dict, fill(NO_diss_data, GV.n_all_layers), thisjr)
 
         # Photoionization or ionizing dissociation reactions ============================================
 
@@ -3661,44 +3902,44 @@ function populate_xsect_dict(pd_dataf, Tn_array::Array, alts::Array, Jrates; ion
         # Source: Roger Yelle
 
         # CO₂ + hν -> CO₂⁺; JCO2toCO2pl
-        thisjr = get_Jrate_symb(["CO2", "CO2pl"], Jrates)
+        thisjr = get_Jrate_symb(["CO2", "CO2pl"], GV.Jratelist)
         CO2_ionize_data = readdlm(xsecfolder*"$(thisjr).csv", ',', Float64, comments=true, comment_char='#')  # NOTE: replaced with Mike's file 19-Jan-2021.
-        setindex!(xsect_dict, fill(CO2_ionize_data, length(alts)), thisjr)
+        setindex!(xsect_dict, fill(CO2_ionize_data, GV.n_all_layers), thisjr)
 
         # CO₂ + hν -> CO₂²⁺; JCO2toCO2plpl (even though we don't track doubly ionized CO₂)
-        thisjr = get_Jrate_symb(["CO2", "CO2plpl"], Jrates)
+        thisjr = get_Jrate_symb(["CO2", "CO2plpl"], GV.Jratelist)
         CO2_doubleion_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(CO2_doubleion_data, length(alts)), thisjr)
+        setindex!(xsect_dict, fill(CO2_doubleion_data, GV.n_all_layers), thisjr)
 
         # CO₂ + hν -> C²⁺ + O₂; JCO2toCplplpO2
-        thisjr = get_Jrate_symb(["CO2", "Cplpl", "O2"], Jrates)
+        thisjr = get_Jrate_symb(["CO2", "Cplpl", "O2"], GV.Jratelist)
         CO2_ionC2diss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(CO2_ionC2diss_data, length(alts)), thisjr)
+        setindex!(xsect_dict, fill(CO2_ionC2diss_data, GV.n_all_layers), thisjr)
 
         # CO₂ + hν -> C⁺ + O₂; JCO2toCplpO2
-        thisjr = get_Jrate_symb(["CO2", "Cpl", "O2"], Jrates)
+        thisjr = get_Jrate_symb(["CO2", "Cpl", "O2"], GV.Jratelist)
         CO2_ionCdiss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(CO2_ionCdiss_data, length(alts)), thisjr)
+        setindex!(xsect_dict, fill(CO2_ionCdiss_data, GV.n_all_layers), thisjr)
 
         # CO₂ + hν -> CO⁺ + O⁺; JCO2toCOplpOpl
-        thisjr = get_Jrate_symb(["CO2", "COpl", "Opl"], Jrates)
+        thisjr = get_Jrate_symb(["CO2", "COpl", "Opl"], GV.Jratelist)
         CO2_ionCOandOdiss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(CO2_ionCOandOdiss_data, length(alts)), thisjr)
+        setindex!(xsect_dict, fill(CO2_ionCOandOdiss_data, GV.n_all_layers), thisjr)
 
         # CO₂ + hν -> CO⁺ + O; JCO2toCOplpO
-        thisjr = get_Jrate_symb(["CO2", "COpl", "O"], Jrates)
+        thisjr = get_Jrate_symb(["CO2", "COpl", "O"], GV.Jratelist)
         CO2_ionCOdiss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(CO2_ionCOdiss_data, length(alts)), thisjr)
+        setindex!(xsect_dict, fill(CO2_ionCOdiss_data, GV.n_all_layers), thisjr)
 
         # CO₂ + hν -> CO + O⁺; JCO2toOplpCO
-        thisjr = get_Jrate_symb(["CO2", "Opl", "CO"], Jrates)
+        thisjr = get_Jrate_symb(["CO2", "Opl", "CO"], GV.Jratelist)
         CO2_ionOdiss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(CO2_ionOdiss_data, length(alts)), thisjr)
+        setindex!(xsect_dict, fill(CO2_ionOdiss_data, GV.n_all_layers), thisjr)
 
         # CO₂ + hν -> C⁺ + O⁺ + O; JCO2toOplpCplpO
-        thisjr = get_Jrate_symb(["CO2", "Opl", "Cpl", "O"], Jrates)
+        thisjr = get_Jrate_symb(["CO2", "Opl", "Cpl", "O"], GV.Jratelist)
         CO2_ionCandOdiss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(CO2_ionCandOdiss_data, length(alts)), thisjr)
+        setindex!(xsect_dict, fill(CO2_ionCandOdiss_data, GV.n_all_layers), thisjr)
 
         # NEW: H2O ionization --------------------------------------------------------------
         # Source: Roger Yelle
@@ -3706,127 +3947,127 @@ function populate_xsect_dict(pd_dataf, Tn_array::Array, alts::Array, Jrates; ion
         # TODO: Left off here 
 
         # H2O + hν -> H2O⁺; JH2OtoH2Opl
-        H2Oionize_jr = get_Jrate_symb(["H2O", "H2Opl"], Jrates)
+        H2Oionize_jr = get_Jrate_symb(["H2O", "H2Opl"], GV.Jratelist)
         h2o_ionize_data = readdlm(xsecfolder*"$(H2Oionize_jr).csv", ',', Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(h2o_ionize_data, length(alts)), H2Oionize_jr)
+        setindex!(xsect_dict, fill(h2o_ionize_data, GV.n_all_layers), H2Oionize_jr)
 
         # HDO + hν -> HDO⁺; JHDOtoHDOpl # TODO: replace with HDO photoionization xsects when they exist
-        thisjr = get_Jrate_symb(["HDO", "HDOpl"], Jrates)
+        thisjr = get_Jrate_symb(["HDO", "HDOpl"], GV.Jratelist)
         hdo_ionize_data = readdlm(xsecfolder*"$(H2Oionize_jr).csv", ',', Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(hdo_ionize_data, length(alts)), thisjr)
+        setindex!(xsect_dict, fill(hdo_ionize_data, GV.n_all_layers), thisjr)
 
         # H2O + hν -> O⁺ + H2; JH2OtoOplpH2
-        thisjr = get_Jrate_symb(["H2O", "Opl", "H2"], Jrates)
+        thisjr = get_Jrate_symb(["H2O", "Opl", "H2"], GV.Jratelist)
         h2o_ionOdiss_data = readdlm(xsecfolder*"$(thisjr).csv", ',', Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(h2o_ionOdiss_data, length(alts)), thisjr)
+        setindex!(xsect_dict, fill(h2o_ionOdiss_data, GV.n_all_layers), thisjr)
 
         # H2O + hν -> H⁺ + OH; JH2OtoHplpOH
-        thisjr = get_Jrate_symb(["H2O", "Hpl", "OH"], Jrates)
+        thisjr = get_Jrate_symb(["H2O", "Hpl", "OH"], GV.Jratelist)
         h2o_ionHdiss_data = readdlm(xsecfolder*"$(thisjr).csv", ',', Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(h2o_ionHdiss_data, length(alts)), thisjr)
+        setindex!(xsect_dict, fill(h2o_ionHdiss_data, GV.n_all_layers), thisjr)
 
         # H2O + hν -> OH⁺ + H; JH2OtoOHplpH
-        thisjr = get_Jrate_symb(["H2O", "OHpl", "H"], Jrates)
+        thisjr = get_Jrate_symb(["H2O", "OHpl", "H"], GV.Jratelist)
         h2o_ionOHdiss_data = readdlm(xsecfolder*"$(thisjr).csv", ',', Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(h2o_ionOHdiss_data, length(alts)), thisjr)
+        setindex!(xsect_dict, fill(h2o_ionOHdiss_data, GV.n_all_layers), thisjr)
 
         # NEW: CO ionization ----------------------------------------------------------------
         # Source: Roger Yelle
 
         # CO + hν -> CO⁺; JCOtoCOpl
-        thisjr = get_Jrate_symb(["CO", "COpl"], Jrates)
+        thisjr = get_Jrate_symb(["CO", "COpl"], GV.Jratelist)
         CO_ionize_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(CO_ionize_data, length(alts)), thisjr)
+        setindex!(xsect_dict, fill(CO_ionize_data, GV.n_all_layers), thisjr)
 
         # CO + hν -> C + O⁺; JCOtoCpOpl
-        thisjr = get_Jrate_symb(["CO", "C", "Opl"], Jrates)
+        thisjr = get_Jrate_symb(["CO", "C", "Opl"], GV.Jratelist)
         CO_ionOdiss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(CO_ionOdiss_data, length(alts)), thisjr)
+        setindex!(xsect_dict, fill(CO_ionOdiss_data, GV.n_all_layers), thisjr)
 
         # CO + hν -> C⁺ + O; JCOtoOpCpl
-        thisjr = get_Jrate_symb(["CO", "O", "Cpl"], Jrates)
+        thisjr = get_Jrate_symb(["CO", "O", "Cpl"], GV.Jratelist)
         CO_ionCdiss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(CO_ionCdiss_data, length(alts)), thisjr)
+        setindex!(xsect_dict, fill(CO_ionCdiss_data, GV.n_all_layers), thisjr)
 
         # NEW: Nitrogen species ionization --------------------------------------------------
         # Source: Roger Yelle
 
         # N₂ + hν -> N₂⁺; JN2toN2pl
-        thisjr = get_Jrate_symb(["N2", "N2pl"], Jrates)
-        N2_ionize_data = readdlm(xsecfolder*"$(:).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(N2_ionize_data, length(alts)), thisjr)
+        thisjr = get_Jrate_symb(["N2", "N2pl"], GV.Jratelist)
+        N2_ionize_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(N2_ionize_data, GV.n_all_layers), thisjr)
 
         # N₂ + hν -> N⁺ + N; JN2toNplpN
-        thisjr = get_Jrate_symb(["N2", "Npl", "N"], Jrates)
-        N2_iondiss_data = readdlm(xsecfolder*"$(:).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(N2_iondiss_data, length(alts)), thisjr)
+        thisjr = get_Jrate_symb(["N2", "Npl", "N"], GV.Jratelist)
+        N2_iondiss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(N2_iondiss_data, GV.n_all_layers), thisjr)
 
         # NO₂ + hν -> NO₂⁺; JNO2toNO2pl
-        thisjr = get_Jrate_symb(["NO2", "NO2pl"], Jrates)
-        NO2_ionize_data = readdlm(xsecfolder*"$(:).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(NO2_ionize_data, length(alts)), thisjr)
+        thisjr = get_Jrate_symb(["NO2", "NO2pl"], GV.Jratelist)
+        NO2_ionize_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(NO2_ionize_data, GV.n_all_layers), thisjr)
 
         # NO + hν -> NO⁺; JNOtoNOpl
-        thisjr = get_Jrate_symb(["NO", "NOpl"], Jrates)
-        NO_ionize_data = readdlm(xsecfolder*"$(:).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(NO_ionize_data, length(alts)), thisjr)
+        thisjr = get_Jrate_symb(["NO", "NOpl"], GV.Jratelist)
+        NO_ionize_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(NO_ionize_data, GV.n_all_layers), thisjr)
 
         # N₂O + hν -> N₂O⁺; JN2OtoN2Opl
-        thisjr = get_Jrate_symb(["N2O", "N2Opl"], Jrates)
-        N2O_ionize_data = readdlm(xsecfolder*"$(:).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(N2O_ionize_data, length(alts)), thisjr)
+        thisjr = get_Jrate_symb(["N2O", "N2Opl"], GV.Jratelist)
+        N2O_ionize_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
+        setindex!(xsect_dict, fill(N2O_ionize_data, GV.n_all_layers), thisjr)
 
         # NEW: Molecular and atomic hydrogen ionization -------------------------------------
         # Source: Roger Yelle
 
         # H + hν -> H⁺; JHtoHpl
-        thisjr = get_Jrate_symb(["H", "Hpl"], Jrates)
+        thisjr = get_Jrate_symb(["H", "Hpl"], GV.Jratelist)
         H_ionize_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(H_ionize_data, length(alts)), thisjr)
+        setindex!(xsect_dict, fill(H_ionize_data, GV.n_all_layers), thisjr)
 
         # H₂ + hν -> H₂⁺; JH2toH2pl
-        thisjr = get_Jrate_symb(["H2", "H2pl"], Jrates)
+        thisjr = get_Jrate_symb(["H2", "H2pl"], GV.Jratelist)
         H2_ion_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(H2_ion_data, length(alts)), thisjr)
+        setindex!(xsect_dict, fill(H2_ion_data, GV.n_all_layers), thisjr)
 
         # HD + hν -> HD⁺; JH2toH2pl # TODO: Load HD crosssections when they exist
-        thisjr = get_Jrate_symb(["HD", "HDpl"], Jrates)
+        thisjr = get_Jrate_symb(["HD", "HDpl"], GV.Jratelist)
         HD_ion_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(HD_ion_data, length(alts)), thisjr)
+        setindex!(xsect_dict, fill(HD_ion_data, GV.n_all_layers), thisjr)
 
         # H₂ + hν -> H⁺ + H; JH2toHplpH
-        thisjr = get_Jrate_symb(["H2", "Hpl", "H"], Jrates)
+        thisjr = get_Jrate_symb(["H2", "Hpl", "H"], GV.Jratelist)
         H2_iondiss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(H2_iondiss_data, length(alts)), thisjr)
+        setindex!(xsect_dict, fill(H2_iondiss_data, GV.n_all_layers), thisjr)
 
         # H₂O₂ + hν -> H₂O₂⁺; JH2O2toH2O2pl
-        thisjr = get_Jrate_symb(["H2O2", "H2O2pl"], Jrates)
+        thisjr = get_Jrate_symb(["H2O2", "H2O2pl"], GV.Jratelist)
         H2O2_ionize_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(H2O2_ionize_data, length(alts)), thisjr)
+        setindex!(xsect_dict, fill(H2O2_ionize_data, GV.n_all_layers), thisjr)
 
         # NEW: Oxygen and ozone ionization --------------------------------------------------
         # Source: Roger Yelle
 
         # O + hν -> O⁺; JOtoOpl
-        thisjr = get_Jrate_symb(["O", "Opl"], Jrates)
+        thisjr = get_Jrate_symb(["O", "Opl"], GV.Jratelist)
         O_iondiss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(O_iondiss_data, length(alts)), thisjr)
+        setindex!(xsect_dict, fill(O_iondiss_data, GV.n_all_layers), thisjr)
 
         # O₂ + hν -> O₂⁺; JO2toO2pl
-        thisjr = get_Jrate_symb(["O2", "O2pl"], Jrates)
+        thisjr = get_Jrate_symb(["O2", "O2pl"], GV.Jratelist)
         O2_ionize_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(O2_ionize_data, length(alts)), thisjr)
+        setindex!(xsect_dict, fill(O2_ionize_data, GV.n_all_layers), thisjr)
 
         # # O₃ + hν -> O₃⁺; JO3toO3pl
-        thisjr = get_Jrate_symb(["O3", "O3pl"], Jrates)
+        thisjr = get_Jrate_symb(["O3", "O3pl"], GV.Jratelist)
         O3_ionize_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
-        setindex!(xsect_dict, fill(O3_ionize_data, length(alts)), thisjr)
+        setindex!(xsect_dict, fill(O3_ionize_data, GV.n_all_layers), thisjr)
     end
     
     return xsect_dict
 end
 
-function quantumyield(xsect, arr) # Checked - global free
+function quantumyield(xsect, arr)
     #= 
     function to assemble cross-sections for a given pathway. 
 
@@ -4016,7 +4257,7 @@ function T_all(z, Tsurf, Tmeso, Texo, sptype::String)
     end
 end
 
-function Tpiecewise(z, Tsurf, Tmeso, Texo) # Checked - global-free
+function Tpiecewise(z, Tsurf, Tmeso, Texo)
     #= 
     FOR USE WITH FRACTIONATION FACTOR PROJECT ONLY.
 

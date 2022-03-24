@@ -20,14 +20,15 @@ const xsecfolder = code_dir*"uvxsect/";
 
 # Float types for calculations =================================================
 # needed by both Photochemistry.jl and converge_new_file so it has to go here
-ftype_ncur = Double64 #Float64 #  used to store n_current values
-ftype_chem = Double64 #Float64 #  used to compute chemical reaction rates and chemical jacobian
+ftype_ncur = Float64 #Double64 #  used to store n_current values
+ftype_chem = Float64 #Double64 #  used to compute chemical reaction rates and chemical jacobian
 
 
 # Altitude grid specifications =================================================
 const max_alt = 250e5
 const dz = 2e5
 const alt = convert(Array, (0:dz:max_alt))
+const n_all_layers = length(alt)
 const intaltgrid = round.(Int64, alt/1e5)[2:end-1]; # the altitude grid CELLS but in integers.
 const non_bdy_layers = alt[2:end-1]  # all layers, centered on 2 km, 4...248. Excludes the boundary layers which are [-1, 1] and [249, 251].
 const num_layers = length(non_bdy_layers) # there are 124 non-boundary layers.

@@ -11,35 +11,47 @@
 ################################################################################
 
 # Modules and critical files ================================================================================
+using Revise
 photochemistry_source_dir = "$(@__DIR__)/Photochemistry/src/"
 println("loading Photochemistry.jl from $photochemistry_source_dir")
 push!(LOAD_PATH, photochemistry_source_dir)
-using Photochemistry: input, search_subfolders, T_updated, create_folder, get_ncurrent, Psat, Psat_HDO, plot_rxns, 
+using Photochemistry: create_folder, get_ncurrent, get_paramfile, input, search_subfolders, T_updated, Psat, Psat_HDO, plot_rxns, 
                       effusion_velocity, charge_type, scaleH, meanmass, load_reaction_network
 using PyPlot
 using PyCall
 
+# **************************************************************************** #
+#                                                                              #
+#           LOAD PARAMETERS, REACTION NETWORK, ATMOSPHERIC STATE               #
+#                                                                              #
+# **************************************************************************** #
+
 include("CONSTANTS.jl")
 include("CUSTOMIZATIONS.jl")
-
-user_input_paramfile = input("Enter a parameter file or press enter to use default (PARAMETERS.jl): ")
-paramfile = user_input_paramfile == "" ? "PARAMETERS.jl" : user_input_paramfile*".jl"
+paramfile = get_paramfile(code_dir)
 include(paramfile)
 
 # Load the new standard reaction network from spreadsheet
-reaction_network = load_reaction_network(reaction_network_spreadsheet, Jratelist, absorber, photolysis_products, all_species)
+reaction_network = load_reaction_network(reaction_network_spreadsheet; Jratelist, absorber, photolysis_products, all_species, ions_on=ions_included)
 
 println("Found the folder name: $(sim_folder_name)")
 simfolder = results_dir*sim_folder_name*"/"
 
-converged_file = final_atm_file == "" ? "final_atmosphere.h5" : final_atm_file
-if !isfile(converged_file)
-    converged_file = input("No file found, please enter file to use including .h5: ")
+converged_file = "final_atmosphere.h5"
+if !isfile(simfolder*converged_file)
+    converged_file = input("No file found, please enter file to use: ")
+    if !occursin(".h5", converged_file)
+        converged_file = converged_file * ".h5"
+    end
 end
 
 println("Using final atmosphere file: $(converged_file)")
 
-# Do the actual plotting =====================================================================================
+# **************************************************************************** #
+#                                                                              #
+#                       DO THE ACTUAL PLOTTING                                 #
+#                                                                              #
+# **************************************************************************** #
 create_folder("chemeq_plots", simfolder)
 
 filelist = search_subfolders(simfolder, "$(converged_file)", type="files")
@@ -81,11 +93,11 @@ for f in filelist
             #     end
             # end
 
-            plot_rxns(sp, ncur, Tn_arr, Ti_arr, Te_arr, Tplasma_arr, speciesbclist, reaction_network, 
-                      all_species, ion_species, transport_species, chem_species, molmass, alt, n_alt_index, dz, polarizability, 
-                      num_layers, plot_grid, results_dir, Tprof_for_Hs, Tprof_for_diffusion, subfolder=sim_folder_name, 
-                      plotsfolder="chemeq_plots", num=dtval, extra_title="dt=$(dtval)")#, shown_rxns=theserxns) # Uncomment to show individual reactions.
-
+            plot_rxns(sp, ncur, results_dir; subfolder=sim_folder_name, plotsfolder="chemeq_plots", num=dtval, extra_title="dt=$(dtval)", 
+                      Tn=Tn_arr, Ti=Ti_arr, Te=Te_arr, Tp=Tplasma_arr, bcdict=speciesbclist, rxnnet=reaction_network, 
+                      all_species, neutral_species, ion_species, transport_species, chem_species, 
+                      molmass, polarizability, Tprof_for_Hs, Tprof_for_diffusion, Hs_dict,
+                      alt, n_alt_index, dz, num_layers, n_all_layers, plot_grid, upper_lower_bdy_i, upper_lower_bdy)#, shown_rxns=theserxns) # Uncomment to show individual reactions.
         end
     end
 end
