@@ -24,14 +24,22 @@
 
 # Basic simulation parameters
 const simtype = "temp"
-const controltemps = [216., 130., 205.]
-const tag = "test_kwargs"#"dnde_fix_vargoodfactor" # Optional extra bit for the filename to help indicate what it is
-const global problem_type = "Gear" #"ODE" #"SS" #   
-const converge_which = "both"
-const optional_logging_note = "testing kwarg use"#"Test full atm after adding differentiation wrt E, M."
-const ediff = true 
-const mdiff = true 
+const controltemps = [216., 130., 206.]
 const ions_included = true
+const converge_which = "both"
+const problem_type = "Gear" #"ODE" #"SS" #   
+const gear_timestep_type = "dynamic"#"static"
+const n_steps = 1000 # Number of logarithmic timesteps to use when gear_timestep_type == "static"
+
+# Descriptions 
+const tag = "ME4"#"dnde_fix_vargoodfactor" # Optional extra bit for the filename to help indicate what it is
+const optional_logging_note = "Test M and E outside Newton loop, quasineutral electron profile (=sum of ions)."
+
+# Detailed electron and chemistry considerations
+const ediff = false#true 
+const mdiff = false#true 
+const electron_val = "quasineutral"#"constant"#
+
 
 # Check that float type is properly set
 # if problem_type == "Gear" && (ftype_ncur == Float64 || ftype_chem == Float64)
@@ -316,7 +324,7 @@ sort!(no_transport_species)
 const speciesstyle = Dict(vcat([s=>"--" for s in setdiff(D_bearing_species, [:HD2pl])], [:HD2pl=>":", :Nup2D=>"-."]) )
 
 # Species-specific scale heights - has to be done here instead of in the param file
-const Hs_dict = Dict{Symbol, Vector{Float64}}([sp=>scaleH(alt, sp, Tprof_for_Hs[charge_type(sp)]; mm=molmass) for sp in all_species])
+const Hs_dict = Dict{Symbol, Vector{Float64}}([sp=>scaleH(alt, sp, Tprof_for_Hs[charge_type(sp)]; molmass) for sp in all_species])
 
 # To allow water to be active in the upper atmosphere but not the lower atmosphere, we need 
 # its position with the active species vector 

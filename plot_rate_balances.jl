@@ -97,7 +97,7 @@ for f in filelist
                       Tn=Tn_arr, Ti=Ti_arr, Te=Te_arr, Tp=Tplasma_arr, bcdict=speciesbclist, rxnnet=reaction_network, 
                       all_species, neutral_species, ion_species, transport_species, chem_species, 
                       molmass, polarizability, Tprof_for_Hs, Tprof_for_diffusion, Hs_dict,
-                      alt, n_alt_index, dz, num_layers, n_all_layers, plot_grid, upper_lower_bdy_i, upper_lower_bdy)#, shown_rxns=theserxns) # Uncomment to show individual reactions.
+                      alt, n_alt_index, dz, num_layers, n_all_layers, plot_grid, upper_lower_bdy_i, upper_lower_bdy, q)#, shown_rxns=theserxns) # Uncomment to show individual reactions.
         end
     end
 end

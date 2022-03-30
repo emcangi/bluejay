@@ -28,7 +28,7 @@ export # Basic utility functions
        # Boundary condition functions                                                   
        boundaryconditions, effusion_velocity,
        # transport functions                                                                           
-       Dcoef, Dcoef!, fluxcoefs, flux_param_arrays, flux_pos_and_neg, get_flux, Keddy, scaleH, update_diffusion_and_scaleH, update_transport_coefficients,                      
+       Dcoef!, fluxcoefs, flux_param_arrays, flux_pos_and_neg, get_flux, Keddy, scaleH, update_diffusion_and_scaleH, update_transport_coefficients,                      
        # Chemistry functions
        load_reaction_network, calculate_stiffness, check_jacobian_eigenvalues, chemical_jacobian, getrate, loss_equations, 
        loss_rate, make_chemjac_key, make_net_change_expr, meanmass, production_equations, production_rate, rxns_where_species_is_observer, 
@@ -1140,12 +1140,7 @@ function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, result
     @assert all(x->x in keys(GV),  [:Tn, :Ti, :Te, :Tp, :bcdict, :rxnnet, 
                                     :all_species, :neutral_species, :ion_species, :transport_species, :chem_species, 
                                     :molmass, :polarizability, :Tprof_for_Hs, :Tprof_for_diffusion, :Hs_dict,
-                                    :alt, :n_alt_index, :dz, :num_layers, :n_all_layers, :plot_grid, :upper_lower_bdy_i, :upper_lower_bdy])
-
-    # @assert length(GV.Tn)==GV.num_layers 
-    # @assert length(GV.Ti)==GV.num_layers
-    # @assert length(GV.Te)==GV.num_layers
-
+                                    :alt, :n_alt_index, :dz, :num_layers, :n_all_layers, :plot_grid, :upper_lower_bdy_i, :upper_lower_bdy, :q])
 
     # ================================================================================
     # Plot setup stuff
@@ -1727,7 +1722,7 @@ function Dcoef!(D_arr, T_arr, sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncu
     =#
 
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:all_species, :bcdict, :molmass, :polarizability, :neutral_species])
+    @assert all(x->x in keys(GV), [:all_species, :bcdict, :molmass, :polarizability, :neutral_species, :q])
    
     # Calculate as if it was a neutral
     D_arr[:] .= (diffparams(sp)[1] .* 1e17 .* T_arr .^ (diffparams(sp)[2])) ./ n_tot(atmdict; GV.all_species, GV.n_alt_index)
@@ -1739,7 +1734,7 @@ function Dcoef!(D_arr, T_arr, sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncu
     if charge_type(sp) == "ion"
         sum_nu_in = zeros(size(T_arr))
 
-        mi = GV.molmass[sp] .* mH
+        # mi = GV.molmass[sp] .* mH
         # create the sum of nu_in. Note that this depends on density, but we only have density for the real layers,
         # so we have to assume the density at the boundary layers is the same as at the real layers.
         for n in GV.neutral_species
@@ -1754,12 +1749,12 @@ function Dcoef!(D_arr, T_arr, sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncu
                 species_density[end] = bccheck[2,2]
             end
 
-            mu_in = (1 ./ mi .+ 1 ./ (GV.molmass[n] .* mH)) .^ (-1) # reduced mass in g
-            sum_nu_in .+= 2 .* pi .* (((GV.polarizability[n] .* q .^ 2) ./ mu_in) .^ 0.5) .* species_density
+            # mu_in = (1 ./ mi .+ 1 ./ (GV.molmass[n] .* mH)) .^ (-1) # reduced mass in g
+            sum_nu_in .+= 2 .* pi .* (((GV.polarizability[n] .* GV.q .^ 2) ./ reduced_mass(GV.molmass[sp], GV.molmass[n])) .^ 0.5) .* species_density
 
         end
         
-        D_arr .= (kB .* T_arr) ./ (mi .* sum_nu_in)
+        D_arr .= (kB .* T_arr) ./ (GV.molmass[sp] .* sum_nu_in)
     end
     return D_arr
 end
@@ -1995,7 +1990,7 @@ function get_flux(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, globvar
 
     GV = values(globvars)
     @assert all(x->x in keys(GV), [:Tn, :Ti, :Te, :Tp, :bcdict, :all_species, :neutral_species, :transport_species, :molmass, :alt, :n_alt_index, :polarizability, 
-                                   :num_layers, :dz, :Tprof_for_Hs, :Tprof_for_diffusion, :n_all_layers])
+                                   :num_layers, :dz, :Tprof_for_Hs, :Tprof_for_diffusion, :n_all_layers, :q])
     
     # Generate the fluxcoefs dictionary and boundary conditions dictionary
     D_arr = zeros(size(GV.Tn))
@@ -2044,7 +2039,7 @@ function get_transport_PandL_rate(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype
 
     GV = values(globvars)
     @assert all(x->x in keys(GV), [:Tn, :Ti, :Te, :Tp, :bcdict, :all_species, :neutral_species, :transport_species, :molmass, :alt, :n_alt_index, :polarizability, 
-                                   :num_layers, :dz, :Hs_dict, :Tprof_for_Hs, :Tprof_for_diffusion, :n_all_layers])
+                                   :num_layers, :dz, :Hs_dict, :Tprof_for_Hs, :Tprof_for_diffusion, :n_all_layers, :q])
 
     # Generate the fluxcoefs dictionary and boundary conditions dictionary
     D_arr = zeros(size(GV.Tn))
@@ -2161,7 +2156,7 @@ function update_diffusion_and_scaleH(species_list, atmdict::Dict{Symbol, Vector{
     =#
     GV = values(globvars)
     @assert all(x->x in keys(GV), [:Tn, :Tp, :bcdict, :all_species, :neutral_species, :molmass, :alt, :n_alt_index, :polarizability, 
-                                   :Tprof_for_diffusion])
+                                   :Tprof_for_diffusion, :q])
 
     ncur_with_bdys = ncur_with_boundary_layers(atmdict; GV.n_alt_index, GV.all_species)
     
@@ -2199,11 +2194,11 @@ function update_transport_coefficients(species_list, atmdict::Dict{Symbol, Vecto
 
     GV = values(globvars)
     @assert all(x->x in keys(GV), [:Tn, :Tp, :Hs_dict, :bcdict, :all_species, :neutral_species, :transport_species, :molmass, :alt, :n_alt_index, :polarizability, 
-                                   :num_layers, :dz, :Tprof_for_diffusion, :n_all_layers])
+                                   :num_layers, :dz, :Tprof_for_diffusion, :n_all_layers, :q])
     
     # Update the diffusion coefficients and scale heights
     K_eddy_arr, H0_dict, Dcoef_dict = update_diffusion_and_scaleH(species_list, atmdict, D_coefs; globvars...)
-    
+
     # Get flux coefficients
     fluxcoefs_all = fluxcoefs(species_list, K_eddy_arr, Dcoef_dict, H0_dict; globvars...)
     
@@ -2601,18 +2596,18 @@ function check_jacobian_eigenvalues(J, path)
     end
 end
 
-function replace_E(eqn, insertme)
-    i = findall(x->x==:E, eqn)
+# function replace_E(eqn, insertme)
+#     i = findall(x->x==:E, eqn)
 
-    if length(i)!=0
-        deleteat!(eqn, i)
-        for j in 1:length(insertme)
-            insert!(eqn, i[1], insertme[j])
-        end
-    end
+#     if length(i)!=0
+#         deleteat!(eqn, i)
+#         for j in 1:length(insertme)
+#             insert!(eqn, i[1], insertme[j])
+#         end
+#     end
     
-    return eqn 
-end
+#     return eqn 
+# end
 
 function chemical_jacobian(specieslist, dspecieslist; diff_wrt_e=true, diff_wrt_m=true, globvars...)
     #= 
@@ -3184,6 +3179,24 @@ function reactant_density_product(atmdict::Dict{Symbol, Vector{ftype_ncur}}, rea
 
     return density_product 
 end 
+
+function reduced_mass(mA, mB)
+    #=
+    Returns reduced mass.
+    Input:
+        mA, mB: species masses in AMU
+        Uses global variable mH which is mass of hydrogen in GRAMS.
+    Output:
+        reduced mass in grams.
+    =#
+    try
+        @assert floor(log10(mH)) == -24
+    catch AssertionError
+        throw("mH is somehow set to the wrong units")
+    end
+
+    return ((1/(mA*mH)) + (1/(mB*mH)))^(-1)
+end
 
 function rxns_where_species_is_observer(sp, chemnet)
     #=
