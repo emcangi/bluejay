@@ -771,7 +771,8 @@ function get_grad_colors(L::Int64, cmap; strt=0, stp=1)
     return c
 end
 
-function plot_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, savepath::String, atol; t="", showonly=false, xlab="", xlim_1=(1e-12, 1e18), xlim_2=(1e-5, 1e5), globvars...)
+function plot_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, savepath::String, atol, E_prof; 
+                  t="", showonly=false, xlab=L"Species concentration (cm$^{-3}$)", xlim_1=(1e-12, 1e18), xlim_2=(1e-5, 1e5), globvars...)
     #=
     Makes a "spaghetti plot" of the species concentrations by altitude in the
     atmosphere. 
@@ -841,7 +842,7 @@ function plot_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, savepath::String, a
     end
 
     # Plot neutrals and ions together =========================================================
-    if haskey(GV, :ion_species)#length(species_lists)==2  # neutrals and ions 
+    if haskey(GV, :ion_species) # neutrals and ions 
         
         # set up the overall plot -------------------------------------------------------------
         atm_fig, atm_ax = subplots(3, 2, sharex=false, sharey=true, figsize=(14, 16))
@@ -855,37 +856,34 @@ function plot_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, savepath::String, a
             atm_ax[i, 1].set_xlim(xlim_1[1], xlim_1[2])
             atm_ax[i, 1].fill_betweenx(GV.plot_grid,#=plotalts,=# xlim_1[1] .* ones(size(GV.plot_grid,)), x2=atol, alpha=0.1, color=medgray, zorder=10)
             atm_ax[i, 1].tick_params(which="both", labeltop=false, top=true, labelbottom=true, bottom=true)
+            atm_ax[i, 1].set_ylabel("Altitude [km]")
         end
-
-        x_axis_label = xlab == "" ? L"Species concentration (cm$^{-3}$)" : xlab
-        atm_ax[3, 1].set_xlabel(x_axis_label)
+        atm_ax[3, 1].set_xlabel(xlab)
         
         # only the ion-col axes
         atm_ax[1, 2].set_title("Ions")
         for i in 1:3
             plot_bg(atm_ax[i, 2])
             atm_ax[i, 2].set_xlim(xlim_2[1], xlim_2[2])
-            atm_ax[i, 2].fill_betweenx(GV.plot_grid, xlim_2[1] .* ones(size(GV.plot_grid#=plotalts=#)), x2=atol, alpha=0.1, color=medgray, zorder=10)
+            atm_ax[i, 2].fill_betweenx(GV.plot_grid, xlim_2[1] .* ones(size(GV.plot_grid)), x2=atol, alpha=0.1, color=medgray, zorder=10)
             atm_ax[i, 2].tick_params(which="both", labeltop=false, top=true, labelbottom=true, bottom=true)
         end
-        atm_ax[3, 2].set_xlabel(x_axis_label)
-        
-        # y axes labels
-        for j in 1:3
-            atm_ax[j, 1].set_ylabel("Altitude [km]")
-        end
-        
+        atm_ax[3, 2].set_xlabel(xlab)
+         
         # plot the neutrals according to logical groups -------------------------------------------------------
         for sp in GV.neutral_species #species_lists[1]
-            atm_ax[axes_by_sp[sp], 1].plot(convert(Array{Float64}, atmdict[sp]), GV.plot_grid#=plotalts=#, color=get(GV.speciescolor#=scolor=#, sp, "black"),
-                                           linewidth=2, label=sp, linestyle=get(GV.speciesstyle#=sstyle=#, sp, "-"), zorder=10)
+            atm_ax[axes_by_sp[sp], 1].plot(convert(Array{Float64}, atmdict[sp]), GV.plot_grid, color=get(GV.speciescolor, sp, "black"),
+                                           linewidth=2, label=sp, linestyle=get(GV.speciesstyle, sp, "-"), zorder=10)
         end
         
         # plot the ions according to logical groups ------------------------------------------------------------
         for sp in GV.ion_species #species_lists[2]
-            atm_ax[axes_by_sp[sp], 2].plot(convert(Array{Float64}, atmdict[sp]), GV.plot_grid#=plotalts=#, color=get(GV.speciescolor#=scolor=#, sp, "black"),
-                                           linewidth=2, label=sp, linestyle=get(GV.speciesstyle#=sstyle=#, sp, "-"), zorder=10)
+            atm_ax[axes_by_sp[sp], 2].plot(convert(Array{Float64}, atmdict[sp]), GV.plot_grid, color=get(GV.speciescolor, sp, "black"),
+                                           linewidth=2, label=sp, linestyle=get(GV.speciesstyle, sp, "-"), zorder=10)
         end
+
+        # plot electron profile --------------------------------------------------------------------------------
+        atm_ax[1, 2].plot(convert(Array{Float64}, E_prof), GV.plot_grid, color="black", linewidth=2, linestyle=":", zorder=10, label="e-")
 
         # stuff that applies to all axes
         for a in atm_ax
@@ -902,7 +900,7 @@ function plot_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, savepath::String, a
         atm_fig, atm_ax = subplots(figsize=(16,6))
         tight_layout()
         for sp in GV.neutral_species #species_lists[1]
-            atm_ax.plot(convert(Array{Float64}, atmdict[sp]), GV.plot_grid#=plotalts=#, color=get(GV.speciescolor, sp, "black"),
+            atm_ax.plot(convert(Array{Float64}, atmdict[sp]), GV.plot_grid, color=get(GV.speciescolor, sp, "black"),
                         linewidth=2, label=sp, linestyle=get(GV.speciesstyle, sp, "-"), zorder=1)
             atm_ax.set_xlim(xlim_1[1], xlim_1[2])
             atm_ax.set_ylabel("Altitude [km]")

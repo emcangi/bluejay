@@ -100,10 +100,13 @@ function evolve_atmosphere(atm_init::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_s
         atm_init: dictionary of species densities by altitude for the current state.
         log_t_start: Starting time will be 10^log_t_start.
         log_t_end: Similar, but end time.
+    optional input:
         t_to_save: timesteps at which to save a snapshot of the atmosphere.
-
+        abstol: absolute tolerance for simulation
+        reltol: relative tolerance
     Output:
-        sol: Solver object, the solution of the atmospheric system at the end of the simulation time.
+        sol: If using DifferentialEquations.jl, this is a solver object, the solution of the atmospheric system at the end of the simulation time.
+             If using the Gear solver, this is a normal atmospheric state dictionary.
     =#
     GV = values(globvars)
     @assert all(x->x in keys(GV), [:all_species, :neutral_species, :ion_species, :transport_species,
@@ -133,6 +136,8 @@ function evolve_atmosphere(atm_init::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_s
         E = sum([n_current[sp] for sp in GV.ion_species])
     elseif GV.electron_val == "O2+"
         E = E_from_initial_o2pl
+    elseif GV.electron_val=="none"  # For neutrals-only simulation but without changing how E is passed to other functions. 
+        E = [0. for i in GV.non_bdy_layers]
     else
         throw("Unhandled electron profile specification: $(electron_val)")
     end
@@ -210,14 +215,14 @@ function evolve_atmosphere(atm_init::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_s
         end
     elseif problem_type == "Gear"
         for m in ["\nOrder: First order", "Gear timestep type: $(GV.gearmode)", "n_steps for static Gear timesteps: $(GV.n_steps)", 
-                  "Dynamic timestep success dt multiplier: $(dt_incr_factor)", "Dynamic timestep fail dt multiplier: $(dt_decr_factor)", 
+                  "Dynamic timestep success dt multiplier: $(GV.dt_incr_factor)", "Dynamic timestep fail dt multiplier: $(GV.dt_decr_factor)", 
                   "Error checking scheme: $(GV.error_checking_scheme)"]
             push!(more_to_write, m)
         end 
         write_to_log(logfile, more_to_write, mode="a")
         println("$(Dates.format(now(), "(HH:MM:SS)")) Calling the solver")
         write_to_log(logfile, write_time_stuff, mode="a")
-        sol = converge(atm_init, log_t_start, log_t_end; abstol=abstol, reltol=reltol, #=Dcoef_arr_template,=# globvars...)
+        sol = converge(atm_init, log_t_start, log_t_end; abstol=abstol, reltol=reltol, globvars...)
     else
         throw("Invalid problem_type")
     end 
@@ -225,12 +230,13 @@ function evolve_atmosphere(atm_init::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_s
     return sol 
 end
 
-function record_atmospheric_state(t, n, actively_solved; globvars...)
+function record_atmospheric_state(t, n, actively_solved, E_prof; globvars...)
     #=
     Input:
         t: current simulation time
         n: current densities of active longlived species 
-        actively_solved: species which are actively solved for. Required to compile the full atmospheric state
+        actively_solved: species which are actively solved for. Required to compile the full atmospheric state.
+        E_prof: Electron profile at the present time, needed to plot.
     Output:
         plot of the atmospheric densities at the present time
         .h5 file containing the present atmospheric state 
@@ -251,7 +257,7 @@ function record_atmospheric_state(t, n, actively_solved; globvars...)
     # write out the current atmospheric state to a file 
     atm_snapshot = merge(external_storage, unflatten_atm(n, actively_solved; GV.num_layers))
     
-    plot_atm(atm_snapshot, results_dir*sim_folder_name*"/atm_peek_$(plotnum).png", abs_tol_for_plot; t="$(round(t, digits=rounding_digits))", globvars...)
+    plot_atm(atm_snapshot, results_dir*sim_folder_name*"/atm_peek_$(plotnum).png", abs_tol_for_plot, E_prof; t="$(round(t, digits=rounding_digits))", globvars...)
     write_atmosphere(atm_snapshot, results_dir*sim_folder_name*"/atm_dt=$(round(t, digits=rounding_digits)).h5"; GV.alt, GV.num_layers)
     global plotnum += 1
 end
@@ -267,11 +273,13 @@ function chemJmat(n_active_longlived, n_active_shortlived, n_inactive, Jrates, t
                             and chemically long-lived species.
         n_active_shortlived: active shortlived species densities, necessary to to calculations for longlived species.
         n_inactive: A flattened array of the atmospheric densities of any inactive species, same format as nthis. Functionally constant.
-        activellsp, activeslsp, inactivesp: Lists of active and longlived, active shortlived, and ianctive species (const)
         Jrates: Flattened array of Jrates, same format as nthis.
         Tn, Ti, Te: Temperature-vs-altitude arrays for neutrals, ions, electrons. (const)
         tup, tdown: Transport coefficients
         tlower, tupper: Transport coefficients
+        M: Total density by altitude for entire atmosphere
+        E: Electron profile at the present time
+    optional input:
         check_eigen: Will check the eigenvalues of the jacobian for non-real or real/positive values if true. Code currently commented out.
     Output:
         sparse matrix representing the chemical jacobian 
@@ -400,6 +408,8 @@ function ratefn(n_active_longlived, n_active_shortlived, n_inactive, Jrates, tup
                 globvars...)
     #=
     at each altitude, get the appropriate group of concentrations, coefficients, and rates to pass to ratefn_local.
+
+    Arguments are basically the same as chemJmat.
     =#
 
     GV = values(globvars)
@@ -478,12 +488,12 @@ function compile_ncur_all(n_long, n_short, n_inactive; globvars...)
     the functions updating those things to pull from one atmospheric state dictionary, 
     so this function combines disparate density vectors back into one dictionary.
 
-    n_long: active, long-lived species densities
-    n_short: same but for short-lived species
-    n_inactive: inactive species densities (truly, these never change)
-    activellsp, activeslsp, inactivesp: lists of species symbols for longlived, shortlived, inactive.
-
-    Returns: atmospheric state dictionary of species densities only (no Jrates).
+    Input:
+        n_long: active, long-lived species densities
+        n_short: same but for short-lived species
+        n_inactive: inactive species densities (truly, these never change)
+    Output:
+        atmospheric state dictionary of species densities only (no Jrates).
     =#
 
     GV = values(globvars)
@@ -503,8 +513,11 @@ end
 
 function update_Jrates!(n_cur_densities::Dict{Symbol, Array{ftype_ncur, 1}}; globvars...)
     #=
-    this function updates the photolysis rates stored in n_current to
-    reflect the altitude distribution of absorbing species
+    this function updates the photolysis rates stored in n_cur_densities to
+    reflect the altitude distribution of absorbing species.
+
+    Input:
+        n_cur_densities: The present atmospheric state. This will be updated to include Jrates by this function.
     =#
 
     GV = values(globvars)
@@ -564,7 +577,7 @@ function update_Jrates!(n_cur_densities::Dict{Symbol, Array{ftype_ncur, 1}}; glo
 end
 
 # Julia DifferentialEquations.jl solver =======================================
-# TODO: pub globvars in parameters.
+# TODO: pass in globvars
 function make_jacobian(n, p, t)
     #=
     Constructs the chemical jacobian in the normal way, including stuff to calculate parameters for chemJmat.
@@ -608,7 +621,7 @@ function jacobian_wrapper(J, n, p, t)
     J .= make_jacobian(n, p, t)
 end
 
-# TODO: globvars in parameters
+# TODO: pass in globvars
 function PnL_eqn(dndt, n, p, t)
     #=
     This is the primary function that is solved by the solver. For our purposes that means it calls ratefn().
@@ -713,9 +726,11 @@ end
 function get_rates_and_jacobian(n, p, t; globvars...)
     #=
     Three major tasks:
-    1. Prints progress updates to the console and saves present state to files every time
-       dt has increased by a factor of 10.
+    1. Updates short lived species when DifferentialEquations.jl is used
     2. Updates and saves Jrates
+    3. Updates short lived species again
+    4. Calculates transport coefficients
+    5. Collects rates (dn/dt) and the chemical jacobian.
     =#
 
     GV = values(globvars)
@@ -723,12 +738,9 @@ function get_rates_and_jacobian(n, p, t; globvars...)
                                    :inactivesp, :active_species, :activellsp, :activeslsp, :transport_species,
                                    :n_inactive, 
                                    :Tn, :Ti, :Te, :Tp, 
-                                   
                                    :plot_grid, :speciescolor, :speciesstyle, 
                                    :zmax, :alt, :num_layers, :non_bdy_layers, :dz,
                                    :absorber, :Jratelist, :crosssection, 
-                                   
-                                   
                                    :Hs_dict, :bcdict, :H2Oi, :HDOi, :upper_lower_bdy_i, 
                                    :molmass, :n_alt_index, :polarizability, :n_all_layers, :Tprof_for_diffusion, :q])
 
@@ -736,7 +748,7 @@ function get_rates_and_jacobian(n, p, t; globvars...)
     #=n_inactive, inactivesp, activesp, activellsp, activeslsp, Tn, Ti, Te, Tp,=# D_arr, M, E = p # E FIX ATTEMPT
 
     if t / timestorage >= 10
-        record_atmospheric_state(t, n, GV.activellsp; globvars...)#neutral_species, ion_species, plot_grid, speciescolor, speciesstyle, zmax, alt, num_layers)
+        record_atmospheric_state(t, n, GV.activellsp, p[3]; globvars...)
     end
 
     # retrieve the shortlived species from their storage and flatten them
@@ -763,14 +775,11 @@ function get_rates_and_jacobian(n, p, t; globvars...)
     # Get the updated transport coefficients, taking into account short-lived species update
     updated_ncur_all = compile_ncur_all(n, n_short_updated, GV.n_inactive; GV.activellsp, GV.activeslsp, GV.inactivesp, GV.num_layers)
     tlower, tup, tdown, tupper = update_transport_coefficients(GV.transport_species, updated_ncur_all, GV.activellsp, D_arr; globvars...)
-                                                            #    GV.Tn, GV.Tp, GV.Hs_dict, bcdict=speciesbclist,
-                                                            #    all_species, neutral_species, transport_species, 
-                                                            #    molmass, n_alt_index, polarizability, alt, num_layers, n_all_layers, dz, Tprof_for_diffusion)
 
     return (ratefn(n, n_short_updated, GV.n_inactive, Jrates, tup, tdown, tlower, tupper, M, E; # E FIX ATTEMPT
-                   globvars...),#activellsp, activeslsp, inactivesp, Tn, Ti, Te, num_layers, H2Oi, HDOi, upper_lower_bdy_i),
+                   globvars...),
             chemJmat(n, n_short, GV.n_inactive, Jrates, tup, tdown, tlower, tupper, M, E;  # E FIX ATTEMPT
-                     globvars...) )#activellsp, activeslsp, inactivesp, Tn, Ti, Te, num_layers, H2Oi, HDOi, upper_lower_bdy_i) ) # dt unused in chemjmat
+                     globvars...) )
 end
 
 function solve_sparse(A, b)
@@ -788,9 +797,10 @@ function next_timestep(nstart, params, t, dt; reltol=1e-2, abstol=1e-12, globvar
 
     Input:
         nstart: concentrations before the timestep
-        params: parameters needed by ratefn and chemical jacobian at each timestep
+        params: parameters needed by ratefn and chemical jacobian at each timestep. 3rd entry should be electron profile. 
         t: current time (only used to print output)
         dt: timestep to be taken
+    optional input:
         reltol, abstol: relative and absolute tolerances on solution
     Output: 
         nthis: concentrations after the timestep
@@ -823,7 +833,7 @@ function next_timestep(nstart, params, t, dt; reltol=1e-2, abstol=1e-12, globvar
         # println("iter = $iter")
         if iter>20
             println("Recording last known good atmospheric state")
-            record_atmospheric_state(t, nthis, GV.activellsp; globvars...)
+            record_atmospheric_state(t, nthis, GV.activellsp, params[3]; globvars...)
             write_to_log(logfile, ["Too many iterations exception reached at t=$(t), dt=$(dt)"])
             throw(TooManyIterationsException)
         end
@@ -933,9 +943,16 @@ function next_timestep(nstart, params, t, dt; reltol=1e-2, abstol=1e-12, globvar
     return nthis
 end
 
-function update(n_current::Dict{Symbol, Array{ftype_ncur, 1}}, t, dt; abstol=1e-12, reltol=1e-2, globvars...)
-    # update n_current using the coupled reaction network, moving to
-    # the next timestep
+function update!(n_current::Dict{Symbol, Array{ftype_ncur, 1}}, t, dt; abstol=1e-12, reltol=1e-2, globvars...)
+    #= 
+    update n_current using the coupled reaction network, moving to the next timestep.
+    Input:
+        n_current: Present atmospheric state
+        t: total time elapsed
+        dt: timestep
+    Output:
+        n_current but updated
+    =#
 
     GV = values(globvars)
     @assert all(x->x in keys(GV), [:all_species, :neutral_species, :ion_species, 
@@ -960,18 +977,14 @@ function update(n_current::Dict{Symbol, Array{ftype_ncur, 1}}, t, dt; abstol=1e-
         E = sum([n_current[sp] for sp in GV.ion_species])
     elseif GV.electron_val == "O2+"
         E = E_from_initial_o2pl
+    elseif GV.electron_val=="none"  # For neutrals-only simulation but without changing how E is passed to other functions. 
+        E = [0. for i in GV.non_bdy_layers]
     else        
         throw("Unhandled electron profile specification: $(GV.electron_val)")
     end
 
     # global params for simulation
-    params = [
-              #GV.inactive,
-              #GV.inactive_species,
-              ##GV.active_species,
-              #GV.active_longlived, GV.active_shortlived,
-              # GV.Tn, GV.Ti, GV.Te, GV.Tp,
-              GV.Dcoef_arr_template, M, E] # E FIX ATTEMPT
+    params = [GV.Dcoef_arr_template, M, E] # E FIX ATTEMPT
 
     # get current long-lived species concentrations
     nstart = flatten_atm(n_current, GV.activellsp; GV.num_layers)
@@ -993,7 +1006,14 @@ end
 function converge(n_current::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_start, log_t_end;
                   abstol=1e-12, reltol=1e-2, globvars...)
     #= 
-    update in logarithmiclly spaced timesteps until convergence, returning converged atmosphere 
+    Calls update! in logarithmiclly spaced timesteps until convergence, returning converged atmosphere 
+
+    Input:
+        n_current: Starting atmospheric state
+        log_t_start: power of 10 for starting timetsep size
+        log_t_end; power of 10 for largest possible timestep size 
+    Output: 
+        n_current, but fully converged (hopefully).
     =#
     
     GV = values(globvars)
@@ -1021,7 +1041,7 @@ function converge(n_current::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_start, lo
             println("t  = $total_time")
             println("dt = $dt")
             n_old = deepcopy(n_current)
-            n_current = update(n_current, total_time, dt; abstol=abstol, reltol=reltol, globvars...)
+            n_current = update!(n_current, total_time, dt; abstol=abstol, reltol=reltol, globvars...)
             println("max(n_current-n_old) = $(max([max((abs.(n_current[sp] - n_old[sp]))...) for sp in GV.all_species]...))\n\n")
         end
     elseif GV.gearmode=="dynamic"
@@ -1042,7 +1062,7 @@ function converge(n_current::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_start, lo
             println("dt = $dt")
             n_old = deepcopy(n_current)
             try
-                n_current = update(n_current, total_time, dt; abstol=abstol, reltol=reltol, globvars...)
+                n_current = update!(n_current, total_time, dt; abstol=abstol, reltol=reltol, globvars...)
                 goodsteps += 1
                 if goodsteps >= goodstep_limit
                     dt *= GV.dt_incr_factor
@@ -1109,11 +1129,21 @@ if make_new_alt_grid==true
     # const max_alt = new_zmax*1e5
 end
 
-#                           Load starting atmosphere                            #
+#            Load starting atmosphere and initial electron profile              #
 #===============================================================================#
 n_current = get_ncurrent(initial_atm_file)
 E_from_initial_o2pl = deepcopy(n_current[:O2pl])
-
+if electron_val=="constant" # E FIX ATTEMPT 
+    E = [1e5 for i in non_bdy_layers]
+elseif electron_val=="quasineutral"
+    E = sum([n_current[sp] for sp in ion_species])
+elseif electron_val == "O2+"
+    E = E_from_initial_o2pl
+elseif electron_val=="none"  # For neutrals-only simulation but without changing how E is passed to other functions. 
+    E = [0. for i in non_bdy_layers]
+else
+    throw("Unhandled electron profile specification: $(elecval)")
+end
 
 #                       Establish new species profiles                          #
 #===============================================================================#
@@ -1686,7 +1716,7 @@ write_to_log(logfile, write_me_out, mode="w")
 # n_current[:D] = map(x->1e5*exp(-((x-184)/20)^2), non_bdy_layers/1e5) + n_current[:D]
 
 # write initial atmospheric state ==============================================
-write_atmosphere(n_current, results_dir*sim_folder_name*"/initial_state.h5"; alt, num_layers)
+write_atmosphere(n_current, results_dir*sim_folder_name*"/initial_atmosphere.h5"; alt, num_layers)
 
 # Plot initial temperature and water profiles ==================================
 plot_temp_prof(Tn_arr; savepath=results_dir*sim_folder_name, Tprof_2=Ti_arr, Tprof_3=Te_arr, alt)
@@ -1703,8 +1733,8 @@ end
     
 # Plot initial atmosphere condition  ===========================================
 println("$(Dates.format(now(), "(HH:MM:SS)")) Plotting the initial condition")
-plot_atm(n_current, results_dir*sim_folder_name*"/initial_atmosphere.png", abs_tol_for_plot, t="initial state"; 
-         neutral_species, ion_species, plot_grid, speciescolor, speciesstyle, zmax) 
+plot_atm(n_current, results_dir*sim_folder_name*"/initial_atmosphere.png", abs_tol_for_plot, E; # initial electron profile
+         t="initial state", neutral_species, ion_species, plot_grid, speciescolor, speciesstyle, zmax) 
 
 # Create a list to keep track of stiffness ratio ===============================
 # const stiffness = []
@@ -1739,6 +1769,8 @@ if ftype_ncur==Double64
         E = sum([n_current[sp] for sp in ion_species])
     elseif electron_val == "O2+"
         E = E_from_initial_o2pl
+    elseif electron_val=="none"  # For neutrals-only simulation but without changing how E is passed to other functions. 
+        E = [0. for i in non_bdy_layers]
     else
         throw("Unhandled electron profile specification: $(elecval)")
     end
@@ -1805,6 +1837,7 @@ println("$(Dates.format(now(), "(HH:MM:SS)")) Simulation active convergence runt
 #                                                                              #
 # **************************************************************************** #
 
+# TODO: Update SS and ODE code
 if problem_type == "SS"
     # Update short-lived species one more time
     n_short = flatten_atm(external_storage, active_shortlived; num_layers)
@@ -1851,13 +1884,12 @@ elseif problem_type == "ODE"
         global i += 1 
     end
 elseif problem_type == "Gear"
-    nc_all = atm_soln # this solver returns a standard dictionary rather than a matrix like the other solvers
-
-    plot_atm(nc_all, results_dir*sim_folder_name*"/final_atmosphere.png", t="final converged state", abs_tol_for_plot; 
-             neutral_species, ion_species, plot_grid, speciescolor, speciesstyle, zmax)
+    # this solver returns a standard dictionary rather than a matrix like the other solvers
+    plot_atm(atm_soln, results_dir*sim_folder_name*"/final_atmosphere.png", abs_tol_for_plot, E; 
+             t="final converged state", neutral_species, ion_species, plot_grid, speciescolor, speciesstyle, zmax)
 
     # Write out final atmosphere
-    write_atmosphere(nc_all, results_dir*sim_folder_name*"/"*final_atm_file; alt, num_layers)   # write out the final state to a specially named file
+    write_atmosphere(atm_soln, results_dir*sim_folder_name*"/"*final_atm_file; alt, num_layers)   # write out the final state to a specially named file
 else
     throw("Invalid problem_type")
 end 

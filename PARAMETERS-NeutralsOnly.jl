@@ -40,7 +40,7 @@ const dt_incr_factor = 1.1
 const dt_decr_factor = 10
 const ediff = false
 const mdiff = false 
-const electron_val = "quasineutral"# "constant"# "O2+"#
+const electron_val = "none"
 const error_checking_scheme = "new"#"old"
 
 # Folders and files 

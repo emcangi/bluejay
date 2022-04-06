@@ -66,7 +66,9 @@ for f in filelist
     elseif electron_val=="quasineutral"
         E = sum([ncur[sp] for sp in ion_species])
     elseif electron_val == "O2+"
-        E = get_ncurrent("$(simfolder)/initial_atmosphere.h5")[:O2pl]
+        E = get_ncurrent("$(simfolder)initial_atmosphere.h5")[:O2pl]
+    elseif electron_val=="none"  # For neutrals-only simulation but without changing how E is passed to other functions. 
+        E = [0. for i in non_bdy_layers]
     else
         throw("Unhandled electron profile specification: $(electron_val)")
     end
