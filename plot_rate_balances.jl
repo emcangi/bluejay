@@ -60,7 +60,18 @@ println(filelist)
 for f in filelist
     ncur = get_ncurrent(simfolder*f)
 
-    # Now plot the reactions ------------------------------------------------------------
+    # Load electron profile -----------------------------------------------------------
+    if electron_val=="constant" # E FIX ATTEMPT 
+        E = [1e5 for i in non_bdy_layers]
+    elseif electron_val=="quasineutral"
+        E = sum([ncur[sp] for sp in ion_species])
+    elseif electron_val == "O2+"
+        E = get_ncurrent("$(simfolder)/initial_atmosphere.h5")[:O2pl]
+    else
+        throw("Unhandled electron profile specification: $(electron_val)")
+    end
+
+    # Collect dt for plot title ---------------------------------------------------------
     # looks for a pattern in the filename that looks like X{.XeX}, where curly braces are optional. 
     # i.e. it will match "100", "100.0", "0.001", "1e2" or "1.0e2".
     dtmatch = match(r"\d+\.\d*e*\d*", f) 
@@ -72,7 +83,7 @@ for f in filelist
 
     println("Working on dt=$(dtval)")
 
-    # Plotting for the old version of the code
+    # Plot  ---------------------------------------------------------------------------------
     if @isdefined fullspecieslist
         println("ALERT: You have to go back to the parameter file, $(paramfile), and change all the regular T's in the reaction network to Tn.")
         println("Surely there is a better way to do this but for right now this is what I got.")
@@ -93,7 +104,7 @@ for f in filelist
             #     end
             # end
 
-            plot_rxns(sp, ncur, results_dir; subfolder=sim_folder_name, plotsfolder="chemeq_plots", num=dtval, extra_title="dt=$(dtval)", 
+            plot_rxns(sp, ncur, results_dir, E; subfolder=sim_folder_name, plotsfolder="chemeq_plots", num=dtval, extra_title="dt=$(dtval)", 
                       Tn=Tn_arr, Ti=Ti_arr, Te=Te_arr, Tp=Tplasma_arr, bcdict=speciesbclist, rxnnet=reaction_network, 
                       all_species, neutral_species, ion_species, transport_species, chem_species, 
                       molmass, polarizability, Tprof_for_Hs, Tprof_for_diffusion, Hs_dict,

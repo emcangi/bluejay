@@ -24,29 +24,24 @@
 
 # Basic simulation parameters
 const simtype = "temp"
-const controltemps = [216., 130., 206.]
+const controltemps = [216., 130., 205.]
 const ions_included = true
 const converge_which = "both"
-const problem_type = "Gear" #"ODE" #"SS" #   
-const gear_timestep_type = "dynamic"#"static"
-const n_steps = 1000 # Number of logarithmic timesteps to use when gear_timestep_type == "static"
 
 # Descriptions 
-const tag = "ME4"#"dnde_fix_vargoodfactor" # Optional extra bit for the filename to help indicate what it is
-const optional_logging_note = "Test M and E outside Newton loop, quasineutral electron profile (=sum of ions)."
+const tag = "ME5"#"dnde_fix_vargoodfactor" # Optional extra bit for the filename to help indicate what it is
+const optional_logging_note = "Test M and E outside Newton loop, electron profile =initial O2+ profile."
 
-# Detailed electron and chemistry considerations
-const ediff = false#true 
-const mdiff = false#true 
-const electron_val = "quasineutral"#"constant"#
-
-
-# Check that float type is properly set
-# if problem_type == "Gear" && (ftype_ncur == Float64 || ftype_chem == Float64)
-#     throw("If problem_type = 'Gear' in PARAMETERS, both ftype_ncur and ftype_chem must = Double64 in CUSTOMIZATIONS.jl")
-# elseif problem_type != "Gear" && (ftype_ncur == Double64 || ftype_chem == Double64)
-#     println("problem_type != Gear but using Double64 in CUSTOMIZATIONS.jl")
-# end
+# Detailed solver characteristics
+const problem_type = "Gear" #"ODE" #"SS" #   
+const gear_timestep_type = "dynamic"#"static"#
+const n_steps = 1000
+const dt_incr_factor = 1.1
+const dt_decr_factor = 10
+const ediff = false # true
+const mdiff = false # true 
+const electron_val = "O2+"# "constant"#"quasineutral"# 
+const error_checking_scheme = "old"  # "new"
 
 # Folders and files 
 const sim_folder_name = "$(simtype)_$(Int64(controltemps[1]))_$(Int64(controltemps[2]))_$(Int64(controltemps[3]))_$(problem_type)_$(tag)"
@@ -61,6 +56,13 @@ const water_mixing_ratio = 1.38e-4
 # Solar conditions
 const solarfile = "marssolarphotonflux_solarmean.dat" # you may replace 'mean' with 'max' or 'min'
 const SZA = 60 # SZA in degrees 
+
+# Check that float type is properly set
+# if problem_type == "Gear" && (ftype_ncur == Float64 || ftype_chem == Float64)
+#     throw("If problem_type = 'Gear' in PARAMETERS, both ftype_ncur and ftype_chem must = Double64 in CUSTOMIZATIONS.jl")
+# elseif problem_type != "Gear" && (ftype_ncur == Double64 || ftype_chem == Double64)
+#     println("problem_type != Gear but using Double64 in CUSTOMIZATIONS.jl")
+# end
 
 # **************************************************************************** #
 #                                                                              #

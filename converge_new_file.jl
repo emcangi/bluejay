@@ -113,10 +113,11 @@ function evolve_atmosphere(atm_init::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_s
                                    :zmax, :alt, :num_layers, :non_bdy_layers, :dz, 
                                    :plot_grid, :speciescolor, :speciesstyle,
                                    :absorber, :Jratelist, :crosssection, 
-                                   :electron_val, :gearmode, 
+                                   :electron_val, 
                                    :Hs_dict, :bcdict, :H2Oi, :HDOi, :upper_lower_bdy_i, 
                                    :molmass, :n_alt_index, :polarizability, :n_all_layers, :Tprof_for_diffusion,
-                                   :Dcoef_arr_template, :q])
+                                   :Dcoef_arr_template, :q, 
+                                   :gearmode, :n_steps, :dt_incr_factor, :dt_decr_factor, :error_checking_scheme])
 
     println("$(Dates.format(now(), "(HH:MM:SS)")) Setting up initial state")
 
@@ -128,10 +129,12 @@ function evolve_atmosphere(atm_init::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_s
     M = sum([n_current[sp] for sp in GV.all_species])
     if GV.electron_val=="constant" # E FIX ATTEMPT 
         E = [1e5 for i in GV.non_bdy_layers]
-    elseif electron_val=="quasineutral"
+    elseif GV.electron_val=="quasineutral"
         E = sum([n_current[sp] for sp in GV.ion_species])
+    elseif GV.electron_val == "O2+"
+        E = E_from_initial_o2pl
     else
-        throw("Unhandled electron profile specification: $(elecval)")
+        throw("Unhandled electron profile specification: $(electron_val)")
     end
 
     nstart = flatten_atm(atm_init, GV.activellsp; GV.num_layers)
@@ -166,42 +169,55 @@ function evolve_atmosphere(atm_init::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_s
     more_to_write = ["\nJACOBIAN INFORMATION:", 
                      "Jacobian sparsity: $(sparsity)", 
                      "jacobian total elements: $(length(nstart)^2)", 
+                     #
                      "\nSOLVER OPTIONS:",
+                     "Solver type: $(problem_type)", 
                      "system size: $(length(nstart))",
                      "timespan=$(tspan)",
                      "starting dt=$(startdt)",
                      "saveat=$(t_to_save)", 
                      "abstol=$(abs_tol)",
                      "reltol=$(rel_tol)"]
-    write_to_log(logfile, more_to_write, mode="a")
-
-    solver = QNDF
 
     write_time_stuff = ["\nTIMING",
                         "Start time: $(Dates.format(now(), "yyyy-mm-dd at HH:MM:SS"))"]
     
+    julia_DE_algorithm = QNDF
+
     if problem_type == "SS"
-        write_to_log(logfile, "\nODE solver: DynamicSS/$(solver)", mode="a")
-        write_to_log(logfile, write_time_stuff, mode="a")
-        println("$(Dates.format(now(), "(HH:MM:SS)")) Defining SS problem")
+        push!(more_to_write, "Algorithm: DynamicSS/$(julia_DE_algorithm)")
+        write_to_log(logfile, more_to_write, mode="a")
         probSS = SteadyStateProblem{isinplace}(odefunc, nstart, params)
         println("$(Dates.format(now(), "(HH:MM:SS)")) Calling the solver")
-        sol = solve(probSS, DynamicSS(QNDF(), abstol=abs_tol, reltol=rel_tol), saveat=t_to_save, progress=true, save_everystep=false, dt=startdt,
-                    abstol=abstol, reltol=reltol, isoutofdomain=(u,p,t)->any(x->x<0,u))
-
-    elseif problem_type == "ODE"
-        write_to_log(logfile, "\nODE solver: $solver", mode="a")
         write_to_log(logfile, write_time_stuff, mode="a")
-        println("$(Dates.format(now(), "(HH:MM:SS)")) Defining ODE problem")
+        try
+            sol = solve(probSS, DynamicSS(julia_DE_algorithm(), abstol=abs_tol, reltol=rel_tol), saveat=t_to_save, progress=true, save_everystep=false, dt=startdt,
+                    abstol=abstol, reltol=reltol, isoutofdomain=(u,p,t)->any(x->x<0,u))
+        catch 
+            throw("Julia probably doesn't support passing the algorithm as a variable.")
+        end
+    elseif problem_type == "ODE"
+        push!(more_to_write, "Algorithm: $(julia_DE_algorithm)")
+        write_to_log(logfile, more_to_write, mode="a")
         probODE = ODEProblem(odefunc, nstart, tspan, params)
         println("$(Dates.format(now(), "(HH:MM:SS)")) Calling the solver")
-        sol = solve(probODE, QNDF(), saveat=t_to_save, progress=true, save_everystep=false, dt=startdt,
-                    abstol=abstol, reltol=reltol, isoutofdomain=(u,p,t)->any(x->x<0,u))
-    elseif problem_type == "Gear"
-        write_to_log(logfile, ["\nODE solver: Custom First Order Gear", "Gear timestep type: $(GV.gearmode)", "n_steps for static Gear timesteps: $(GV.n_steps)"], mode="a")
         write_to_log(logfile, write_time_stuff, mode="a")
+        try 
+            sol = solve(probODE, julia_DE_algorithm(), saveat=t_to_save, progress=true, save_everystep=false, dt=startdt,
+                        abstol=abstol, reltol=reltol, isoutofdomain=(u,p,t)->any(x->x<0,u))
+        catch 
+            throw("Julia probably doesn't support passing the algorithm as a variable.")
+        end
+    elseif problem_type == "Gear"
+        for m in ["\nOrder: First order", "Gear timestep type: $(GV.gearmode)", "n_steps for static Gear timesteps: $(GV.n_steps)", 
+                  "Dynamic timestep success dt multiplier: $(dt_incr_factor)", "Dynamic timestep fail dt multiplier: $(dt_decr_factor)", 
+                  "Error checking scheme: $(GV.error_checking_scheme)"]
+            push!(more_to_write, m)
+        end 
+        write_to_log(logfile, more_to_write, mode="a")
         println("$(Dates.format(now(), "(HH:MM:SS)")) Calling the solver")
-        sol = converge(atm_init, log_t_start, log_t_end; abstol=abstol, reltol=reltol, Dcoef_arr_template, globvars...)
+        write_to_log(logfile, write_time_stuff, mode="a")
+        sol = converge(atm_init, log_t_start, log_t_end; abstol=abstol, reltol=reltol, #=Dcoef_arr_template,=# globvars...)
     else
         throw("Invalid problem_type")
     end 
@@ -790,7 +806,8 @@ function next_timestep(nstart, params, t, dt; reltol=1e-2, abstol=1e-12, globvar
                                    :absorber, :Jratelist, :crosssection, 
                                    :electron_val, 
                                    :Hs_dict, :bcdict, :H2Oi, :HDOi, :upper_lower_bdy_i, 
-                                   :molmass, :n_alt_index, :polarizability, :n_all_layers, :Tprof_for_diffusion, :q])
+                                   :molmass, :n_alt_index, :polarizability, :n_all_layers, :Tprof_for_diffusion, :q, 
+                                   :error_checking_scheme])
     
     # absolute and relative tolerance on rate update
     f_abstol = 1e-2 #sqrt(abstol)
@@ -807,6 +824,7 @@ function next_timestep(nstart, params, t, dt; reltol=1e-2, abstol=1e-12, globvar
         if iter>20
             println("Recording last known good atmospheric state")
             record_atmospheric_state(t, nthis, GV.activellsp; globvars...)
+            write_to_log(logfile, ["Too many iterations exception reached at t=$(t), dt=$(dt)"])
             throw(TooManyIterationsException)
         end
         
@@ -819,61 +837,96 @@ function next_timestep(nstart, params, t, dt; reltol=1e-2, abstol=1e-12, globvar
         #     d(fval)/d(nthis) = I - dt*chemJ
         dndt, chemJ = get_rates_and_jacobian(nthis, params, t; globvars...)
 
-        # we want fval = 0, corresponding to a good update. chemical_jacobian.pdf eqn 3.21 
-        # if it isn't 0, then there's a big discrepancy between the present value and the past value + rate of change, which is bad
-        fval = nthis - nstart - dt*dndt  # 
+        if GV.error_checking_scheme == "old" # ==========================================================
+            # we want fval = 0, corresponding to a good update. chemical_jacobian.pdf eqn 3.21 
+            # if it isn't 0, then there's a big discrepancy between the present value and the past value + rate of change, which is bad
+            fval = nthis - nstart - dt*dndt  # 
 
-        # construct the update matrix according to Jacobson Equation 12.77. h=dt, β=1
-        identity = sparse(I, length(nthis), length(nthis))
-        updatemat = identity - dt*chemJ  
+            # construct the update matrix according to Jacobson Equation 12.77. h=dt, β=1
+            identity = sparse(I, length(nthis), length(nthis))
+            updatemat = identity - dt*chemJ  
 
-        # now we can update using newton's method, chemical_jacobian.pdf equation 3.25
-        # n_i+1 = n_i - f(n_i)/f'(n_i)
-        # Here, updatemat = ∂f/∂n = I - dt*J  = f'(n_i),  fval = f(n^i)
-        nthis = nthis - solve_sparse(updatemat, fval)
+            # now we can update using newton's method, chemical_jacobian.pdf equation 3.25
+            # n_i+1 = n_i - f(n_i)/f'(n_i)
+            # Here, updatemat = ∂f/∂n = I - dt*J  = f'(n_i),  fval = f(n^i)
+            nthis = nthis - solve_sparse(updatemat, fval)
 
-        # restrict values to be positive definite
-        nthis[nthis .< 0.] .= 0.
-        
-        # check for convergence
-        check_n_abserr = (nthis .<= abstol) .|| (nold .<= abstol) .|| (abs.(nthis - nold) .<= abstol)
-        n_relerr = abs.(nthis-nold)./nold
-        println("max(n_relerr) = $(max(n_relerr[.!check_n_abserr]...))")
-        check_n_relerr = n_relerr .< reltol
+            # restrict values to be positive definite
+            nthis[nthis .< 0.] .= 0.
 
-        check_f_abserr = (abs.(fval) .<= f_abstol)
-        if length(fval[.!check_n_abserr]) > 0
-            println("max(fval) = $(max((abs.(fval[.!check_n_abserr]))...))")
-        else
-            println("max(f_relerr) = 0.0")
-        end
-        # println("max(fval) = $(max(fval...))\n") # OLD 
+            # density absoluite error
+            check_n_abserr = (nthis .<= abstol) .|| (nold .<= abstol) .|| (abs.(nthis - nold) .<= abstol)
 
-        # The following: fval / (nstart+ dt*dndt) = nthis/(nstart+ dt*dndt) - 1, and the division term should be ~=1, so you can check whether this val < rel tol. 
-        f_relerr = abs.(fval./(nthis)) # f_relerr = abs.(fval./(nstart + dt*dndt)) # OLD
-        if length(f_relerr[.!check_n_abserr .&& .!check_f_abserr]) > 0
-            println("max(f_relerr) = $(max(f_relerr[.!check_n_abserr .&& .!check_f_abserr]...))\n")
-        else
-            println("max(f_relerr) = 0.0\n")
-        end
-        #= OLD
-        if length(f_relerr[.!check_f_abserr]) > 0
-            println("max(f_relerr) = $(max(f_relerr[.!check_f_abserr]...))\n")
-        else
-            println("max(f_relerr) = 0.0\n")
-        end 
-        =#
-     
-        check_f_relerr = f_relerr .< f_reltol
-        
-        #= old
-        # Suggest: Remove [.!check_n_abserr] and see what happens, put it back in if breaks.
-        # Suggest: && all(check_f_relerr .|| check_f_abserr) 
-        # converged = all(check_n_relerr .|| check_n_abserr) && all(check_f_abserr#=[.!check_n_abserr]=# .|| check_f_relerr) # **
-        old =# 
-        converged = (all(check_n_relerr .|| check_n_abserr)
-                     && all(check_f_abserr[.!check_n_abserr] .|| check_f_relerr[.!check_n_abserr]))
-        
+            # density relative error
+            n_relerr = abs.(nthis-nold)./nold
+            # println("max(n_relerr) = $(max(n_relerr[.!check_n_abserr]...))")
+            check_n_relerr = n_relerr .< reltol
+
+            # # fval absolute error
+            # check_f_abserr = (abs.(fval) .<= f_abstol)
+            # println("max(fval) = $(max(fval...))\n")
+            # f_relerr = abs.(fval./(dt*dndt)) # maybe should measure relative to nstart
+            # if length(f_relerr[.!check_f_abserr]) > 0
+            #     println("max(f_relerr) = $(max(f_relerr[.!check_f_abserr]...))\n")
+            # else
+            #     println("max(f_relerr) = 0.0\n")
+            # end
+            # # fval relative error
+            # check_f_relerr = f_relerr .< f_reltol
+            
+            # Suggest: && all(check_f_relerr .|| check_f_abserr). put [.!check_n_abserr] back if this breaks it
+            # Final convergence check
+            converged = all(check_n_relerr .|| check_n_abserr) #&& all(check_f_abserr#=[.!check_n_abserr]=# .|| check_f_relerr) # **
+        elseif GV.error_checking_scheme == "new" # =======================================================
+            # fval - now with dt divided out to keep things stable at long timescales
+            fval = (nthis - nstart)/dt - dndt
+            identity = sparse(I, length(nthis), length(nthis))
+            updatemat = identity/dt - chemJ  
+            nthis = nthis - solve_sparse(updatemat, fval)
+            nthis[nthis .< 0.] .= 0.
+
+            # density absolute error
+            check_n_abserr = (nthis .<= abstol) .|| (nold .<= abstol) .|| (abs.(nthis - nold) .<= abstol)
+
+            # density relative error
+            n_relerr = abs.(nthis-nold)./nold
+            println("max(n_relerr) = $(max(n_relerr[.!check_n_abserr]...))")
+
+            # TROUBLESHOOTING - what's going on at the index where the maximum occurs?
+            imax_nrel = argmax(n_relerr[.!check_n_abserr])
+            println("nthis[imax]: $(nthis[.!check_n_abserr][imax_nrel])")
+            println("nold[imax]: $(nold[.!check_n_abserr][imax_nrel])")
+            println("dndt[imax]: $(dndt[.!check_n_abserr][imax_nrel])")
+            
+            check_n_relerr = n_relerr .< reltol
+
+            # absolute fval error 
+            check_f_abserr = (abs.(fval) .<= f_abstol)
+            if length(fval[.!check_n_abserr]) > 0
+                println("max(fval) = $(max((abs.(fval[.!check_n_abserr]))...))")
+            else
+                println("max(fval) = 0.0")
+            end
+
+            # relative fval error
+            # The following: fval / (nstart+ dt*dndt) = nthis/(nstart+ dt*dndt) - 1, and the division term should be ~=1, so you can check whether this val < rel tol. 
+            f_relerr = abs.(fval./(nthis)) #abs.(fval ./ dndt) # NEW when dt is divided out # 
+            if length(f_relerr[.!check_n_abserr .&& .!check_f_abserr]) > 0
+                println("max(f_relerr) = $(max(f_relerr[.!check_n_abserr .&& .!check_f_abserr]...))")
+            else
+                println("max(f_relerr) = 0.0")
+            end     
+            check_f_relerr = f_relerr .< f_reltol
+            
+            # Find out what's failing exactly
+            println("density error: $(all(check_n_relerr .|| check_n_abserr))")
+            println("fval error: $(all(check_f_abserr[.!check_n_abserr] .|| check_f_relerr[.!check_n_abserr]))")
+            println()
+            # Final convergence check
+            # Turning on the f error check seems to cause it to fail very very early in the run --6 April 
+            converged = (all(check_n_relerr .|| check_n_abserr)) #&& all(check_f_abserr[.!check_n_abserr] .|| check_f_relerr[.!check_n_abserr]))
+        end # new =====================================================================================
+
         iter += 1
     end
 
@@ -895,16 +948,19 @@ function update(n_current::Dict{Symbol, Array{ftype_ncur, 1}}, t, dt; abstol=1e-
                                    :electron_val, 
                                    :Hs_dict, :bcdict, :H2Oi, :HDOi, :upper_lower_bdy_i, 
                                    :molmass, :n_alt_index, :polarizability, :n_all_layers, :Tprof_for_diffusion, 
-                                   :Dcoef_arr_template, :q])
+                                   :Dcoef_arr_template, :q, 
+                                   :error_checking_scheme])
         
     # println("n_current[:O] = $(n_current[:O])")
 
     M = sum([n_current[sp] for sp in GV.all_species])
-    if electron_val=="constant" # E FIX ATTEMPT 
+    if GV.electron_val=="constant" # E FIX ATTEMPT 
         E = [1e5 for i in GV.non_bdy_layers]
-    elseif electron_val=="quasineutral"
+    elseif GV.electron_val=="quasineutral"
         E = sum([n_current[sp] for sp in GV.ion_species])
-    else
+    elseif GV.electron_val == "O2+"
+        E = E_from_initial_o2pl
+    else        
         throw("Unhandled electron profile specification: $(GV.electron_val)")
     end
 
@@ -934,7 +990,7 @@ function update(n_current::Dict{Symbol, Array{ftype_ncur, 1}}, t, dt; abstol=1e-
     return n_current
 end
 
-function converge(n_current::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_start, log_t_end;#, n_steps=1000;
+function converge(n_current::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_start, log_t_end;
                   abstol=1e-12, reltol=1e-2, globvars...)
     #= 
     update in logarithmiclly spaced timesteps until convergence, returning converged atmosphere 
@@ -948,10 +1004,11 @@ function converge(n_current::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_start, lo
                                     :plot_grid, :speciescolor, :speciesstyle, 
                                     :zmax, :alt, :num_layers, :non_bdy_layers, :dz,
                                     :absorber, :Jratelist, :crosssection, 
-                                    :electron_val, :gearmode, :n_steps, 
+                                    :electron_val, 
                                     :Hs_dict, :bcdict, :H2Oi, :HDOi, :upper_lower_bdy_i, 
                                     :molmass, :n_alt_index, :polarizability, :n_all_layers, :Tprof_for_diffusion, 
-                                    :Dcoef_arr_template, :q])
+                                    :Dcoef_arr_template, :q, 
+                                    :gearmode, :n_steps, :dt_incr_factor, :dt_decr_factor, :error_checking_scheme])
     
     if GV.gearmode=="static"
         println("Using static timesteps")
@@ -965,7 +1022,7 @@ function converge(n_current::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_start, lo
             println("dt = $dt")
             n_old = deepcopy(n_current)
             n_current = update(n_current, total_time, dt; abstol=abstol, reltol=reltol, globvars...)
-            println("max(n_current-n_old) = $(max([max((abs.(n_current[sp] - n_old[sp]))...) for sp in all_species]...))\n\n")
+            println("max(n_current-n_old) = $(max([max((abs.(n_current[sp] - n_old[sp]))...) for sp in GV.all_species]...))\n\n")
         end
     elseif GV.gearmode=="dynamic"
         println("Using dynamically adjusting timesteps")
@@ -974,11 +1031,11 @@ function converge(n_current::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_start, lo
         
         total_time = 0.0
         goodsteps = 0
-        goodstep_limit = 1
-        goodfactor = 1.1
-        failfactor = 10.0
+        goodstep_limit = 1 # Need at least this many successful iterations before increasing timestep
+        # GV.dt_incr_factor = 1.1
+        # GV.dt_decr_factor = 10.0
 
-        write_to_log(logfile, ["DYNAMIC STEP PARAMETERS", "Timesteps increase on success by: $((goodfactor-1)*100)%", "On fail, timesteps divided by: $(failfactor)"])
+        write_to_log(logfile, ["DYNAMIC STEP PARAMETERS", "Timesteps increase on success by: $((GV.dt_incr_factor-1)*100)%", "On fail, timesteps divided by: $(GV.dt_decr_factor)"])
         while dt < 10.0^log_t_end
             total_time += dt
             println("t  = $total_time")
@@ -988,19 +1045,19 @@ function converge(n_current::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_start, lo
                 n_current = update(n_current, total_time, dt; abstol=abstol, reltol=reltol, globvars...)
                 goodsteps += 1
                 if goodsteps >= goodstep_limit
-                    dt *= goodfactor
+                    dt *= GV.dt_incr_factor
                     goodsteps = 0
                 end
             catch e
                 if e == TooManyIterationsException
                     total_time -= dt
-                    dt = dt/failfactor
+                    dt = dt/GV.dt_decr_factor
                     goodsteps = 0
                 else
                     rethrow(e)
                 end
             end
-            println("max(n_current-n_old) = $(max([max((abs.(n_current[sp] - n_old[sp]))...) for sp in all_species]...))\n\n")
+            println("max(n_current-n_old) = $(max([max((abs.(n_current[sp] - n_old[sp]))...) for sp in GV.all_species]...))\n\n")
         end
     end
     
@@ -1055,6 +1112,7 @@ end
 #                           Load starting atmosphere                            #
 #===============================================================================#
 n_current = get_ncurrent(initial_atm_file)
+E_from_initial_o2pl = deepcopy(n_current[:O2pl])
 
 
 #                       Establish new species profiles                          #
@@ -1635,7 +1693,7 @@ plot_temp_prof(Tn_arr; savepath=results_dir*sim_folder_name, Tprof_2=Ti_arr, Tpr
 
 # Absolute tolerance
 if problem_type == "Gear"
-    const abs_tol = 1e-10#1e-12 # absolute tolerance in ppm, used by Gear solver # NOTE: I think this is actually #/cm³ not ppm, because n_i+1 - n_i is compared against it.--Eryn
+    const abs_tol = 1e-12 # absolute tolerance in ppm, used by Gear solver # NOTE: I think this is actually #/cm³ not ppm, because n_i+1 - n_i is compared against it.--Eryn
     const abs_tol_for_plot = fill(abs_tol, length(n_tot(n_current; all_species)))
 else
     # absolute tolerance relative to total atmosphere density, used by DifferentialEquations.jl solvers
@@ -1646,7 +1704,7 @@ end
 # Plot initial atmosphere condition  ===========================================
 println("$(Dates.format(now(), "(HH:MM:SS)")) Plotting the initial condition")
 plot_atm(n_current, results_dir*sim_folder_name*"/initial_atmosphere.png", abs_tol_for_plot, t="initial state"; 
-         neutral_species, ion_species, plot_grid, speciescolor, speciesstyle, zmax) #=plot_grid, speciescolor, speciesstyle, zmax,=#
+         neutral_species, ion_species, plot_grid, speciescolor, speciesstyle, zmax) 
 
 # Create a list to keep track of stiffness ratio ===============================
 # const stiffness = []
@@ -1679,6 +1737,8 @@ if ftype_ncur==Double64
         E = [1e5 for i in non_bdy_layers]
     elseif electron_val=="quasineutral"
         E = sum([n_current[sp] for sp in ion_species])
+    elseif electron_val == "O2+"
+        E = E_from_initial_o2pl
     else
         throw("Unhandled electron profile specification: $(elecval)")
     end
@@ -1727,9 +1787,10 @@ atm_soln = evolve_atmosphere(n_current, mindt, maxdt; t_to_save=times_to_save, a
                              alt, zmax, num_layers, non_bdy_layers, dz, n_all_layers, plot_grid, #anything to do with the alt grid
                              speciescolor, speciesstyle, # stuff to plot nicely 
                              absorber, Jratelist, crosssection, # Photolysis stuff
-                             electron_val, gearmode=gear_timestep_type, n_steps, # simulation parameters that need to get used or logged
+                             electron_val, # electron profile type 
                              bcdict=speciesbclist, H2Oi, HDOi, upper_lower_bdy_i, # Things concerning transport 
-                             Hs_dict, molmass, n_alt_index, polarizability, Dcoef_arr_template, q)# Basic species characteristics
+                             Hs_dict, molmass, n_alt_index, polarizability, Dcoef_arr_template, q, 
+                             gearmode=gear_timestep_type, n_steps, dt_incr_factor, dt_decr_factor, error_checking_scheme)# Basic species characteristics
 
 
 tf = time() 

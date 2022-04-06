@@ -1111,7 +1111,7 @@ function plot_Jrates(sp, atmdict::Dict{Symbol, Vector{ftype_ncur}}, results_dir:
     end
 end
 
-function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, results_dir::String; 
+function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, results_dir::String, E_prof; 
                    shown_rxns=nothing, subfolder="", plotsfolder="", dt=nothing, num="", extra_title="", 
                    plot_timescales=false, plot_total_rate_coefs=false, showonly=false, globvars...)
     #=
@@ -1194,8 +1194,8 @@ function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, result
         # index these in this way to make the evaluation of chemistry reaction rate coefficients work. 
         # Entering them separately from globvars allows us to keep passing globvars as a "packed" variable but 
         # use the most recent Tn, Ti, Te according to rightmost taking precedence.
-        rxd_prod, rate_coefs_prod = get_volume_rates(sp, atmdict; species_role="product", globvars..., Tn=GV.Tn[2:end-1], Ti=GV.Ti[2:end-1], Te=GV.Te[2:end-1])
-        rxd_loss, rate_coefs_loss = get_volume_rates(sp, atmdict; species_role="reactant", globvars..., Tn=GV.Tn[2:end-1], Ti=GV.Ti[2:end-1], Te=GV.Te[2:end-1])
+        rxd_prod, rate_coefs_prod = get_volume_rates(sp, atmdict, E_prof; species_role="product", globvars..., Tn=GV.Tn[2:end-1], Ti=GV.Ti[2:end-1], Te=GV.Te[2:end-1])
+        rxd_loss, rate_coefs_loss = get_volume_rates(sp, atmdict, E_prof; species_role="reactant", globvars..., Tn=GV.Tn[2:end-1], Ti=GV.Ti[2:end-1], Te=GV.Te[2:end-1])
 
         # Water is turned off in the lower atmosphere, so we should represent that.
         if sp in [:H2O, :HDO] 
@@ -2732,7 +2732,7 @@ function chemical_jacobian(specieslist, dspecieslist; diff_wrt_e=true, diff_wrt_
     return (ivec, jvec, tvec)
 end
 
-function eval_rate_coef(atmdict::Dict{Symbol, Vector{ftype_ncur}}, krate::Expr; globvars...)
+function eval_rate_coef(atmdict::Dict{Symbol, Vector{ftype_ncur}}, krate::Expr, E_prof; globvars...)
     #=
     Evaluates a chemical reaction rate coefficient, krate, for all levels of the atmosphere. 
 
@@ -2750,7 +2750,7 @@ function eval_rate_coef(atmdict::Dict{Symbol, Vector{ftype_ncur}}, krate::Expr; 
     # Set stuff up
     eval_k = mk_function(:((Tn, Ti, Te, M, E) -> $krate))
 
-    return eval_k(GV.Tn, GV.Ti, GV.Te, sum([atmdict[sp] for sp in GV.all_species]), sum([atmdict[sp] for sp in GV.ion_species]))
+    return eval_k(GV.Tn, GV.Ti, GV.Te, sum([atmdict[sp] for sp in GV.all_species]), E_prof) # sum([atmdict[sp] for sp in GV.ion_species])
 end 
 
 function get_column_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}; which="all", sp2=nothing, role="product", startalt_i=1, globvars...)
@@ -2800,7 +2800,7 @@ function get_column_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}};
     return sorted
 end
 
-function get_volume_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}; species_role="both", which="all", globvars...)
+function get_volume_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, E_prof; species_role="both", which="all", globvars...)
     #=
     Input:
         sp: Species name
@@ -2867,8 +2867,7 @@ function get_volume_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}};
         else                        # bi- and ter-molecular chemistry
             density_prod = reactant_density_product(atmdict, rxn[1]; globvars...)
             thisrate = typeof(rxn[3]) != Expr ? :($rxn[3] + 0) : rxn[3]
-            rate_coef = eval_rate_coef(atmdict, thisrate; globvars...)
-
+            rate_coef = eval_rate_coef(atmdict, thisrate, E_prof; globvars...)
 
             rxn_dat[rxn_str] = density_prod .* rate_coef # This is k * [R1] * [R2] where [] is density of a reactant. 
             if typeof(rate_coef) == Float64

@@ -7,9 +7,8 @@
 # Eryn Cangi
 # Created December 2019
 # Last edited: 12 November 2021
-# Currently tested for Julia: 1.4.1
+# Currently tested for Julia: 1.7.1
 ################################################################################
-
 
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
 # !!                                                                        !! #
@@ -26,20 +25,23 @@
 # Basic simulation parameters
 const simtype = "temp"
 const controltemps = [216., 130., 205.]
-const tag = "check_kwargs_neutrals" # Optional extra bit for the filename to help indicate what it is
-const problem_type = "ODE" #"Gear" #  "SS" # 
-const converge_which = "neutrals"
-const optional_logging_note = "Verifying globvars kwarg works with neutrals only"
-const ediff = false
-const mdiff = true 
 const ions_included = false
+const converge_which = "neutrals"
 
-# Check that float type is properly set
-if problem_type == "Gear" && (ftype_ncur == Float64 || ftype_chem == Float64)
-    throw("If problem_type = 'Gear' in PARAMETERS, both ftype_ncur and ftype_chem must = Double64 in CUSTOMIZATIONS.jl")
-elseif problem_type != "Gear" && (ftype_ncur == Double64 || ftype_chem == Double64)
-    println("problem_type != Gear but using Double64 in CUSTOMIZATIONS.jl")
-end
+# Descriptions
+const tag = "test_errcheck5" # Optional extra bit for the filename to help indicate what it is
+const optional_logging_note = "From neutral baseline: fval relative error is now fval/dndt...checking n values."
+
+# Detailed solver characteristics
+const problem_type = "Gear" #"ODE" #  "SS" # 
+const gear_timestep_type = "static"
+const n_steps = 1000 # Number of logarithmic timesteps to use with gear_timestep_type = 'static'
+const dt_incr_factor = 1.1
+const dt_decr_factor = 10
+const ediff = false
+const mdiff = false 
+const electron_val = "quasineutral"# "constant"# "O2+"#
+const error_checking_scheme = "new"#"old"
 
 # Folders and files 
 const sim_folder_name = "neutrals_$(problem_type)_$(tag)"
@@ -54,6 +56,12 @@ const water_mixing_ratio = 1.38e-4
 const solarfile = "marssolarphotonflux_solarmean.dat" # you may replace 'mean' with 'max' or 'min'
 const SZA = 60 # SZA in degrees 
 
+# Check that float type is properly set
+# if problem_type == "Gear" && (ftype_ncur == Float64 || ftype_chem == Float64)
+#     throw("If problem_type = 'Gear' in PARAMETERS, both ftype_ncur and ftype_chem must = Double64 in CUSTOMIZATIONS.jl")
+# elseif problem_type != "Gear" && (ftype_ncur == Double64 || ftype_chem == Double64)
+#     println("problem_type != Gear but using Double64 in CUSTOMIZATIONS.jl")
+# end
 
 # **************************************************************************** #
 #                                                                              #
