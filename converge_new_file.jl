@@ -745,7 +745,7 @@ function get_rates_and_jacobian(n, p, t; globvars...)
                                    :molmass, :n_alt_index, :polarizability, :n_all_layers, :Tprof_for_diffusion, :q])
 
     # Unpack the parameters ---------------------------------------------------------------
-    #=n_inactive, inactivesp, activesp, activellsp, activeslsp, Tn, Ti, Te, Tp,=# D_arr, M, E = p # E FIX ATTEMPT
+    D_arr, M, E = p # E FIX ATTEMPT
 
     if t / timestorage >= 10
         record_atmospheric_state(t, n, GV.activellsp, p[3]; globvars...)
@@ -892,7 +892,7 @@ function next_timestep(nstart, params, t, dt; reltol=1e-2, abstol=1e-12, globvar
             fval = (nthis - nstart)/dt - dndt
             identity = sparse(I, length(nthis), length(nthis))
             updatemat = identity/dt - chemJ  
-            nthis = nthis - solve_sparse(updatemat, fval)
+            nthis = nthis - updatemat \ fval # solve_sparse(updatemat, fval)
             nthis[nthis .< 0.] .= 0.
 
             # density absolute error

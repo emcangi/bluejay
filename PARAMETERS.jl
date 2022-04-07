@@ -29,19 +29,19 @@ const ions_included = true
 const converge_which = "both"
 
 # Descriptions 
-const tag = "ME5"#"dnde_fix_vargoodfactor" # Optional extra bit for the filename to help indicate what it is
-const optional_logging_note = "Test M and E outside Newton loop, electron profile =initial O2+ profile."
+const tag = "ME4_newerr"#"dnde_fix_vargoodfactor" # Optional extra bit for the filename to help indicate what it is
+const optional_logging_note = "Test M and E outside Newton loop, electron profile = sum of ions."
 
 # Detailed solver characteristics
 const problem_type = "Gear" #"ODE" #"SS" #   
-const gear_timestep_type = "dynamic"#"static"#
+const gear_timestep_type ="dynamic"# "static"#
 const n_steps = 1000
 const dt_incr_factor = 1.1
 const dt_decr_factor = 10
 const ediff = false # true
 const mdiff = false # true 
-const electron_val = "O2+"# "constant"#"quasineutral"# 
-const error_checking_scheme = "old"  # "new"
+const electron_val = "quasineutral"#"constant"# "O2+"# 
+const error_checking_scheme = "new"#"old"  # 
 
 # Folders and files 
 const sim_folder_name = "$(simtype)_$(Int64(controltemps[1]))_$(Int64(controltemps[2]))_$(Int64(controltemps[3]))_$(problem_type)_$(tag)"
