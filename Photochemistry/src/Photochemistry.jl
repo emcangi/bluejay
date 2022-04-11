@@ -32,6 +32,7 @@ export # Basic utility functions
        # Chemistry functions
        load_reaction_network, calculate_stiffness, check_jacobian_eigenvalues, chemical_jacobian, getrate, loss_equations, 
        loss_rate, make_chemjac_key, make_net_change_expr, meanmass, production_equations, production_rate, rxns_where_species_is_observer, 
+       make_k_expr, make_Troe, make_modified_Troe, troe_expr, format_neutral_network, # DELETE 
        # Photochemical equilibrium functions
        choose_solutions, construct_quadratic, group_terms, loss_coef, linear_in_species_density,
        # Photochemistry functions
@@ -405,7 +406,7 @@ function column_density_above(n_tot_by_alt::Vector)
     return col_above
 end
 
-function find_exobase(s::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}; returntype="index", globvars...)
+function find_exobase(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}; returntype="index", verbose=false, globvars...)
     #=
     Finds the exobase altitude, where mean free path is equal to a scale height.
 
@@ -418,27 +419,21 @@ function find_exobase(s::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}; retu
     =#
 
     GV = values(globvars)
-    @assert all(x->x in keys(GV),  [:nbl, :all_species, :Tn, :molmass, :alt, :xsects])
+    @assert all(x->x in keys(GV),  [:non_bdy_layers, :all_species, :Tn, :molmass, :alt, :collision_xsect, :n_alt_index, :zmax])
 
-    H_s = scaleH(GV.nbl, s, GV.Tn; globvars...)# GV.molmass)
-    try
-        mfp_s = 1 ./ (GV.xsects[s] .* n_tot(atmdict; GV.all_species, GV.n_alt_index))
-    catch KeyError
-        throw("You need to implement handling for collisional cross section of species heavier than D")
-    end
+    H_s = scaleH(GV.non_bdy_layers, sp, GV.Tn[2:end-1]; globvars...)
+    mfp_sp = 1 ./ (GV.collision_xsect[sp] .* n_tot(atmdict; GV.all_species, GV.n_alt_index))
+    exobase_alt = findfirst(mfp_sp .> H_s)
 
-    for i in 50:length(GV.nbl) # extremely unlikely the exobase will ever be at 100 km (i=50) in alt lol
-        if mfp_s[i] < H_s[i]
-            continue
-        else
-            # println("Exobase found for species $(s) at altitude $(alts[i]/1e5) km")
-            returnme = Dict("altitude"=>GV.alt[i], "index"=>n_alt_index[GV.alt[i]])
-            return returnme[returntype]
-            break
+    if typeof(exobase_alt)==Nothing # If no exobase is found, use the top of the atmosphere.
+        if verbose
+            println("Warning: No exobase found for species $(sp); assuming top of atmosphere, but this is not totally physical.")
         end
-
+        returnme = Dict("altitude"=>GV.zmax, "index"=>GV.n_alt_index[GV.zmax])
+    else
+        returnme = Dict("altitude"=>GV.alt[exobase_alt], "index"=>exobase_alt)
     end
-    throw("Didn't find an exobase so the whole atmosphere is collisional I guess, this should probably be addressed")
+    return returnme[returntype]
 end
 
 function flatten_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, species_list; globvars...) 
@@ -623,6 +618,38 @@ function precip_microns(sp, sp_profile; globvars...)
     #pr μm = (#/cm²) * (1 mol/molecules) * (g/1 mol) * (1 cm^3/g) * (10^4 μm/cm)
     pr_microns = col_abundance * (1/6.02e23) * (GV.molmass[sp]/1) * (cc_per_g / 1) * (1e4/1)
     return pr_microns
+end
+
+function scaleH(z::Vector{Float64}, sp::Symbol, T::Array; globvars...)
+    #=
+    Input:
+        z: Altitudes in cm
+        sp: Speciecs to calculate for
+        T: temperature array for this species
+    Output: 
+        species-specific scale height at all altitudess
+    =#  
+    GV = values(globvars)
+    @assert all(x->x in keys(GV), [:molmass])
+
+    return @. kB*T/(GV.molmass[sp]*mH*marsM*bigG)*(((z+radiusM))^2)
+end
+
+function scaleH(atmdict::Dict{Symbol, Vector{ftype_ncur}}, T::Vector; globvars...)
+    #= 
+    Input:
+        atmdict: Present atmospheric state dictionary
+        T: temperature array for the neutral atmosphere
+    Output:
+        Mean atmospheric scale height at all altitudes
+    =#
+
+    GV = values(globvars)
+    @assert all(x->x in keys(GV), [:all_species, :alt, :molmass, :n_alt_index])
+
+    mm_vec = meanmass(atmdict; globvars...)#, all_species, mmass) # vector version.
+
+    return @. kB*T/(mm_vec*mH*marsM*bigG)*(((GV.alt+radiusM))^2)
 end
 
 function setup_water_profile!(atmdict; dust_storm_on=false, globvars...)
@@ -1903,7 +1930,7 @@ function fluxcoefs(sp::Symbol, Kv, Dv, H0v; globvars...)
             sumeddyu .- gravthermalu # up; negative because gravity points down. I think that's why.
 end
 
-function fluxcoefs(species_list::Vector{Any}, K, D, H0; globvars...) # T_neutral, T_plasma, Hs, alts, dz) 
+function fluxcoefs(species_list::Vector{Any}, K, D, H0; globvars...) 
     #=
     New optimized version of fluxcoefs that calls the lower level version of fluxcoefs,
     producing a dictionary that contains both up and down flux coefficients for each layer of
@@ -1935,10 +1962,10 @@ function fluxcoefs(species_list::Vector{Any}, K, D, H0; globvars...) # T_neutral
     @assert all(x->x in keys(GV), [:Tn, :Tp, :Hs_dict, :n_all_layers, :dz])
     
     # the return dictionary: Each species has 2 entries for every layer of the atmosphere.
-    fluxcoef_dict = Dict{Symbol, Array{ftype_ncur}}([s=>fill(0., length(GV.alt), 2) for s in species_list])
+    fluxcoef_dict = Dict{Symbol, Array{ftype_ncur}}([s=>fill(0., GV.n_all_layers, 2) for s in species_list])
 
     for s in species_list
-        layer_below_coefs, layer_above_coefs = fluxcoefs(s, K, D, H0; globvars...) #alts, dz, T_neutral, T_plasma, Hs) 
+        layer_below_coefs, layer_above_coefs = fluxcoefs(s, K, D, H0; globvars...)
         fluxcoef_dict[s][:, 1] .= layer_below_coefs
         fluxcoef_dict[s][:, 2] .= layer_above_coefs
     end
@@ -2096,38 +2123,6 @@ function Keddy(z, nt)
     k[upperatm] .= 2e13 ./ sqrt.(nt[upperatm])
 
     return k
-end
-
-function scaleH(z::Vector{Float64}, sp::Symbol, T::Array; globvars...)
-    #=
-    Input:
-        z: Altitudes in cm
-        sp: Speciecs to calculate for
-        T: temperature array for this species
-    Output: 
-        species-specific scale height at all altitudess
-    =#  
-    GV = values(globvars)
-    @assert all(x->x in keys(GV), [:molmass])
-
-    return @. kB*T/(GV.molmass[sp]*mH*marsM*bigG)*(((z+radiusM))^2)
-end
-
-function scaleH(atmdict::Dict{Symbol, Vector{ftype_ncur}}, T::Vector; globvars...)
-    #= 
-    Input:
-        atmdict: Present atmospheric state dictionary
-        T: temperature array for the neutral atmosphere
-    Output:
-        Mean atmospheric scale height at all altitudes
-    =#
-
-    GV = values(globvars)
-    @assert all(x->x in keys(GV), [:all_species, :alt, :molmass, :n_alt_index])
-
-    mm_vec = meanmass(atmdict; globvars...)#, all_species, mmass) # vector version.
-
-    return @. kB*T/(mm_vec*mH*marsM*bigG)*(((GV.alt+radiusM))^2)
 end
 
 # thermal diffusion factors
@@ -2518,6 +2513,8 @@ function troe_expr(k0, kinf, F)
     return FF
 end
 
+
+
 # end formatting ======================================================================
 
 function calculate_stiffness(J)
@@ -2878,7 +2875,7 @@ function get_volume_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}},
     return rxn_dat, rate_coefs
 end
 
-function get_volume_rates(sp::Symbol, source_rxn::Vector{Any}, atmdict::Dict{Symbol, Vector{ftype_ncur}}; globvars...)
+function get_volume_rates(sp::Symbol, source_rxn::Vector{Any}, atmdict::Dict{Symbol, Vector{ftype_ncur}}, E_prof; globvars...)
     #=
     Override to call for a single reaction. Useful for doing non-thermal flux boundary conditions.
     Input:
@@ -2909,8 +2906,8 @@ function get_volume_rates(sp::Symbol, source_rxn::Vector{Any}, atmdict::Dict{Sym
         vol_rates = atmdict[source_rxn[1][1]] .* atmdict[source_rxn[3]]
     else                        # bi- and ter-molecular chemistry
         thisrate = typeof(source_rxn[3]) != Expr ? :($source_rxn[3] + 0) : source_rxn[3]
-        rate_coef = eval_rate_coef(atmdict, thisrate; globvars...)#, Tn, Ti, Te, all_species, ionsp, numlyrs)
-        vol_rates = reactant_density_product(atmdict, source_rxn[1]; globvars...)#=, all_species, ionsp, numlyrs)=# .* rate_coef # This is k * [R1] * [R2] where [] is density of a reactant. 
+        rate_coef = eval_rate_coef(atmdict, thisrate, E_prof; globvars...)
+        vol_rates = reactant_density_product(atmdict, source_rxn[1]; globvars...) .* rate_coef # This is k * [R1] * [R2] where [] is density of a reactant. 
     end
     
     return vol_rates
