@@ -29,12 +29,12 @@ const ions_included = true
 const converge_which = "both"
 
 # Descriptions 
-const tag = "ME4_newerr"#"dnde_fix_vargoodfactor" # Optional extra bit for the filename to help indicate what it is
-const optional_logging_note = "Test M and E outside Newton loop, electron profile = sum of ions."
+const tag = "ME2_printvals" # Optional extra bit for the filename to help indicate what it is
+const optional_logging_note = "Printing things like dndt to try and find the problem...."
 
 # Detailed solver characteristics
 const problem_type = "Gear" #"ODE" #"SS" #   
-const gear_timestep_type ="dynamic"# "static"#
+const gear_timestep_type ="static"#"dynamic"# 
 const n_steps = 1000
 const dt_incr_factor = 1.1
 const dt_decr_factor = 10
@@ -196,34 +196,7 @@ sort!(ion_species)
 
 # Photolysis and Photoionization rate symbol lists ----------------------------
 
-const conv_Jrates = [# Original neutral photodissociation
-                    :JCO2toCOpO,:JCO2toCOpO1D,:JO2toOpO,:JO2toOpO1D,
-                    :JO3toO2pO,:JO3toO2pO1D,:JO3toOpOpO,:JH2toHpH,:JOHtoOpH,
-                    :JOHtoO1DpH,:JHO2toOHpO,:JH2OtoHpOH,:JH2OtoH2pO1D,:JH2OtoHpHpO,
-                    :JH2O2to2OH,:JH2O2toHO2pH,:JH2O2toH2OpO1D,
-
-                    # Original deuterated neutral photodissociation
-                    :JHDOtoHpOD, :JHDOtoDpOH, :JHDO2toOHpOD,
-                    :JHDOtoHDpO1D, :JHDOtoHpDpO, :JODtoOpD, :JHDtoHpD, :JDO2toODpO,
-                    :JHDO2toDO2pH, :JHDO2toHO2pD, :JHDO2toHDOpO1D, :JODtoO1DpD,
-
-                    # New neutral photodissociation (from Roger)
-                    :JCO2toCpOpO, :JCO2toCpO2, :JCOtoCpO,
-                    :JN2OtoN2pO1D, :JNO2toNOpO, :JNOtoNpO,
-
-                    # New photoionization/ion-involved photodissociation (Roger)
-                    :JCO2toCO2pl, :JCO2toOplpCO, :JOtoOpl, :JO2toO2pl, # Nair minimal ionosphere
-                    :JCO2toCO2plpl, :JCO2toCplplpO2, :JCO2toCOplpOpl,:JCO2toOplpCplpO, :JCO2toCplpO2, :JCO2toCOplpO, 
-                    :JCOtoCpOpl, :JCOtoCOpl,  :JCOtoOpCpl, 
-                    :JHtoHpl, 
-                    :JH2toH2pl, :JH2toHplpH, :JHDtoHDpl, 
-                    :JH2OtoH2Opl, 
-                    :JH2OtoOplpH2, :JH2OtoHplpOH, :JH2OtoOHplpH, :JHDOtoHDOpl,
-                    :JH2O2toH2O2pl, 
-                    :JN2toN2pl, :JN2toNplpN, 
-                    :JN2OtoN2Opl, :JNO2toNO2pl, :JNOtoNOpl, 
-                    :JO3toO3pl,
-                  ];
+const conv_Jrates = format_Jrates(reaction_network_spreadsheet, "Jratelist")
 const newJrates = [];
 const Jratelist = [];
 append!(Jratelist, conv_Jrates)
@@ -235,8 +208,8 @@ const absorber = Dict([x=>Symbol(match(r"(?<=J).+(?=to)", string(x)).match) for 
 # To make a dictionary of photolysis products based on the rates, it's easiest to apply regular expressions if 
 # we replace all the "p" meaning "plus" with "a", because "p" also appears in "pl" which is part of the spcies name.
 # Anyway, her's a dict of photolysis products. 
-Jratelist_sub_a_for_p = [Symbol(replace(string(j), r"p(?!l)"=>"a", "JH2O2to2OH"=>"JH2O2toOHaOH")) for j in Jratelist]
-const photolysis_products = Dict([x=>[Symbol(m.match) for m in eachmatch(r"(?<=to|a)[A-Z0-9(pl)]+", string(y))] for (x,y) in zip(Jratelist, Jratelist_sub_a_for_p)]);
+# Jratelist_sub_a_for_p = [Symbol(replace(string(j), r"p(?!l)"=>"a", "JH2O2to2OH"=>"JH2O2toOHaOH")) for j in Jratelist]
+# const photolysis_products = Dict([x=>[Symbol(m.match) for m in eachmatch(r"(?<=to|a)[A-Z0-9(pl)]+", string(y))] for (x,y) in zip(Jratelist, Jratelist_sub_a_for_p)]);
 
 # **************************************************************************** #
 #                                                                              #

@@ -569,7 +569,7 @@ function update_Jrates!(n_cur_densities::Dict{Symbol, Array{ftype_ncur, 1}}; glo
     # BLAS.dot includes an integration (sum) across wavelengths, i.e:
     # (a·b) = aa + ab + ab + bb etc that kind of thing
     for j in GV.Jratelist
-        n_cur_densities[j] = zeros(GV.num_layers) # TODO: Can probably change size(n_cur_densities[:CO2]) to num_layers.
+        n_cur_densities[j] = zeros(GV.num_layers)
         for ialt in [1:nalt;]
             n_cur_densities[j][ialt] = ftype_ncur(BLAS.dot(nlambda, solarabs[ialt], 1, GV.crosssection[j][ialt+1], 1))
         end
@@ -847,6 +847,8 @@ function next_timestep(nstart, params, t, dt; reltol=1e-2, abstol=1e-12, globvar
         #     d(fval)/d(nthis) = I - dt*chemJ
         dndt, chemJ = get_rates_and_jacobian(nthis, params, t; globvars...)
 
+        println("dndt: $(dndt)")
+
         if GV.error_checking_scheme == "old" # ==========================================================
             # we want fval = 0, corresponding to a good update. chemical_jacobian.pdf eqn 3.21 
             # if it isn't 0, then there's a big discrepancy between the present value and the past value + rate of change, which is bad
@@ -890,6 +892,7 @@ function next_timestep(nstart, params, t, dt; reltol=1e-2, abstol=1e-12, globvar
         elseif GV.error_checking_scheme == "new" # =======================================================
             # fval - now with dt divided out to keep things stable at long timescales
             fval = (nthis - nstart)/dt - dndt
+            println("newton update (nthis-nstart)/dt: $((nthis-nstart)/dt)")
             identity = sparse(I, length(nthis), length(nthis))
             updatemat = identity/dt - chemJ  
             nthis = nthis - updatemat \ fval # solve_sparse(updatemat, fval)
@@ -1100,7 +1103,7 @@ const chemrxns_logfile = results_dir*sim_folder_name*"/included_chem_rxns.txt"
 #                          Load reaction network                                #
 #===============================================================================#
 reaction_network, n_inds, i_inds = load_reaction_network(reaction_network_spreadsheet; 
-                                                        ions_on=ions_included, get_inds=true, Jratelist, absorber, photolysis_products, all_species)
+                                                        ions_on=ions_included, get_inds=true, all_species) # Jratelist, absorber, photolysis_products, 
 reactionnetwork_source = "spreadsheet"
 write_to_log(chemrxns_logfile, "SPREADSHEET INDICES OF NEUTRAL REACTIONS", mode="w")
 write_to_log(chemrxns_logfile, n_inds, mode="a")
@@ -1611,7 +1614,7 @@ end
 # **************************************************************************** #
 println("$(Dates.format(now(), "(HH:MM:SS)")) Populating cross section dictionary...")
 
-const crosssection = populate_xsect_dict(photochem_data_files; ion_xsects=ions_included, Tn=Tn_arr, n_all_layers, Jratelist)
+const crosssection = populate_xsect_dict(photochem_data_files; ion_xsects=ions_included, Tn=Tn_arr, n_all_layers)  # Jratelist
 
 # **************************************************************************** #
 #                                                                              #

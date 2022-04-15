@@ -17,7 +17,7 @@ using XLSX
 
 export # Basic utility functions
        charge_type, create_folder, deletefirst, find_nonfinites, fluxsymbol, format_chemistry_string, format_sec_or_min, getpos, input, get_paramfile, 
-       logrange, nans_present, next_in_loop, searchdir, searchsortednearest, search_subfolders, subtract_difflength, write_to_log,
+       logrange, nans_present, next_in_loop, searchdir, searchsortednearest, search_subfolders, string_to_latexstr, subtract_difflength, write_to_log,
        # Atmospheric basic functions
        atm_dict_to_matrix, atm_matrix_to_dict, column_density, column_density_above, find_exobase, flatten_atm, get_ncurrent, ncur_with_boundary_layers, n_tot, 
        precip_microns, setup_water_profile!, unflatten_atm, write_atmosphere,
@@ -30,7 +30,7 @@ export # Basic utility functions
        # transport functions                                                                           
        Dcoef!, fluxcoefs, flux_param_arrays, flux_pos_and_neg, get_flux, Keddy, scaleH, update_diffusion_and_scaleH, update_transport_coefficients,                      
        # Chemistry functions
-       load_reaction_network, calculate_stiffness, check_jacobian_eigenvalues, chemical_jacobian, getrate, loss_equations, 
+       format_Jrates, load_reaction_network, calculate_stiffness, check_jacobian_eigenvalues, chemical_jacobian, getrate, loss_equations, 
        loss_rate, make_chemjac_key, make_net_change_expr, meanmass, production_equations, production_rate, rxns_where_species_is_observer, 
        make_k_expr, make_Troe, make_modified_Troe, troe_expr, format_neutral_network, # DELETE 
        # Photochemical equilibrium functions
@@ -142,7 +142,7 @@ function format_sec_or_min(t)
     return "$(thehour) hours, $(themin) minutes, $(thesec) seconds"
 end
 
-function get_Jrate_symb(molecs::Array, Jrates::Array)
+# function get_Jrate_symb(molecs::Array, Jrates::Array)
     #=
     Input:
         molecs: Array of reactants and products as strings, order doesn't matter, in some photodissociation/
@@ -151,13 +151,13 @@ function get_Jrate_symb(molecs::Array, Jrates::Array)
     Output
         J: the Jrate associated with the list of reactants and products. 
     =#
-    for J in Jrates
-        if sort([m.match for m in collect(eachmatch(r"[A-I0-9K-Z]+(pl)*", string(J)))]) == sort(molecs)
-            return J
-            break
-        end      
-    end
-end
+    # for J in Jrates
+    #     if sort([m.match for m in collect(eachmatch(r"[A-I0-9K-Z]+(pl)*", string(J)))]) == sort(molecs)
+    #         return J
+    #         break
+    #     end      
+    # end
+# end
 
 function get_paramfile(working_dir)
     #=
@@ -289,6 +289,15 @@ function search_subfolders(path::String, key; type="folders")
         return filelist
     end
 end
+
+function string_to_latexstr(a)
+    #=
+    Given some chemistry reaction string with things like "pl" and un-subscripted numbers, 
+    this will format it as a latex string for easy plotting.
+    =#
+    return latexstring(replace(a, "2"=>"\$_2\$", "3"=>"\$_3\$", "E"=>"e\$^-\$", "pl"=>latexstring("\$^+\$"), "-->"=>latexstring("\$\\rightarrow\$")))
+end
+
 
 function subtract_difflength(a::Array, b::Array)
     #=
@@ -627,7 +636,7 @@ function scaleH(z::Vector{Float64}, sp::Symbol, T::Array; globvars...)
         sp: Speciecs to calculate for
         T: temperature array for this species
     Output: 
-        species-specific scale height at all altitudess
+        species-specific scale height at all altitudes (in cm)
     =#  
     GV = values(globvars)
     @assert all(x->x in keys(GV), [:molmass])
@@ -641,7 +650,7 @@ function scaleH(atmdict::Dict{Symbol, Vector{ftype_ncur}}, T::Vector; globvars..
         atmdict: Present atmospheric state dictionary
         T: temperature array for the neutral atmosphere
     Output:
-        Mean atmospheric scale height at all altitudes
+        Mean atmospheric scale height at all altitudes (in cm)
     =#
 
     GV = values(globvars)
@@ -2218,6 +2227,46 @@ end
 # **************************************************************************** #
 
 # Network formatting and loading ====================================================
+function format_Jrates(spreadsheet, return_what)
+    #=
+    This formats Jrate symbols from the reaction entrires in the spreadsheet.
+    Input
+        spreadsheet: .xlsx file with chemical and photochemical reaction entries
+        return_what: "Jratelist" to return just a list of Jrate symbols, or
+                     "Jrate network" to return the network of photodissociation/
+                     photoionization reactions. 
+    Output: as described in return_what
+    =#
+    photodissociation = DataFrame(XLSX.readtable(spreadsheet, "Photodissociation")...)
+    photoionization = DataFrame(XLSX.readtable(spreadsheet, "Photoionization")...)
+    replace!(photodissociation."P2", missing=>"none");
+    replace!(photodissociation."P3", missing=>"none");
+    replace!(photoionization."P2", missing=>"none");
+    replace!(photoionization."P3", missing=>"none");
+    
+    Jrates = []
+    Jrate_network = []
+    
+    for r in eachrow(photodissociation)
+        products = [Symbol(i) for i in [r.P1, r.P2, r.P3] if i!="none"]
+        Jrate = get_Jrate_symb(r.R1, products)
+        push!(Jrates, Jrate)
+        push!(Jrate_network, [[Symbol(r.R1)], products, Jrate])
+    end
+
+    for r in eachrow(photoionization)
+        products = [Symbol(i) for i in [r.P1, r.P2, r.P3] if i!="none"]
+        Jrate = get_Jrate_symb(r.R1, products)
+        push!(Jrates, Jrate)
+        push!(Jrate_network, [[Symbol(r.R1)], products, Jrate])
+    end
+    
+    if return_what=="Jratelist"
+        return Jrates
+    elseif return_what=="Jrate network"
+        return Jrate_network
+    end
+end
 
 function format_neutral_network(reactions_spreadsheet, used_species; verbose=false)
     #=
@@ -2402,7 +2451,7 @@ function load_reaction_network(spreadsheet; ions_on=true, get_inds=false, globva
         [Symbol[reactants...], Symbol[products...], :(rate coefficient expression)
     =#
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:all_species, :Jratelist, :absorber, :photolysis_products])
+    @assert all(x->x in keys(GV), [:all_species])#, :Jratelist, :absorber, :photolysis_products])
 
     if ions_on == true
         ionnet, i_nums = format_ion_network(spreadsheet, GV.all_species)
@@ -2412,7 +2461,7 @@ function load_reaction_network(spreadsheet; ions_on=true, get_inds=false, globva
     end 
 
     neutral_net, n_nums = format_neutral_network(spreadsheet, GV.all_species)
-    Jrxns = [[[GV.absorber[Jr]], GV.photolysis_products[Jr], Jr] for Jr in GV.Jratelist]
+    Jrxns = format_Jrates(spreadsheet, "Jrate network")
     whole_network = [Jrxns..., neutral_net..., ionnet...]
     
     if get_inds
@@ -2420,6 +2469,14 @@ function load_reaction_network(spreadsheet; ions_on=true, get_inds=false, globva
     else
         return whole_network
     end
+end
+
+function get_Jrate_symb(reactant::String, products::Array)::Symbol
+    #=
+    All inputs are strings or arrays of strings.
+    Formats a Jrate symbol.
+    =#
+    return Symbol("J$(reactant)to" * join(products, "p"))
 end
 
 function make_k_expr(A, B, C, T::String, M2, M1, pow, BR)
@@ -3654,7 +3711,7 @@ function populate_xsect_dict(pd_dataf; ion_xsects=true, globvars...)
     =#
 
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:Tn, :n_all_layers, :Jratelist])
+    @assert all(x->x in keys(GV), [:Tn, :n_all_layers]) #  :Jratelist
     
 
     # Set up =======================================================================
@@ -3725,21 +3782,21 @@ function populate_xsect_dict(pd_dataf; ion_xsects=true, globvars...)
     #CO2+hv->CO+O
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((l->l>167, 1), (l->95>l, 0.5))),
-              map(t->co2xsect(co2xdata, t), GV.Tn)), get_Jrate_symb(["CO2", "CO", "O"], GV.Jratelist))
+              map(t->co2xsect(co2xdata, t), GV.Tn)), get_Jrate_symb("CO2", ["CO", "O"]))
     #CO2+hv->CO+O1D
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((l->95<l<167, 1), (l->l<95, 0.5))),
-              map(t->co2xsect(co2xdata, t), GV.Tn)), get_Jrate_symb(["CO2", "CO", "O1D"], GV.Jratelist))
+              map(t->co2xsect(co2xdata, t), GV.Tn)), get_Jrate_symb("CO2", ["CO", "O1D"]))
 
     # O2 photodissociation ---------------------------------------------------------
     #O2+hv->O+O
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((x->x>175, 1),)), map(t->o2xsect(o2xdata, o2schr130K, o2schr190K, o2schr280K, t), GV.Tn)),
-              get_Jrate_symb(["O2", "O", "O"], GV.Jratelist))
+              get_Jrate_symb("O2", ["O", "O"]))
     #O2+hv->O+O1D
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((x->x<175, 1),)), map(t->o2xsect(o2xdata, o2schr130K, o2schr190K, o2schr280K, t), GV.Tn)),
-              get_Jrate_symb(["O2", "O", "O1D"], GV.Jratelist))
+              get_Jrate_symb("O2", ["O", "O1D"]))
 
     # O3 photodissociation ---------------------------------------------------------
     # O3+hv->O2+O
@@ -3752,7 +3809,7 @@ function populate_xsect_dict(pd_dataf; ion_xsects=true, globvars...)
                                    (l->306<=l<328, l->(1 .- O3O1Dquantumyield(l, t))),
                                    (l->328<=l<340, 0.92),
                                    (l->340<=l, 1.0)
-                                  )), GV.Tn), get_Jrate_symb(["O3", "O2", "O"], GV.Jratelist))
+                                  )), GV.Tn), get_Jrate_symb("O3", ["O2", "O"]))
     # O3+hv->O2+O1D
     setindex!(xsect_dict,
               map(t->quantumyield(o3xdata,
@@ -3763,116 +3820,116 @@ function populate_xsect_dict(pd_dataf; ion_xsects=true, globvars...)
                                    (l->306<=l<328, l->O3O1Dquantumyield(l, t)),
                                    (l->328<=l<340, 0.08),
                                    (l->340<=l, 0.0)
-                                  )), GV.Tn), get_Jrate_symb(["O3", "O2", "O1D"], GV.Jratelist))
+                                  )), GV.Tn), get_Jrate_symb("O3", ["O2", "O1D"]))
     # O3+hv->O+O+O
     setindex!(xsect_dict,
               fill(quantumyield(o3xdata,((x->true, 0.),)),GV.n_all_layers),
-              get_Jrate_symb(["O3", "O", "O", "O"], GV.Jratelist))
+              get_Jrate_symb("O3", ["O", "O", "O"]))
 
     # H2 and HD photodissociation --------------------------------------------------
     # H2+hv->H+H
-    setindex!(xsect_dict, fill(h2xdata, GV.n_all_layers), get_Jrate_symb(["H2", "H", "H"], GV.Jratelist))
+    setindex!(xsect_dict, fill(h2xdata, GV.n_all_layers), get_Jrate_symb("H2", ["H", "H"]))
     # HD+hν -> H+D 
-    setindex!(xsect_dict, fill(hdxdata, GV.n_all_layers), get_Jrate_symb(["HD", "H", "D"], GV.Jratelist))
+    setindex!(xsect_dict, fill(hdxdata, GV.n_all_layers), get_Jrate_symb("HD", ["H", "D"]))
 
     # OH and OD photodissociation --------------------------------------------------
     # OH+hv->O+H
-    setindex!(xsect_dict, fill(ohxdata, GV.n_all_layers), get_Jrate_symb(["OH", "O", "H"], GV.Jratelist))
+    setindex!(xsect_dict, fill(ohxdata, GV.n_all_layers), get_Jrate_symb("OH", ["O", "H"]))
     # OH + hv -> O(¹D) + H
-    setindex!(xsect_dict, fill(ohO1Dxdata, GV.n_all_layers), get_Jrate_symb(["OH", "O1D", "H"], GV.Jratelist))
+    setindex!(xsect_dict, fill(ohO1Dxdata, GV.n_all_layers), get_Jrate_symb("OH", ["O1D", "H"]))
     # OD + hv -> O+D  
-    setindex!(xsect_dict, fill(odxdata, GV.n_all_layers), get_Jrate_symb(["OD", "O", "D"], GV.Jratelist))
+    setindex!(xsect_dict, fill(odxdata, GV.n_all_layers), get_Jrate_symb("OD", ["O", "D"]))
     # OD + hν -> O(¹D) + D 
-    setindex!(xsect_dict, fill(ohO1Dxdata, GV.n_all_layers), get_Jrate_symb(["OD", "O1D", "D"], GV.Jratelist))
+    setindex!(xsect_dict, fill(ohO1Dxdata, GV.n_all_layers), get_Jrate_symb("OD", ["O1D", "D"]))
 
     # HO2 and DO2 photodissociation ------------------------------------------------
     # HO2 + hν -> OH + O
-    setindex!(xsect_dict, fill(ho2xsect, GV.n_all_layers), get_Jrate_symb(["HO2", "OH", "O"], GV.Jratelist))
+    setindex!(xsect_dict, fill(ho2xsect, GV.n_all_layers), get_Jrate_symb("HO2", ["OH", "O"]))
     # DO2 + hν -> OD + O
-    setindex!(xsect_dict, fill(do2xsect, GV.n_all_layers), get_Jrate_symb(["DO2", "OD", "O"], GV.Jratelist))
+    setindex!(xsect_dict, fill(do2xsect, GV.n_all_layers), get_Jrate_symb("DO2", ["OD", "O"]))
 
     # H2O and HDO photodissociation ------------------------------------------------
     # H2O+hv->H+OH
     setindex!(xsect_dict,
               fill(quantumyield(h2oxdata,((x->x<145, 0.89),(x->x>145, 1))),GV.n_all_layers),
-              get_Jrate_symb(["H2O", "H", "OH"], GV.Jratelist))
+              get_Jrate_symb("H2O", ["H", "OH"]))
 
     # H2O+hv->H2+O1D
     setindex!(xsect_dict,
               fill(quantumyield(h2oxdata,((x->x<145, 0.11),(x->x>145, 0))),GV.n_all_layers),
-              get_Jrate_symb(["H2O", "H2", "O1D"], GV.Jratelist))
+              get_Jrate_symb("H2O", ["H2", "O1D"]))
 
     # H2O+hv->H+H+O
     setindex!(xsect_dict,
               fill(quantumyield(h2oxdata,((x->true, 0),)),GV.n_all_layers),
-              get_Jrate_symb(["H2O", "H", "H", "O"], GV.Jratelist))
+              get_Jrate_symb("H2O", ["H", "H", "O"]))
 
     # HDO + hν -> H + OD
     setindex!(xsect_dict,
               fill(quantumyield(hdoxdata,((x->x<145, 0.5*0.89),(x->x>145, 0.5*1))),GV.n_all_layers),
-              get_Jrate_symb(["HDO", "H", "OD"], GV.Jratelist))
+              get_Jrate_symb("HDO", ["H", "OD"]))
 
     # HDO + hν -> D + OH
     setindex!(xsect_dict,
               fill(quantumyield(hdoxdata,((x->x<145, 0.5*0.89),(x->x>145, 0.5*1))),GV.n_all_layers),
-              get_Jrate_symb(["HDO", "D", "OH"], GV.Jratelist))
+              get_Jrate_symb("HDO", ["D", "OH"]))
 
     # HDO + hν -> HD + O1D
     setindex!(xsect_dict,
               fill(quantumyield(hdoxdata,((x->x<145, 0.11),(x->x>145, 0))),GV.n_all_layers),
-              get_Jrate_symb(["HDO", "HD", "O1D"], GV.Jratelist))
+              get_Jrate_symb("HDO", ["HD", "O1D"]))
 
     # HDO + hν -> H + D + O
     setindex!(xsect_dict,
               fill(quantumyield(hdoxdata,((x->true, 0),)),GV.n_all_layers),
-              get_Jrate_symb(["HDO", "H", "D", "O"], GV.Jratelist))
+              get_Jrate_symb("HDO", ["H", "D", "O"]))
 
 
     # H2O2 and HDO2 photodissociation ----------------------------------------------
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((x->x<230, 0.85),(x->x>230, 1))),
-              map(t->h2o2xsect(h2o2xdata, t), GV.Tn)), get_Jrate_symb(["H2O2", "2OH"], GV.Jratelist))
+              map(t->h2o2xsect(h2o2xdata, t), GV.Tn)), get_Jrate_symb("H2O2", ["2OH"]))
 
     # H2O2+hv->HO2+H
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((x->x<230, 0.15),(x->x>230, 0))),
-              map(t->h2o2xsect(h2o2xdata, t), GV.Tn)), get_Jrate_symb(["H2O2", "HO2", "H"], GV.Jratelist))
+              map(t->h2o2xsect(h2o2xdata, t), GV.Tn)), get_Jrate_symb("H2O2", ["HO2", "H"]))
 
     # H2O2+hv->H2O+O1D
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((x->true, 0),)), map(t->h2o2xsect(h2o2xdata, t),
-              GV.Tn)), get_Jrate_symb(["H2O2", "H2O", "O1D"], GV.Jratelist))
+              GV.Tn)), get_Jrate_symb("H2O2", ["H2O", "O1D"]))
 
     # HDO2 + hν -> OH + OD
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((x->x<230, 0.85),(x->x>230, 1))),
-              map(t->hdo2xsect(hdo2xdata, t), GV.Tn)), get_Jrate_symb(["HDO2", "OH", "OD"], GV.Jratelist))
+              map(t->hdo2xsect(hdo2xdata, t), GV.Tn)), get_Jrate_symb("HDO2", ["OH", "OD"]))
 
     # HDO2 + hν-> DO2 + H
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((x->x<230, 0.5*0.15),(x->x>230, 0))),
-              map(t->hdo2xsect(hdo2xdata, t), GV.Tn)), get_Jrate_symb(["HDO2", "DO2", "H"], GV.Jratelist))
+              map(t->hdo2xsect(hdo2xdata, t), GV.Tn)), get_Jrate_symb("HDO2", ["DO2", "H"]))
 
     # HDO2 + hν-> HO2 + D
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((x->x<230, 0.5*0.15),(x->x>230, 0))),
-              map(t->hdo2xsect(hdo2xdata, t), GV.Tn)), get_Jrate_symb(["HDO2", "HO2", "D"], GV.Jratelist))
+              map(t->hdo2xsect(hdo2xdata, t), GV.Tn)), get_Jrate_symb("HDO2", ["HO2", "D"]))
 
     # HDO2 + hν -> HDO + O1D
     setindex!(xsect_dict,
               map(xs->quantumyield(xs,((x->true, 0),)), map(t->hdo2xsect(hdo2xdata, t),
-              GV.Tn)), get_Jrate_symb(["HDO2", "HDO", "O1D"], GV.Jratelist))
+              GV.Tn)), get_Jrate_symb("HDO2", ["HDO", "O1D"]))
 
     if ion_xsects == true
         # NEW: CO2 photodissociation ---------------------------------------------------------
         # Source: Roger Yelle
         # CO₂ + hν -> C + O + O; JCO2toCpOpO
-        thisjr = get_Jrate_symb(["CO2", "C", "O", "O"], GV.Jratelist)
+        thisjr = get_Jrate_symb("CO2", ["C", "O", "O"])
         CO2_totaldiss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
         setindex!(xsect_dict, fill(CO2_totaldiss_data, GV.n_all_layers), thisjr)
 
         # CO2 + hν -> C + O₂; JCO2toCpO2
-        thisjr = get_Jrate_symb(["CO2", "C", "O2"], GV.Jratelist)
+        thisjr = get_Jrate_symb("CO2", ["C", "O2"])
         CO2_diss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
         setindex!(xsect_dict, fill(CO2_diss_data, GV.n_all_layers), thisjr)
 
@@ -3880,7 +3937,7 @@ function populate_xsect_dict(pd_dataf; ion_xsects=true, globvars...)
         # Source: Roger Yelle
 
         # CO + hν -> C + O; JCOtoCpO
-        thisjr = get_Jrate_symb(["CO", "C", "O"], GV.Jratelist)
+        thisjr = get_Jrate_symb("CO", ["C", "O"])
         CO_diss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
         setindex!(xsect_dict, fill(CO_diss_data, GV.n_all_layers), thisjr)
 
@@ -3889,17 +3946,17 @@ function populate_xsect_dict(pd_dataf; ion_xsects=true, globvars...)
         # Source: Roger Yelle
 
         # N₂ + hν -> N₂ + O(¹D); JN2OtoN2pO1D
-        thisjr = get_Jrate_symb(["N2O", "N2", "O1D"], GV.Jratelist)
+        thisjr = get_Jrate_symb("N2O", ["N2", "O1D"])
         N2_diss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
         setindex!(xsect_dict, fill(N2_diss_data, GV.n_all_layers), thisjr)
 
         # NO₂ + hν -> NO + O; JNO2toNOpO
-        thisjr = get_Jrate_symb(["NO2", "NO", "O"], GV.Jratelist)
+        thisjr = get_Jrate_symb("NO2", ["NO", "O"])
         NO2_diss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
         setindex!(xsect_dict, fill(NO2_diss_data, GV.n_all_layers), thisjr)
 
         # NO + hν -> N + O; JNOtoNpO
-        thisjr = get_Jrate_symb(["NO", "N", "O"], GV.Jratelist)
+        thisjr = get_Jrate_symb("NO", ["N", "O"])
         NO_diss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
         setindex!(xsect_dict, fill(NO_diss_data, GV.n_all_layers), thisjr)
 
@@ -3909,42 +3966,42 @@ function populate_xsect_dict(pd_dataf; ion_xsects=true, globvars...)
         # Source: Roger Yelle
 
         # CO₂ + hν -> CO₂⁺; JCO2toCO2pl
-        thisjr = get_Jrate_symb(["CO2", "CO2pl"], GV.Jratelist)
+        thisjr = get_Jrate_symb("CO2", ["CO2pl"])
         CO2_ionize_data = readdlm(xsecfolder*"$(thisjr).csv", ',', Float64, comments=true, comment_char='#')  # NOTE: replaced with Mike's file 19-Jan-2021.
         setindex!(xsect_dict, fill(CO2_ionize_data, GV.n_all_layers), thisjr)
 
         # CO₂ + hν -> CO₂²⁺; JCO2toCO2plpl (even though we don't track doubly ionized CO₂)
-        thisjr = get_Jrate_symb(["CO2", "CO2plpl"], GV.Jratelist)
+        thisjr = get_Jrate_symb("CO2", ["CO2plpl"])
         CO2_doubleion_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
         setindex!(xsect_dict, fill(CO2_doubleion_data, GV.n_all_layers), thisjr)
 
         # CO₂ + hν -> C²⁺ + O₂; JCO2toCplplpO2
-        thisjr = get_Jrate_symb(["CO2", "Cplpl", "O2"], GV.Jratelist)
+        thisjr = get_Jrate_symb("CO2", ["Cplpl", "O2"])
         CO2_ionC2diss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
         setindex!(xsect_dict, fill(CO2_ionC2diss_data, GV.n_all_layers), thisjr)
 
         # CO₂ + hν -> C⁺ + O₂; JCO2toCplpO2
-        thisjr = get_Jrate_symb(["CO2", "Cpl", "O2"], GV.Jratelist)
+        thisjr = get_Jrate_symb("CO2", ["Cpl", "O2"])
         CO2_ionCdiss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
         setindex!(xsect_dict, fill(CO2_ionCdiss_data, GV.n_all_layers), thisjr)
 
         # CO₂ + hν -> CO⁺ + O⁺; JCO2toCOplpOpl
-        thisjr = get_Jrate_symb(["CO2", "COpl", "Opl"], GV.Jratelist)
+        thisjr = get_Jrate_symb("CO2", ["COpl", "Opl"])
         CO2_ionCOandOdiss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
         setindex!(xsect_dict, fill(CO2_ionCOandOdiss_data, GV.n_all_layers), thisjr)
 
         # CO₂ + hν -> CO⁺ + O; JCO2toCOplpO
-        thisjr = get_Jrate_symb(["CO2", "COpl", "O"], GV.Jratelist)
+        thisjr = get_Jrate_symb("CO2", ["COpl", "O"])
         CO2_ionCOdiss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
         setindex!(xsect_dict, fill(CO2_ionCOdiss_data, GV.n_all_layers), thisjr)
 
         # CO₂ + hν -> CO + O⁺; JCO2toOplpCO
-        thisjr = get_Jrate_symb(["CO2", "Opl", "CO"], GV.Jratelist)
+        thisjr = get_Jrate_symb("CO2", ["Opl", "CO"])
         CO2_ionOdiss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
         setindex!(xsect_dict, fill(CO2_ionOdiss_data, GV.n_all_layers), thisjr)
 
         # CO₂ + hν -> C⁺ + O⁺ + O; JCO2toOplpCplpO
-        thisjr = get_Jrate_symb(["CO2", "Opl", "Cpl", "O"], GV.Jratelist)
+        thisjr = get_Jrate_symb("CO2", ["Opl", "Cpl", "O"])
         CO2_ionCandOdiss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
         setindex!(xsect_dict, fill(CO2_ionCandOdiss_data, GV.n_all_layers), thisjr)
 
@@ -3954,27 +4011,27 @@ function populate_xsect_dict(pd_dataf; ion_xsects=true, globvars...)
         # TODO: Left off here 
 
         # H2O + hν -> H2O⁺; JH2OtoH2Opl
-        H2Oionize_jr = get_Jrate_symb(["H2O", "H2Opl"], GV.Jratelist)
+        H2Oionize_jr = get_Jrate_symb("H2O", ["H2Opl"])
         h2o_ionize_data = readdlm(xsecfolder*"$(H2Oionize_jr).csv", ',', Float64, comments=true, comment_char='#')
         setindex!(xsect_dict, fill(h2o_ionize_data, GV.n_all_layers), H2Oionize_jr)
 
         # HDO + hν -> HDO⁺; JHDOtoHDOpl # TODO: replace with HDO photoionization xsects when they exist
-        thisjr = get_Jrate_symb(["HDO", "HDOpl"], GV.Jratelist)
+        thisjr = get_Jrate_symb("HDO", ["HDOpl"])
         hdo_ionize_data = readdlm(xsecfolder*"$(H2Oionize_jr).csv", ',', Float64, comments=true, comment_char='#')
         setindex!(xsect_dict, fill(hdo_ionize_data, GV.n_all_layers), thisjr)
 
         # H2O + hν -> O⁺ + H2; JH2OtoOplpH2
-        thisjr = get_Jrate_symb(["H2O", "Opl", "H2"], GV.Jratelist)
+        thisjr = get_Jrate_symb("H2O", ["Opl", "H2"])
         h2o_ionOdiss_data = readdlm(xsecfolder*"$(thisjr).csv", ',', Float64, comments=true, comment_char='#')
         setindex!(xsect_dict, fill(h2o_ionOdiss_data, GV.n_all_layers), thisjr)
 
         # H2O + hν -> H⁺ + OH; JH2OtoHplpOH
-        thisjr = get_Jrate_symb(["H2O", "Hpl", "OH"], GV.Jratelist)
+        thisjr = get_Jrate_symb("H2O", ["Hpl", "OH"])
         h2o_ionHdiss_data = readdlm(xsecfolder*"$(thisjr).csv", ',', Float64, comments=true, comment_char='#')
         setindex!(xsect_dict, fill(h2o_ionHdiss_data, GV.n_all_layers), thisjr)
 
         # H2O + hν -> OH⁺ + H; JH2OtoOHplpH
-        thisjr = get_Jrate_symb(["H2O", "OHpl", "H"], GV.Jratelist)
+        thisjr = get_Jrate_symb("H2O", ["OHpl", "H"])
         h2o_ionOHdiss_data = readdlm(xsecfolder*"$(thisjr).csv", ',', Float64, comments=true, comment_char='#')
         setindex!(xsect_dict, fill(h2o_ionOHdiss_data, GV.n_all_layers), thisjr)
 
@@ -3982,17 +4039,17 @@ function populate_xsect_dict(pd_dataf; ion_xsects=true, globvars...)
         # Source: Roger Yelle
 
         # CO + hν -> CO⁺; JCOtoCOpl
-        thisjr = get_Jrate_symb(["CO", "COpl"], GV.Jratelist)
+        thisjr = get_Jrate_symb("CO", ["COpl"])
         CO_ionize_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
         setindex!(xsect_dict, fill(CO_ionize_data, GV.n_all_layers), thisjr)
 
         # CO + hν -> C + O⁺; JCOtoCpOpl
-        thisjr = get_Jrate_symb(["CO", "C", "Opl"], GV.Jratelist)
+        thisjr = get_Jrate_symb("CO", ["C", "Opl"])
         CO_ionOdiss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
         setindex!(xsect_dict, fill(CO_ionOdiss_data, GV.n_all_layers), thisjr)
 
         # CO + hν -> C⁺ + O; JCOtoOpCpl
-        thisjr = get_Jrate_symb(["CO", "O", "Cpl"], GV.Jratelist)
+        thisjr = get_Jrate_symb("CO", ["O", "Cpl"])
         CO_ionCdiss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
         setindex!(xsect_dict, fill(CO_ionCdiss_data, GV.n_all_layers), thisjr)
 
@@ -4000,27 +4057,27 @@ function populate_xsect_dict(pd_dataf; ion_xsects=true, globvars...)
         # Source: Roger Yelle
 
         # N₂ + hν -> N₂⁺; JN2toN2pl
-        thisjr = get_Jrate_symb(["N2", "N2pl"], GV.Jratelist)
+        thisjr = get_Jrate_symb("N2", ["N2pl"])
         N2_ionize_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
         setindex!(xsect_dict, fill(N2_ionize_data, GV.n_all_layers), thisjr)
 
         # N₂ + hν -> N⁺ + N; JN2toNplpN
-        thisjr = get_Jrate_symb(["N2", "Npl", "N"], GV.Jratelist)
+        thisjr = get_Jrate_symb("N2", ["Npl", "N"])
         N2_iondiss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
         setindex!(xsect_dict, fill(N2_iondiss_data, GV.n_all_layers), thisjr)
 
         # NO₂ + hν -> NO₂⁺; JNO2toNO2pl
-        thisjr = get_Jrate_symb(["NO2", "NO2pl"], GV.Jratelist)
+        thisjr = get_Jrate_symb("NO2", ["NO2pl"])
         NO2_ionize_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
         setindex!(xsect_dict, fill(NO2_ionize_data, GV.n_all_layers), thisjr)
 
         # NO + hν -> NO⁺; JNOtoNOpl
-        thisjr = get_Jrate_symb(["NO", "NOpl"], GV.Jratelist)
+        thisjr = get_Jrate_symb("NO", ["NOpl"])
         NO_ionize_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
         setindex!(xsect_dict, fill(NO_ionize_data, GV.n_all_layers), thisjr)
 
         # N₂O + hν -> N₂O⁺; JN2OtoN2Opl
-        thisjr = get_Jrate_symb(["N2O", "N2Opl"], GV.Jratelist)
+        thisjr = get_Jrate_symb("N2O", ["N2Opl"])
         N2O_ionize_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
         setindex!(xsect_dict, fill(N2O_ionize_data, GV.n_all_layers), thisjr)
 
@@ -4028,27 +4085,27 @@ function populate_xsect_dict(pd_dataf; ion_xsects=true, globvars...)
         # Source: Roger Yelle
 
         # H + hν -> H⁺; JHtoHpl
-        thisjr = get_Jrate_symb(["H", "Hpl"], GV.Jratelist)
+        thisjr = get_Jrate_symb("H", ["Hpl"])
         H_ionize_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
         setindex!(xsect_dict, fill(H_ionize_data, GV.n_all_layers), thisjr)
 
         # H₂ + hν -> H₂⁺; JH2toH2pl
-        thisjr = get_Jrate_symb(["H2", "H2pl"], GV.Jratelist)
+        thisjr = get_Jrate_symb("H2", ["H2pl"])
         H2_ion_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
         setindex!(xsect_dict, fill(H2_ion_data, GV.n_all_layers), thisjr)
 
         # HD + hν -> HD⁺; JH2toH2pl # TODO: Load HD crosssections when they exist
-        thisjr = get_Jrate_symb(["HD", "HDpl"], GV.Jratelist)
+        thisjr = get_Jrate_symb("HD", ["HDpl"])
         HD_ion_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
         setindex!(xsect_dict, fill(HD_ion_data, GV.n_all_layers), thisjr)
 
         # H₂ + hν -> H⁺ + H; JH2toHplpH
-        thisjr = get_Jrate_symb(["H2", "Hpl", "H"], GV.Jratelist)
+        thisjr = get_Jrate_symb("H2", ["Hpl", "H"])
         H2_iondiss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
         setindex!(xsect_dict, fill(H2_iondiss_data, GV.n_all_layers), thisjr)
 
         # H₂O₂ + hν -> H₂O₂⁺; JH2O2toH2O2pl
-        thisjr = get_Jrate_symb(["H2O2", "H2O2pl"], GV.Jratelist)
+        thisjr = get_Jrate_symb("H2O2", ["H2O2pl"])
         H2O2_ionize_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
         setindex!(xsect_dict, fill(H2O2_ionize_data, GV.n_all_layers), thisjr)
 
@@ -4056,17 +4113,17 @@ function populate_xsect_dict(pd_dataf; ion_xsects=true, globvars...)
         # Source: Roger Yelle
 
         # O + hν -> O⁺; JOtoOpl
-        thisjr = get_Jrate_symb(["O", "Opl"], GV.Jratelist)
+        thisjr = get_Jrate_symb("O", ["Opl"])
         O_iondiss_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
         setindex!(xsect_dict, fill(O_iondiss_data, GV.n_all_layers), thisjr)
 
         # O₂ + hν -> O₂⁺; JO2toO2pl
-        thisjr = get_Jrate_symb(["O2", "O2pl"], GV.Jratelist)
+        thisjr = get_Jrate_symb("O2", ["O2pl"])
         O2_ionize_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
         setindex!(xsect_dict, fill(O2_ionize_data, GV.n_all_layers), thisjr)
 
         # # O₃ + hν -> O₃⁺; JO3toO3pl
-        thisjr = get_Jrate_symb(["O3", "O3pl"], GV.Jratelist)
+        thisjr = get_Jrate_symb("O3", ["O3pl"])
         O3_ionize_data = readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#')
         setindex!(xsect_dict, fill(O3_ionize_data, GV.n_all_layers), thisjr)
     end
