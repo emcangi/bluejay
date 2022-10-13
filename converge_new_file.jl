@@ -40,6 +40,7 @@ using Photochemistry  # custom module
 using DifferentialEquations
 using IterativeSolvers
 using IncompleteLU
+using GeneralizedGenerated: mk_function
 using Dates
 using DataFrames
 using XLSX

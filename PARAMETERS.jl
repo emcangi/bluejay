@@ -11,66 +11,68 @@
 
 using DataFrames
 
-# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
-# !!                                                                        !! #
-# !!                      !!!!! SUPER IMPORTANT !!!!!                       !! #
-# !!     !!! Check the following every time you run the simulation !!!      !! #
-# !!                                                                        !! #
-# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
-
 # **************************************************************************** #
 #                                                                              #
 #                         Main simulation parameters                           #
 #                                                                              #
 # **************************************************************************** #
 
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
+# !!                                                                        !! #
+# !!                      !!!!! SUPER IMPORTANT !!!!!                       !! #
+# !!     !!! Modify the following items each time you run the model !!!     !! #
+# !!                                                                        !! #
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
+
 # Basic simulation parameters
-const simset = "paper3" # "paper2" #"periap"
-results_version = "v4"  # Change this every time you re-run a set.
+const optional_logging_note = "Equilibrium case, trying Argon on, 1e16" # Simulation goal
+
+const simset = "paper3" # "paper2" # Fine to leave this as paper3
+const results_version = "v4"  # Helps keep track of attempts 
 const initial_atm_file = "INITIAL_GUESS.h5" #  "cycle_hotexo.h5"#"cycle_start.h5"# "cycle_coldexo.h5"# "cycle_mid.h5"#
 # Other options:
 #"low_water.h5"#"midcycle_water.h5" # "high_water.h5"
 
 const seasonal_cycle = false # true # whether testing how things change with seasonal cycles
-const optional_logging_note = "Equilibrium case, reverted while loop, 1e16"
-const reset_water_profile = seasonal_cycle==true ? false : true# should be off if trying to run simulations that test seasonal cycling
-const update_water_profile = false#true # turn this on for testing water cycle (updates the existing one without totally rewriting it)
 
-# const season = nothing # perihelion or aphelion.
-const season_length_in_sec = seasonal_cycle==true ? 1.4838759e7 : 1e16
 
 # SET EXPERIMENT
 const paper3_exp = "temperature" # "water" # "insolation"#
 # temperature
 const use_for_Texo = 225.
-const paper3_Texo_opts = Dict("mean"=>225., "min"=>175., "max"=>275.) # Broader range of values that are evenly spaced
-const paper2_Texo_opts = Dict("mean"=>210., "min"=>190., "max"=>280.)
 #water
-const water_case = "standard"#"high"#"low"#
+const water_case = "standard" # "high" # "low"
 # insolation
-const solarcyc = "mean" #  "max"#"min"  #
+const solarcyc = "mean" # "max" # "min"
+
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
+# !!                                                                        !! #
+# !!                      !!!!!    END CHECK    !!!!!                       !! #
+# !!                                                                        !! #
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
 
 # Set up temperature and folder tag name according to the type of simulation set
-
+const paper3_Texo_opts = Dict("mean"=>225., "min"=>175., "max"=>275.) # Broader range of values that are evenly spaced
+const paper2_Texo_opts = Dict("mean"=>210., "min"=>190., "max"=>280.)
 if simset=="paper3"
     println("Running simulations for paper 3")
     const solarfile = "marssolarphotonflux_solarmean_NEW.dat"
     const controltemps = [230., 130., use_for_Texo]
-    if seasonal_cycle==true
-        extra_str="cycle"
-    else
-        extra_str=""
-    end
+    const meanexo = paper3_Texo_opts["mean"]
+    extra_str = seasonal_cycle==true ? "cycle" : ""
+
     if paper3_exp=="temperature"
         println("Testing T_exo = $(controltemps[3])")
+        const update_water_profile = false 
         const tag = "paper3_temp$(extra_str)_Texo=$(Int64(controltemps[3]))_$(results_version)"
     elseif paper3_exp=="insolation"
         println("Testing solar case = $(solarcyc)")
+        const update_water_profile = false 
         const solarfile = "marssolarphotonflux_solar$(solarcyc)_NEW.dat"
         const tag = "paper3_solar$(solarcyc)_$(results_version)"
     elseif paper3_exp=="water"
-        # const water_case = false
         println("Testing water case = $(water_case)")
+        const update_water_profile = true 
         const tag = "paper3_$(water_case)_water_$(results_version)"
     else
         throw("Simulation type is paper3 but no testing parameter specified")
@@ -78,38 +80,18 @@ if simset=="paper3"
 elseif simset == "paper2"
     const solarfile = "marssolarphotonflux_solar$(solarcyc)_NEW.dat"
     const tag = "s$(solarcyc)_$(results_version)"
-    # const water_case = "standard"
-    # elseif simset == "periap"
-    #     if season == "perihelion"
-    #         const water_case = "high water"
-    #         println("Notice: Adding excess water to upper atmosphere for perihelion")
-    #         const solarfile = "marssolarphotonflux_solarmean_perihelion.dat"
-    #         const tag = "perihelion_$(results_version)"
-    #     elseif season == "aphelion"
-    #         const water_case = "standard"
-    #         const solarfile = "marssolarphotonflux_solarmean_aphelion.dat"
-    #         const tag = "aphelion_$(results_version)"
-    #     else 
-    #         throw("Season is set to something incorrect, neither perihelion nor aphelion")
-    #     end
-    # end
-
+    meanexo = paper2_Texo_opts["mean"]
     
     const controltemps = [230., 130., paper2_Texo_opts[solarcyc]]
 end
 
 # Temperature and water
 const water_mixing_ratio = 1.3e-4
-if simset=="paper3"
-    meanexo = paper3_Texo_opts["mean"]
-elseif simset=="paper2"
-    meanexo = paper2_Texo_opts["mean"]
-else
-    throw("simset???")
-end
 const meantemps = [230., 130., meanexo] # Used for saturation vapor pressure. DON'T CHANGE!
+const reset_water_profile = seasonal_cycle==true ? false : true# should be off if trying to run simulations that test seasonal cycling
 
 # Tolerance and timespans 
+const season_length_in_sec = seasonal_cycle==true ? 1.4838759e7 : 1e16
 const dt_min_and_max = Dict("neutrals"=>[-3, 14], "ions"=>[-4, 6], "both"=>[-3, log10(season_length_in_sec)]) 
 const rel_tol = 1e-6
 const abs_tol = 1e-12 
@@ -119,13 +101,6 @@ const dust_storm_on = false
 const H2O_excess = 250 # excess H2O in ppm
 const HDO_excess = 0.350 # excess HDO in ppm (divide by 1000 to get ppb)
 const excess_peak_alt = 42 # altitude at which to add the extra water 
-
-
-# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
-# !!                                                                        !! #
-# !!                      !!!!!    END CHECK    !!!!!                       !! #
-# !!                                                                        !! #
-# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
 
 # More basics that don't frequently change
 const ions_included = true
@@ -142,7 +117,7 @@ const nontherm = ions_included==true ? true : false
 const converge_which = "both"
 const e_profile_type = "quasineutral" #"O2+" # "constant"# 
 const remove_unimportant = true # Whether to use a slightly smaller list of species and reactions (removing minor species that Roger had in his model)
-const fixed_species = [:Ar] # here you may enter any species that you want to be completely fixed (no updates to densities from chemistry or transport)
+const fixed_species = [] # here you may enter any species that you want to be completely fixed (no updates to densities from chemistry or transport)
 const adding_new_species = false # set to true if introducing a new species.
 
 
