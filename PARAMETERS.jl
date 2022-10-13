@@ -1,12 +1,12 @@
 ################################################################################
 # PARAMETERS.jl
 # TYPE: (1) Model files - required
-# DESCRIPTION: Global constants, simulation parameters, reaction networks. 
+# DESCRIPTION: Global constants, simulation parameters.
 # 
 # Eryn Cangi
 # Created December 2019
-# Last edited: January 2022
-# Currently tested for Julia: 1.6.1
+# Last edited: October 2022
+# Currently tested for Julia: 1.7.1
 ################################################################################
 
 using DataFrames
@@ -29,12 +29,11 @@ const optional_logging_note = "Equilibrium case, trying Argon on, 1e16" # Simula
 
 const simset = "paper3" # "paper2" # Fine to leave this as paper3
 const results_version = "v4"  # Helps keep track of attempts 
-const initial_atm_file = "INITIAL_GUESS.h5" #  "cycle_hotexo.h5"#"cycle_start.h5"# "cycle_coldexo.h5"# "cycle_mid.h5"#
+const initial_atm_file = "INITIAL_GUESS.h5" # "cycle_hotexo.h5" # "cycle_start.h5" # "cycle_coldexo.h5" # "cycle_mid.h5"#
 # Other options:
-#"low_water.h5"#"midcycle_water.h5" # "high_water.h5"
+# "low_water.h5" # "midcycle_water.h5" # "high_water.h5"
 
 const seasonal_cycle = false # true # whether testing how things change with seasonal cycles
-
 
 # SET EXPERIMENT
 const paper3_exp = "temperature" # "water" # "insolation"#
@@ -187,7 +186,6 @@ const Tprof_for_Hs = Dict("neutral"=>Tn_arr, "ion"=>Ti_arr)
 const T_top = T(zmax, controltemps[1], controltemps[2], controltemps[3], "neutral")
 
 Temp_keepSVP(z::Float64) = T(z, meantemps..., "neutral") # Needed for boundary conditions.
-# const fix_SVP = false
 
 # **************************************************************************** #
 #                                                                              #
