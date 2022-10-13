@@ -14,8 +14,8 @@
 using DoubleFloats
 
 const code_dir = "$(@__DIR__)/"
-const extra_plots_dir = code_dir*"../Auxiliary plots/"
-const results_dir = code_dir*"../Results/"
+# const extra_plots_dir = code_dir*"../Auxiliary plots/"
+const results_dir = code_dir*"../Results-Paper3/"
 const xsecfolder = code_dir*"uvxsect/";
 
 # Float types for calculations =================================================
@@ -33,40 +33,14 @@ const intaltgrid = round.(Int64, alt/1e5)[2:end-1]; # the altitude grid CELLS bu
 const non_bdy_layers = alt[2:end-1]  # all layers, centered on 2 km, 4...248. Excludes the boundary layers which are [-1, 1] and [249, 251].
 const num_layers = length(non_bdy_layers) # there are 124 non-boundary layers.
 const plot_grid = non_bdy_layers ./ 1e5;  # for plotting. Points located at atmospheric layer cell centers and in units of km.
-const plot_grid_bdys = collect(1:2:((max_alt / 1e5)-1))  # the boundaries; includes the boundary layers at top and bottom.
+#const plot_grid_bdys = collect(1:2:((max_alt / 1e5)-1))  # the boundaries; includes the boundary layers at top and bottom.
 
 const zmin = alt[1]
 const zmax = alt[end];
 const n_alt_index=Dict([z=>clamp((i-1),1, num_layers) for (i, z) in enumerate(alt)])
 
 # water altitude stuff 
-const upper_lower_bdy = 80e5 # the uppermost layer at which water will be fixed, in cm
-const upper_lower_bdy_i = Int64(upper_lower_bdy / dz) # the uppermost layer at which water will be fixed, in cm
 const hygropause_alt = 40e5
-
-# Mean temperatures and simulation temperature parameters ======================
-const meanTs = 216.0
-const meanTm = 130.0
-const meanTe = 205.0
-const meantemps = [meanTs, meanTm, meanTe]
-
-const meanTsint = 216
-const meanTmint = 130
-const meanTeint = 205
-
-# These are the low and high values for the "standard atmosphere and reasonable 
-# climate variations" cases. NOT the full range of temperatures used to make the
-# detailed cases stuff, because those include temps up to 350 K.
-const lowTs = 160.0
-const hiTs = 270.0
-const lowTm = 100.0
-const hiTm = 160.0
-const lowTe = 150.0
-const hiTe = 250.0
-
-const highestTe = 350.0  # This is the highest exobase temperature considered.
-                          # AFAIK this parameter is only used in making the 3-panel
-                          # temperature profile plot.
 
 # Common plot specifications =======================================================
 const speciescolor = Dict( # PRIMARY NEUTRALS + IONS
