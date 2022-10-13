@@ -2,12 +2,14 @@
 # plot_rate_balances.jl
 # TYPE: (1) Model files - required
 # DESCRIPTION: Plots the chemical reaction rates, transport rates, and sum of both
-# to check that the atmosphere is equilibrated.
+# to check that the atmosphere is equilibrated. Stand-alone. These plots are also
+# now part of the main simulation routine as of 7 June 2022, so this file is 
+# likely to be used more rarely.
 # 
 # Eryn Cangi
 # Created March 2021
-# Last edited: 23 March 2021
-# Currently tested for Julia: 1.5.3
+# Last edited: 7 June 2022
+# Currently tested for Julia: 1.7.1
 ################################################################################
 
 # Modules and critical files ================================================================================
@@ -15,10 +17,30 @@ using Revise
 photochemistry_source_dir = "$(@__DIR__)/Photochemistry/src/"
 println("loading Photochemistry.jl from $photochemistry_source_dir")
 push!(LOAD_PATH, photochemistry_source_dir)
-using Photochemistry: create_folder, get_ncurrent, get_paramfile, input, search_subfolders, T_updated, Psat, Psat_HDO, plot_rxns, 
-                      effusion_velocity, charge_type, scaleH, meanmass, load_reaction_network
+using Photochemistry: create_folder, generate_code, get_ncurrent, get_paramfile, input, search_subfolders, T, Psat, Psat_HDO, plot_rxns, 
+                      effusion_velocity, charge_type, scaleH, meanmass, load_reaction_network, format_Jrates, load_from_paramlog
 using PyPlot
 using PyCall
+using GeneralizedGenerated
+
+include("CONSTANTS.jl")
+include("CUSTOMIZATIONS.jl")
+
+# **************************************************************************** #
+#                                                                              #
+#                  SELECT FOLDER AND LOAD THE ATMOSPHERIC STATE                #
+#                                                                              #
+# **************************************************************************** #
+
+simfolder = input("Enter folder name: ")
+
+converged_file = "final_atmosphere.h5"
+if !isfile(results_dir*simfolder*"/"*converged_file)
+    converged_file = input("No file found, please enter file to use: ")
+    if !occursin(".h5", converged_file)
+        converged_file = converged_file * ".h5"
+    end
+end
 
 # **************************************************************************** #
 #                                                                              #
@@ -26,64 +48,46 @@ using PyCall
 #                                                                              #
 # **************************************************************************** #
 
-include("CONSTANTS.jl")
-include("CUSTOMIZATIONS.jl")
-paramfile = get_paramfile(code_dir)
-include(paramfile)
+
+ions_included, hrshortcode, rshortcode,
+neutral_species, ion_species, all_species, transport_species, chem_species, 
+Tn_arr, Ti_arr, Te_arr, Tplasma_arr, Tprof_for_Hs, Tprof_for_diffusion, 
+Hs_dict, speciesbclist, reaction_network_spreadsheet, water_bdy = load_from_paramlog(results_dir*simfolder*"/")
 
 # Load the new standard reaction network from spreadsheet
-reaction_network = load_reaction_network(reaction_network_spreadsheet; Jratelist, absorber, photolysis_products, all_species, ions_on=ions_included)
-
-println("Found the folder name: $(sim_folder_name)")
-simfolder = results_dir*sim_folder_name*"/"
-
-converged_file = "final_atmosphere.h5"
-if !isfile(simfolder*converged_file)
-    converged_file = input("No file found, please enter file to use: ")
-    if !occursin(".h5", converged_file)
-        converged_file = converged_file * ".h5"
-    end
-end
+if ions_included==true
+    ions_included=true
+    reaction_network, hot_H_network, hot_D_network = load_reaction_network(reaction_network_spreadsheet; ions_on=ions_included, 
+                                                                           get_hot_D_rxns=true, get_hot_H_rxns=true, all_species)
+    const hot_H_rc_funcs = Dict([rxn => mk_function(:((Tn, Ti, Te, M) -> $(rxn[3]))) for rxn in hot_H_network]);
+    const hot_D_rc_funcs = Dict([rxn => mk_function(:((Tn, Ti, Te, M) -> $(rxn[3]))) for rxn in hot_D_network]);
+    const functions_for_rxns = [hot_H_rc_funcs, hot_D_rc_funcs]
+else 
+    reaction_network, hot_H_network, hot_D_network = load_reaction_network(reaction_network_spreadsheet; ions_on=ions_included, all_species)
+    const functions_for_rxns = []
+end 
 
 println("Using final atmosphere file: $(converged_file)")
+
+extra_file = input("Enter any additional files you would like to make plots for or press enter to skip: ")
 
 # **************************************************************************** #
 #                                                                              #
 #                       DO THE ACTUAL PLOTTING                                 #
 #                                                                              #
 # **************************************************************************** #
-create_folder("chemeq_plots", simfolder)
+create_folder("chemeq_plots", results_dir*simfolder*"/")
 
-filelist = search_subfolders(simfolder, "$(converged_file)", type="files")
+filelist = search_subfolders(results_dir*simfolder, "$(converged_file)", type="files")
+if extra_file != ""
+    push!(filelist, extra_file)
+end
 println(filelist)
 
 for f in filelist
-    ncur = get_ncurrent(simfolder*f)
+    ncur = get_ncurrent(results_dir*simfolder*"/"*f)
 
-    # Load electron profile -----------------------------------------------------------
-    if electron_val=="constant" # E FIX ATTEMPT 
-        E = [1e5 for i in non_bdy_layers]
-    elseif electron_val=="quasineutral"
-        E = sum([ncur[sp] for sp in ion_species])
-    elseif electron_val == "O2+"
-        E = get_ncurrent("$(simfolder)initial_atmosphere.h5")[:O2pl]
-    elseif electron_val=="none"  # For neutrals-only simulation but without changing how E is passed to other functions. 
-        E = [0. for i in non_bdy_layers]
-    else
-        throw("Unhandled electron profile specification: $(electron_val)")
-    end
-
-    # Collect dt for plot title ---------------------------------------------------------
-    # looks for a pattern in the filename that looks like X{.XeX}, where curly braces are optional. 
-    # i.e. it will match "100", "100.0", "0.001", "1e2" or "1.0e2".
-    dtmatch = match(r"\d+\.\d*e*\d*", f) 
-    if typeof(dtmatch) != Nothing
-        dtval = dtmatch.match
-    else
-        dtval = input("Please enter dt: ")
-    end
-
-    println("Working on dt=$(dtval)")
+    Jratedict = Dict([j=>ncur[j] for j in keys(ncur) if occursin("J", string(j))])
 
     # Plot  ---------------------------------------------------------------------------------
     if @isdefined fullspecieslist
@@ -106,11 +110,12 @@ for f in filelist
             #     end
             # end
 
-            plot_rxns(sp, ncur, results_dir, E; subfolder=sim_folder_name, plotsfolder="chemeq_plots", num=dtval, extra_title="dt=$(dtval)", 
-                      Tn=Tn_arr, Ti=Ti_arr, Te=Te_arr, Tp=Tplasma_arr, bcdict=speciesbclist, rxnnet=reaction_network, 
-                      all_species, neutral_species, ion_species, transport_species, chem_species, 
-                      molmass, polarizability, Tprof_for_Hs, Tprof_for_diffusion, Hs_dict,
-                      alt, n_alt_index, dz, num_layers, n_all_layers, plot_grid, upper_lower_bdy_i, upper_lower_bdy, q)#, shown_rxns=theserxns) # Uncomment to show individual reactions.
+            plot_rxns(sp, ncur, results_dir; nonthermal=ions_included, subfolder=simfolder, plotsfolder="chemeq_plots", 
+                      num="$(f[1:end-3])", all_species, alt, chem_species, collision_xsect, 
+                      dz, hot_D_rc_funcs, hot_H_rc_funcs, Hs_dict, hot_H_network, hot_D_network, hrshortcode, ion_species, Jratedict,
+                      molmass, neutral_species, non_bdy_layers, num_layers, n_all_layers, n_alt_index, polarizability, 
+                      plot_grid, q, rshortcode, reaction_network, speciesbclist, Tn=Tn_arr, Ti=Ti_arr, Te=Te_arr, Tp=Tplasma_arr, 
+                      Tprof_for_Hs, Tprof_for_diffusion, transport_species, upper_lower_bdy_i=n_alt_index[water_bdy], upper_lower_bdy=water_bdy, zmax)#, shown_rxns=theserxns) # Uncomment to show individual reactions.
         end
     end
 end

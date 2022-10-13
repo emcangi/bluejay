@@ -14,8 +14,9 @@ const bigG = 6.67e-8;           # dyne-cm^2/g^2
 const mH = 1.67e-24;            # g 
 const marsM = 0.1075*5.972e27;  # g 
 const radiusM = 3396e5;         # cm
-const q = 4.8032e-10            # statcoulomb (cm^1.5 g^0.5 s^-1)
+const q = -4.8032e-10            # statcoulomb (cm^1.5 g^0.5 s^-1)
 const DH = 5.5 * 1.6e-4         # SMOW value, Yung 1988
+const sol_in_sec = 88775.2438   # One Mars sol in seconds
 
 # Polarizability from NIST. Experimental values from: https://cccbdb.nist.gov/pollistx.asp
 # Calculations for species not available in experiment from: https://cccbdb.nist.gov/polcalc2x.asp
@@ -77,5 +78,8 @@ const molmass = Dict(:H=>1, :Hpl=>1,
                      :O3=>48, 
                      )
 
-const collision_xsect = Dict(:H=>4e-15, :D=>4.5e-15 # Zhang 2009
+const collision_xsect = Dict(:H=>4e-15, :D=>4.5e-15, # Zhang 2009
+                             :H2=>4.5e-15, # assume same as D since they have the same mass...
+                             :HD=>5e-15 # assumption that adding a proton or neutron adds 0.5e-15 to the cross section...
                             ) # Units of cm^2; Bohr radius 8.79e-17
+
