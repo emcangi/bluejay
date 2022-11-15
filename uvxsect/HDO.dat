@@ -7,11 +7,12 @@
 # 
 # ...and Cheng et al 2004.
 # wvs 125-140 in 1 nm steps at 300K. Applied to 300K (because it's close enough) and interpolated for steps of 0.5 nm by me.
-# for 121.5 to 125.5 and 195-219.5 I extrapolated the data by fitting a line to the data between wavelengths 178 nm to 195 nm.
-#
-#	Wavelength	[nm]	cm^2/molecule
-121.5	4.3298974e-18
-122.5	5.0248192e-18
+# UPDATE 11/3/22: 
+# for 123.5 and 124.5, the values are extrapolated.
+# For 121.5 and 122.5, the values are the SAME as in h2oavgtbl.dat (I copy/pasted them) because lyman alpha is important!!!
+#	Wavelength [nm]	cm^2/molecule
+121.5	1.276e-17
+122.5	8.26e-18
 123.5	5.8312717e-18
 124.5	6.7671548e-18
 125.5	7.8750000e-18

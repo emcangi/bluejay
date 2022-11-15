@@ -15,7 +15,7 @@
 # Modules and critical files ================================================================================
 using Revise
 photochemistry_source_dir = "$(@__DIR__)/Photochemistry/src/"
-println("loading Photochemistry.jl from $photochemistry_source_dir")
+# println("loading Photochemistry.jl from $photochemistry_source_dir")
 push!(LOAD_PATH, photochemistry_source_dir)
 using Photochemistry: create_folder, generate_code, get_ncurrent, get_paramfile, input, search_subfolders, T, Psat, Psat_HDO, plot_rxns, 
                       effusion_velocity, charge_type, scaleH, meanmass, load_reaction_network, format_Jrates, load_from_paramlog
@@ -34,12 +34,14 @@ include("CUSTOMIZATIONS.jl")
 
 simfolder = input("Enter folder name: ")
 
-converged_file = "final_atmosphere.h5"
-if !isfile(results_dir*simfolder*"/"*converged_file)
-    converged_file = input("No file found, please enter file to use: ")
-    if !occursin(".h5", converged_file)
-        converged_file = converged_file * ".h5"
+file_to_use = input("Enter filename to use or press enter to look for: ")
+full_file = results_dir*simfolder*"/"*file_to_use
+println("Searching for $(full_file)")
+while !isfile(full_file)
+    if !occursin(".h5", file_to_use)
+        global file_to_use = file_to_use * ".h5"
     end
+    global file_to_use = input("$(full_file) not found, please enter file name again: ")
 end
 
 # **************************************************************************** #
@@ -48,28 +50,45 @@ end
 #                                                                              #
 # **************************************************************************** #
 
+vardict = load_from_paramlog(results_dir*simfolder*"/")
 
-ions_included, hrshortcode, rshortcode,
-neutral_species, ion_species, all_species, transport_species, chem_species, 
-Tn_arr, Ti_arr, Te_arr, Tplasma_arr, Tprof_for_Hs, Tprof_for_diffusion, 
-Hs_dict, speciesbclist, reaction_network_spreadsheet, water_bdy = load_from_paramlog(results_dir*simfolder*"/")
+ions_included = vardict["ions_included"]
+hrshortcode = vardict["hrshortcode"]
+rshortcode = vardict["rshortcode"]
+neutral_species = vardict["neutral_species"]
+ion_species = vardict["ion_species"]
+all_species = vardict["all_species"]
+transport_species = vardict["transport_species"]
+chem_species = vardict["chem_species"]
+Tn_arr = vardict["Tn_arr"]
+Ti_arr = vardict["Ti_arr"]
+Te_arr = vardict["Te_arr"]
+Tplasma_arr = vardict["Tplasma_arr"]
+Tprof_for_Hs = vardict["Tprof_for_Hs"]
+Tprof_for_diffusion = vardict["Tprof_for_diffusion"]
+Hs_dict = vardict["Hs_dict"]
+speciesbclist = vardict["speciesbclist"]
+reaction_network_spreadsheet = vardict["rxn_spreadsheet"]
+water_bdy = vardict["water_bdy"]
 
 # Load the new standard reaction network from spreadsheet
 if ions_included==true
     ions_included=true
-    reaction_network, hot_H_network, hot_D_network = load_reaction_network(reaction_network_spreadsheet; ions_on=ions_included, 
-                                                                           get_hot_D_rxns=true, get_hot_H_rxns=true, all_species)
+    reaction_network, hot_H_network, hot_D_network, hot_H2_network, hot_HD_network = load_reaction_network(reaction_network_spreadsheet; ions_on=ions_included, 
+                                                                           get_hot_rxns=true, all_species)
     const hot_H_rc_funcs = Dict([rxn => mk_function(:((Tn, Ti, Te, M) -> $(rxn[3]))) for rxn in hot_H_network]);
     const hot_D_rc_funcs = Dict([rxn => mk_function(:((Tn, Ti, Te, M) -> $(rxn[3]))) for rxn in hot_D_network]);
+    const hot_H2_rc_funcs = Dict([rxn => mk_function(:((Tn, Ti, Te, M) -> $(rxn[3]))) for rxn in hot_H2_network]);
+    const hot_HD_rc_funcs = Dict([rxn => mk_function(:((Tn, Ti, Te, M) -> $(rxn[3]))) for rxn in hot_HD_network]);
     const functions_for_rxns = [hot_H_rc_funcs, hot_D_rc_funcs]
 else 
     reaction_network, hot_H_network, hot_D_network = load_reaction_network(reaction_network_spreadsheet; ions_on=ions_included, all_species)
     const functions_for_rxns = []
 end 
 
-println("Using final atmosphere file: $(converged_file)")
+println("Using final atmosphere file: $(file_to_use)")
 
-extra_file = input("Enter any additional files you would like to make plots for or press enter to skip: ")
+# extra_file = input("Enter any additional files you would like to make plots for or press enter to skip: ")
 
 # **************************************************************************** #
 #                                                                              #
@@ -78,11 +97,10 @@ extra_file = input("Enter any additional files you would like to make plots for 
 # **************************************************************************** #
 create_folder("chemeq_plots", results_dir*simfolder*"/")
 
-filelist = search_subfolders(results_dir*simfolder, "$(converged_file)", type="files")
-if extra_file != ""
-    push!(filelist, extra_file)
-end
-println(filelist)
+filelist = search_subfolders(results_dir*simfolder, "$(file_to_use)", type="files")
+# if extra_file != ""
+    # push!(filelist, extra_file)
+# end
 
 for f in filelist
     ncur = get_ncurrent(results_dir*simfolder*"/"*f)
@@ -112,7 +130,7 @@ for f in filelist
 
             plot_rxns(sp, ncur, results_dir; nonthermal=ions_included, subfolder=simfolder, plotsfolder="chemeq_plots", 
                       num="$(f[1:end-3])", all_species, alt, chem_species, collision_xsect, 
-                      dz, hot_D_rc_funcs, hot_H_rc_funcs, Hs_dict, hot_H_network, hot_D_network, hrshortcode, ion_species, Jratedict,
+                      dz, hot_D_rc_funcs, hot_H_rc_funcs, hot_H2_rc_funcs, hot_HD_rc_funcs, Hs_dict, hot_H_network, hot_D_network, hot_H2_network, hot_HD_network, hrshortcode, ion_species, Jratedict,
                       molmass, neutral_species, non_bdy_layers, num_layers, n_all_layers, n_alt_index, polarizability, 
                       plot_grid, q, rshortcode, reaction_network, speciesbclist, Tn=Tn_arr, Ti=Ti_arr, Te=Te_arr, Tp=Tplasma_arr, 
                       Tprof_for_Hs, Tprof_for_diffusion, transport_species, upper_lower_bdy_i=n_alt_index[water_bdy], upper_lower_bdy=water_bdy, zmax)#, shown_rxns=theserxns) # Uncomment to show individual reactions.

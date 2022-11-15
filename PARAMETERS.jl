@@ -25,24 +25,33 @@ using DataFrames
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
 
 # Basic simulation parameters
-const optional_logging_note = "Equilibrium case, trying Argon on, 1e16" # Simulation goal
+const optional_logging_note = "Just testing I didn't break anything before committing" # Simulation goal
 
-const simset = "paper3" # "paper2" # Fine to leave this as paper3
-const results_version = "v4"  # Helps keep track of attempts 
-const initial_atm_file = "INITIAL_GUESS.h5" # "cycle_hotexo.h5" # "cycle_start.h5" # "cycle_coldexo.h5" # "cycle_mid.h5"#
+const simset = "paper2" #"paper3" # # Fine to leave this as paper3
+const results_version = "vTEST"  # Helps keep track of attempts 
+const initial_atm_file = "INITIAL_GUESS.h5" #  "cycle_coldexo_manual.h5" # "cycle_mid_manual.h5"# "cycle_hotexo_manual.h5" #"cycle_start_manual.h5" # 
 # Other options:
-# "low_water.h5" # "midcycle_water.h5" # "high_water.h5"
+# "low_water.h5" # "midcycle_water.h5" # "cycle_highwater.h5"# "cycle_stdwater.h5"# 
 
-const seasonal_cycle = false # true # whether testing how things change with seasonal cycles
+const seasonal_cycle = false # true #  whether testing how things change with seasonal cycles
 
 # SET EXPERIMENT
-const paper3_exp = "temperature" # "water" # "insolation"#
+const paper3_exp = "temperature" #"water" #  "insolation"#
 # temperature
 const use_for_Texo = 225.
 #water
-const water_case = "standard" # "high" # "low"
-# insolation
-const solarcyc = "mean" # "max" # "min"
+const water_case = "standard" # "high" # "low"# # You can use these to use various tanh profiles that Mike invented
+const water_mixing_ratio = 1.3e-4 #  6.35e-4 #1.25e-5 # 
+const update_water_profile = false
+# solar cycle
+const solarcyc = "mean" # "max" # "min"#
+
+# Add a bonus water parcel to simulate dust storm if you like
+const dust_storm_on = false
+const H2O_excess = 250 # excess H2O in ppm
+const HDO_excess = 0.350 # excess HDO in ppm (divide by 1000 to get ppb)
+const excess_peak_alt = 60 # altitude at which to add the extra water 
+
 
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
 # !!                                                                        !! #
@@ -51,8 +60,8 @@ const solarcyc = "mean" # "max" # "min"
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
 
 # Set up temperature and folder tag name according to the type of simulation set
-const paper3_Texo_opts = Dict("mean"=>225., "min"=>175., "max"=>275.) # Broader range of values that are evenly spaced
-const paper2_Texo_opts = Dict("mean"=>210., "min"=>190., "max"=>280.)
+const paper3_Texo_opts = Dict("min"=>175., "mean"=>225., "max"=>275.) # Broader range of values that are evenly spaced
+const paper2_Texo_opts = Dict("min"=>190., "mean"=>210., "max"=>280.)
 if simset=="paper3"
     println("Running simulations for paper 3")
     const solarfile = "marssolarphotonflux_solarmean_NEW.dat"
@@ -62,22 +71,20 @@ if simset=="paper3"
 
     if paper3_exp=="temperature"
         println("Testing T_exo = $(controltemps[3])")
-        const update_water_profile = false 
         const tag = "paper3_temp$(extra_str)_Texo=$(Int64(controltemps[3]))_$(results_version)"
     elseif paper3_exp=="insolation"
         println("Testing solar case = $(solarcyc)")
-        const update_water_profile = false 
         const solarfile = "marssolarphotonflux_solar$(solarcyc)_NEW.dat"
         const tag = "paper3_solar$(solarcyc)_$(results_version)"
     elseif paper3_exp=="water"
         println("Testing water case = $(water_case)")
-        const update_water_profile = true 
-        const tag = "paper3_$(water_case)_water_$(results_version)"
+        const update_water_profile = true # false # 
+        const tag = "paper3_water$(extra_str)_$(water_case)_$(results_version)"
     else
         throw("Simulation type is paper3 but no testing parameter specified")
     end
 elseif simset == "paper2"
-    const solarfile = "marssolarphotonflux_solar$(solarcyc)_NEW.dat"
+    const solarfile = "marssolarphotonflux_solar$(solarcyc)_NEW.dat"#"marssolarphotonflux_orbit12807_dl01.dat"#
     const tag = "s$(solarcyc)_$(results_version)"
     meanexo = paper2_Texo_opts["mean"]
     
@@ -85,7 +92,7 @@ elseif simset == "paper2"
 end
 
 # Temperature and water
-const water_mixing_ratio = 1.3e-4
+
 const meantemps = [230., 130., meanexo] # Used for saturation vapor pressure. DON'T CHANGE!
 const reset_water_profile = seasonal_cycle==true ? false : true# should be off if trying to run simulations that test seasonal cycling
 
@@ -95,15 +102,10 @@ const dt_min_and_max = Dict("neutrals"=>[-3, 14], "ions"=>[-4, 6], "both"=>[-3, 
 const rel_tol = 1e-6
 const abs_tol = 1e-12 
 
-# Add a bonus water parcel to simulate dust storm if you like
-const dust_storm_on = false
-const H2O_excess = 250 # excess H2O in ppm
-const HDO_excess = 0.350 # excess HDO in ppm (divide by 1000 to get ppb)
-const excess_peak_alt = 42 # altitude at which to add the extra water 
-
 # More basics that don't frequently change
 const ions_included = true
 const SZA = 60 # SZA in degrees 
+const fixed_species = [:Ar] # here you may enter any species that you want to be completely fixed (no updates to densities from chemistry or transport)
 
 # Tags, shortcodes, and filenames
 const hrshortcode, rshortcode = generate_code(ions_included, controltemps[1], controltemps[2], controltemps[3], water_case, solarcyc)
@@ -116,7 +118,6 @@ const nontherm = ions_included==true ? true : false
 const converge_which = "both"
 const e_profile_type = "quasineutral" #"O2+" # "constant"# 
 const remove_unimportant = true # Whether to use a slightly smaller list of species and reactions (removing minor species that Roger had in his model)
-const fixed_species = [] # here you may enter any species that you want to be completely fixed (no updates to densities from chemistry or transport)
 const adding_new_species = false # set to true if introducing a new species.
 
 
@@ -265,8 +266,8 @@ const absorber = Dict([x=>Symbol(match(r"(?<=J).+(?=to)", string(x)).match) for 
 # **************************************************************************** #
 const D_H_analogues = Dict(:ArDpl=>:ArHpl, :Dpl=>:Hpl, :DCOpl=>:HCOpl, :HDpl=>:H2pl, :HD2pl=>:H3pl, :H2Dpl=>:H3pl, :N2Dpl=>:N2Hpl,
                            :DCO2pl=>:HCO2pl, :DOCpl=>:HOCpl, :H2DOpl=>:H3Opl, :HDOpl=>:H2Opl, :ODpl=>:OHpl)  
-const D_bearing_species = [s for s in setdiff(union(neutral_species, ion_species), [:O1D, :Nup2D]) if occursin('D', string(s))];
-const D_ions = [s for s in ion_species if occursin('D', string(s))];
+const D_bearing_species = get_deuterated(all_species)
+const D_ions = get_deuterated(ion_species) #[s for s in ion_species if occursin('D', string(s))];
 const N_neutrals = [s for s in neutral_species if occursin('N', string(s))];
 
 # Sort name lists created here -------------------------------------------------

@@ -18,13 +18,13 @@ using Printf
 
 export # Basic utility functions
        charge_type, create_folder, decompose_chemistry_string, deletefirst, find_nonfinites, fluxsymbol, format_chemistry_string, format_scin, format_sec_or_min, 
-       GEL_to_molecule, generate_code, getpos, input, get_paramfile, logrange, molec_to_GEL, nans_present, next_in_loop, searchdir, searchsortednearest, 
+       GEL_to_molecule, generate_code, get_deuterated, getpos, input, get_paramfile, logrange, molec_to_GEL, nans_present, next_in_loop, searchdir, searchsortednearest, 
        search_subfolders, string_to_latexstr, subtract_difflength, 
        # Logging functions
        get_param, load_bcdict_from_paramdf, load_from_paramlog, write_to_log,
        # Atmospheric basic functions
        atm_dict_to_matrix, atm_matrix_to_dict, column_density, column_density_above, electron_density, find_exobase, flatten_atm, get_ncurrent, ncur_with_boundary_layers, n_tot, 
-       precip_microns, setup_water_profile!, unflatten_atm, water_multiplier, write_atmosphere,
+       precip_microns, setup_water_profile!, unflatten_atm, water_tanh_prof, write_atmosphere,
        # Plotting functions
        get_colors, get_grad_colors, plot_atm, plot_bg, plot_extinction, plot_Jrates, plot_rxns, plot_temp_prof, plot_water_profile, top_mechanisms,           
        # Reaction rate functions
@@ -32,7 +32,8 @@ export # Basic utility functions
        # Boundary condition functions                                                   
        boundaryconditions, effusion_velocity, escape_probability, escaping_hot_atom_production, volume_rate_wrapper, nonthermal_escape_flux,
        # transport functions                                                                           
-       Dcoef!, diffparams, fluxcoefs, flux_param_arrays, flux_pos_and_neg, get_flux, get_transport_PandL_rate, Keddy, scaleH, update_diffusion_and_scaleH, update_transport_coefficients,                      
+       binary_dcoeff_inCO2, Dcoef_neutrals, Dcoef!, diffparams, fluxcoefs, flux_param_arrays, flux_pos_and_neg, get_flux, get_transport_PandL_rate, Keddy, 
+       limiting_flux, limiting_flux_molef, scaleH, update_diffusion_and_scaleH, update_transport_coefficients,                      
        # Chemistry functions
        format_Jrates, load_reaction_network, log_reactions, calculate_stiffness, check_jacobian_eigenvalues, chemical_jacobian, getrate, loss_equations, 
        loss_rate, make_chemjac_key, make_net_change_expr, meanmass, production_equations, production_rate, rxns_where_species_is_observer, 
@@ -47,7 +48,7 @@ export # Basic utility functions
        Psat, Psat_HDO         
 
 code_loc = "$(@__DIR__)/../../"
-println("Photochemistry.jl code_loc = $code_loc")
+# println("Photochemistry.jl code_loc = $code_loc")
 include(code_loc*"CUSTOMIZATIONS.jl") 
 include(code_loc*"CONSTANTS.jl")
                                                                                 
@@ -229,21 +230,39 @@ function generate_code(ii, TS, TM, TE, water, scyc;
     return hrcode, randstring()
 end
 
-function get_paramfile(working_dir)
+function get_deuterated(sp_list; exclude=[:O1D, :Nup2D])
+    #=
+    Just returns the same list but containing only deuterated species.
+    Inputs:
+        sp_list: List to search for the D-bearing species.
+        Optional:
+            exclude: a list of species names that may be identified as D-bearing but really are not 
+                     (usually because their name involves a D that represents an excited state).
+    Output:
+        The same list, but with only the D-bearing species.
+
+    =#
+    return [s for s in setdiff(sp_list, exclude) if occursin('D', string(s))];
+end
+
+function get_paramfile(working_dir; use_default=false)
     #=
     Helper function to let the user select a parameter file form working_dir. 
     =#
     available_paramfiles = filter(x->(occursin(".jl", x) & occursin("PARAMETERS", x)), readdir(working_dir))
 
-    println("Available parameter files: ")
-    [println("[$(i)] $(available_paramfiles[i])") for i in 1:length(available_paramfiles)]
-
     if length(available_paramfiles) == 1
         paramfile = available_paramfiles[1]
         println("Using the only file available, $(paramfile)")
     else 
-        paramfile_selection = input("Select a parameter file or enter filename with extension: ")
-        paramfile = available_paramfiles[parse(Int64, paramfile_selection)]
+        if use_default == true
+            paramfile = "PARAMETERS.jl"
+        else
+            println("Available parameter files: ")
+            [println("[$(i)] $(available_paramfiles[i])") for i in 1:length(available_paramfiles)]
+            paramfile_selection = input("Select a parameter file or enter filename with extension: ")
+            paramfile = available_paramfiles[parse(Int64, paramfile_selection)]
+        end
         println("Using parameter file $(paramfile).")
     end
 
@@ -373,19 +392,20 @@ function search_subfolders(path::String, key; type="folders")
     end
 end
 
-
 function string_to_latexstr(a; dollarsigns=true)
     #=
     Given some chemistry reaction string with things like "pl" and un-subscripted numbers, 
     this will format it as a latex string for easy plotting.
     =#
     if dollarsigns==true
-        return latexstring(replace(a, "Nup2D"=>"N(\$^2\$D)", "2pl"=>"\$_2^+\$", "3pl"=>"\$_3^+\$", "2"=>"\$_2\$", "3"=>"\$_3\$", "E"=>"e\$^-\$", 
+        returnme = latexstring(replace(a, "Nup2D"=>"N(\$^2\$D)", "2pl"=>"\$_2^+\$", "3pl"=>"\$_3^+\$", "2"=>"\$_2\$", "3"=>"\$_3\$", "E"=>"e\$^-\$", 
                                       "J"=>"", "plp"=>latexstring("\$^+ +\$"), "pl"=>latexstring("\$^+\$"),  "p"=>"\$+\$", 
-                                      "-->"=>latexstring("\$\\rightarrow\$"), "to"=>latexstring("\$\\rightarrow\$")) )
+                                      "-->"=>latexstring("\$\\rightarrow\$"), "to"=>latexstring("\$\\rightarrow\$")) ) 
     else # This is if you're trying to interpolate a variable that contains a latex string into an existing latex string...
-        return replace(a, "2"=>"_2", "3"=>"_3", "E"=>"e^-", "pl"=>"^+", "-->"=>"\\rightarrow")
+        returnme = replace(a, "2"=>"_2", "3"=>"_3", "E"=>"e^-", "pl"=>"^+", "-->"=>"\\rightarrow")
     end
+
+    return returnme
 end
 
 function subtract_difflength(a::Array, b::Array)
@@ -521,7 +541,7 @@ function load_from_paramlog(folder)
                    "Hs_dict"=>Hs_dict,
                    "speciesbclist"=>speciesbclist,
                    "rxn_spreadsheet"=>rxn_spreadsheet,
-                   "water_bd"=>water_bdy)
+                   "water_bdy"=>water_bdy)
 
     return vardict
 end
@@ -852,7 +872,7 @@ function precip_microns(sp, sp_profile; globvars...)
     return pr_microns
 end
 
-function scaleH(z::Vector{Float64}, sp::Symbol, T::Array; globvars...)
+function scaleH(z, sp::Symbol, T; globvars...)
     #=
     Input:
         z: Altitudes in cm
@@ -883,14 +903,15 @@ function scaleH(atmdict::Dict{Symbol, Vector{ftype_ncur}}, T::Vector; globvars..
     return @. kB*T/(mm_vec*mH*marsM*bigG)*(((GV.alt+radiusM))^2)
 end
 
-function setup_water_profile!(atmdict; dust_storm_on=false, multiplier="standard", hygropause_alt=40e5, globvars...)
+function setup_water_profile!(atmdict; dust_storm_on=false, make_sat_curve=false, tanh_prof="standard", fixed_bdy_i=n_alt_index[72e5], 
+                                       showonly=false, hygropause_alt=40e5, globvars...)
     #=
     Sets up the water profile as a fraction of the initial atmosphere. 
     Input:
         atmdict: dictionary of atmospheric density profiles by altitude
         Optional:
             dust_storm_on: whether to add an extra parcel of water at a certain altitude.
-            multiplier: "low", "standard", or "high" to choose 1/10, mean, or 10x as much water in the atmosphere.
+            tanh_prof: "low", "standard", or "high" to choose 1/10, mean, or 10x as much water in the atmosphere.
             hygropause_alt: altitude at which the water will switch from well-mixed to following the saturation vapor pressure curve.
     Output: 
         atmdict: Modified in place with the new water profile. 
@@ -898,8 +919,8 @@ function setup_water_profile!(atmdict; dust_storm_on=false, multiplier="standard
 
     GV = values(globvars)
     @assert all(x->x in keys(GV), [:all_species, :num_layers, :DH, :alt, :plot_grid, :n_alt_index,
-                                   :H2O_excess, :HDO_excess, :ealt, :non_bdy_layers, :H2Osat, :water_mixing_ratio,
-                                   :results_dir, :sim_folder_name])
+                                   :non_bdy_layers, :H2Osat, :water_mixing_ratio,
+                                   :results_dir, :sim_folder_name]) # not actually required: :H2O_excess, :HDO_excess, :ealt, 
 
     # H2O Water Profile ================================================================================================================
     H2Osatfrac = GV.H2Osat ./ map(z->n_tot(atmdict, z; GV.all_species, GV.n_alt_index), GV.alt)  # get SVP as fraction of total atmo
@@ -916,11 +937,11 @@ function setup_water_profile!(atmdict; dust_storm_on=false, multiplier="standard
     end
 
     # For doing highand low water cases ================================================================================================
-    if multiplier == "high"
-        H2Oinitfrac = H2Oinitfrac .* water_multiplier(non_bdy_layers./1e5; f=10)
-    elseif multiplier=="low"
-        H2Oinitfrac = H2Oinitfrac .* water_multiplier(non_bdy_layers./1e5; f=0.1)
-    elseif multiplier=="standard"
+    if tanh_prof == "high"
+        H2Oinitfrac[1:fixed_bdy_i] = H2Oinitfrac[1:fixed_bdy_i] .* water_tanh_prof(GV.non_bdy_layers./1e5; z0=GV.ealt, f=50)[1:fixed_bdy_i]
+    elseif tanh_prof=="low"
+        H2Oinitfrac[1:fixed_bdy_i] = H2Oinitfrac[1:fixed_bdy_i] .* water_tanh_prof(GV.non_bdy_layers./1e5; z0=GV.ealt, f=0.05)[1:fixed_bdy_i]
+    elseif tanh_prof=="standard"
         H2Oinitfrac=H2Oinitfrac
     end
 
@@ -929,16 +950,23 @@ function setup_water_profile!(atmdict; dust_storm_on=false, multiplier="standard
     atmdict[:HDO] = 2 * GV.DH * atmdict[:H2O] 
     HDOinitfrac = atmdict[:HDO] ./ n_tot(atmdict; GV.n_alt_index, GV.all_species)  # Needed to make water plots.
 
-    # Plot the water profile ===========================================================================================================
-    plot_water_profile(H2Oinitfrac, HDOinitfrac, atmdict[:H2O], atmdict[:HDO], GV.results_dir*GV.sim_folder_name, watersat=H2Osatfrac, plot_grid=GV.plot_grid)
-
+    
     # ADD EXCESS WATER AS FOR DUST STORMS.
     if dust_storm_on
-        H2Oppm = 1e-6*map(x->GV.H2O_excess .* exp(-((x-GV.ealt)/12.5)^2), GV.non_bdy_layers/1e5) + H2Oinitfrac
-        HDOppm = 1e-6*map(x->GV.HDO_excess .* exp(-((x-GV.ealt)/12.5)^2), GV.non_bdy_layers/1e5) + HDOinitfrac  # 350 ppb at 38 km (peak)
-        atmdict[:H2O] = H2Oppm .* n_tot(atmdict; GV.n_alt_index, GV.all_species)
-        atmdict[:HDO] = HDOppm .* n_tot(atmdict; GV.all_species)
+        sigma = 12.5
+        H2Oppm = 1e-6*map(z->GV.H2O_excess .* exp(-((z-GV.ealt)/sigma)^2), GV.non_bdy_layers/1e5) + H2Oinitfrac 
+        HDOppm = 1e-6*map(z->GV.HDO_excess .* exp(-((z-GV.ealt)/sigma)^2), GV.non_bdy_layers/1e5) + HDOinitfrac
+        atmdict[:H2O][1:fixed_bdy_i] = (H2Oppm .* n_tot(atmdict; GV.n_alt_index, GV.all_species))[1:fixed_bdy_i]
+        atmdict[:HDO][1:fixed_bdy_i] = (HDOppm .* n_tot(atmdict; GV.all_species))[1:fixed_bdy_i]
     end
+
+    # Plot the water profile ===========================================================================================================
+    if make_sat_curve
+        satarray = H2Osatfrac
+    else
+        satarray = nothing 
+    end
+    plot_water_profile(H2Oinitfrac, HDOinitfrac, atmdict[:H2O], atmdict[:HDO], GV.results_dir*GV.sim_folder_name, watersat=satarray, plot_grid=GV.plot_grid, showonly=showonly)
 end 
 
 function unflatten_atm(n_vec, species_list; globvars...)
@@ -958,10 +986,12 @@ function unflatten_atm(n_vec, species_list; globvars...)
     return atm_matrix_to_dict(n_matrix, species_list)
 end
 
-function water_multiplier(z; f=10, z0=62, dz=11)
+function water_tanh_prof(z; f=10, z0=62, dz=11)
     #=
-    Apply a multiplier to the water init fraction to add or subtract water from the atmosphere.
+    Apply a tanh_prof to the water init fraction to add or subtract water from the atmosphere.
     =#
+
+    # subtract_me = f > 1 ? 1 : f/2
 
     return ((f .- 1)/2) * (tanh.((z .- z0) ./ dz) .+ 1) .+ 1
 end
@@ -1773,7 +1803,6 @@ function plot_water_profile(H2Oinitf, HDOinitf, nH2O, nHDO, savepath::String; sh
     plot_bg(ax)
     ax.tick_params(axis="x", which="minor", bottom=true, top=true)
 
-    
     ax1col = "#88527F"
     
     # mixing ratio in PPM axis
@@ -1782,7 +1811,7 @@ function plot_water_profile(H2Oinitf, HDOinitf, nH2O, nHDO, savepath::String; sh
     ax.set_xlabel("Volume Mixing Ratio [ppm]", color=ax1col)
     ax.set_ylabel("Altitude [km]")
     ax.tick_params(axis="x", labelcolor=ax1col)
-    ax.set_xticks(collect(logrange(1e-4, 1e2, 4)))
+    ax.set_xticks(collect(logrange(1e-6, 1e2, 5)))
 
     # LEgend
     L2D = PyPlot.matplotlib.lines.Line2D
@@ -1819,7 +1848,7 @@ function plot_water_profile(H2Oinitf, HDOinitf, nH2O, nHDO, savepath::String; sh
         xlabel("Mixing ratio", fontsize=18)
         ylabel("Altitude [km]", fontsize=18)
         xlim(1e-8, 1)
-        ax.set_xticks([1e-8, 1e-6, 1e-4, 1e-2, 1e-0, 1])
+        ax.set_xticks([1e-12, 1e-10, 1e-8, 1e-6, 1e-4, 1e-2, 1e-0, 1])
         title(L"H$_2$O saturation fraction", fontsize=20)
         ax.tick_params("both",labelsize=16)
         legend()
@@ -2066,16 +2095,16 @@ function boundaryconditions(fluxcoef_dict, atmdict, M; nonthermal=true, globvars
         prod_hotHD = escaping_hot_atom_production(:HD, GV.hot_HD_network, GV.hot_HD_rc_funcs, atmdict, M; globvars...)
 
         # DIAGNOSTIC: produced hot H
-        if :results_dir in keys(GV)
-            fig, ax = subplots()
-            plot(prod_hotH, GV.plot_grid)
-            xlabel("production rate")
-            ylabel("altitude")
-            xscale("log")
-            xlim(left=1e-10)
-            savefig(GV.results_dir*GV.sim_folder_name*"/prod_hotH.png")
-            close(fig)
-        end
+        # if :results_dir in keys(GV)
+        #     fig, ax = subplots()
+        #     plot(prod_hotH, GV.plot_grid)
+        #     xlabel("production rate")
+        #     ylabel("altitude")
+        #     xscale("log")
+        #     xlim(left=1e-10)
+        #     savefig(GV.results_dir*GV.sim_folder_name*"/prod_hotH.png")
+        #     close(fig)
+        # end
 
         bc_dict[:H][2, :] .+= [0, -(1/GV.dz)*nonthermal_escape_flux(GV.hot_H_network, prod_hotH; returntype="number", globvars...)]
         bc_dict[:D][2, :] .+= [0, -(1/GV.dz)*nonthermal_escape_flux(GV.hot_D_network, prod_hotD; returntype="number", globvars...)]
@@ -2240,6 +2269,40 @@ These coefficients then describe the diffusion velocity at the top
 and bottom of the atmosphere.
 =#
 
+function binary_dcoeff_inCO2(sp, T)
+    #=
+    Calculate the bindary diffusion coefficient for species sp.
+
+    Currently, this is set up to only work for diffusion through CO2 since that's the Mars atm.
+    Could be extended to be for any gas, but that will require some work.
+    =#
+    return diffparams(sp)[1] .* 1e17 .* T .^ (diffparams(sp)[2])
+end
+
+function Dcoef_neutrals(z, sp::Symbol, b, atmdict::Dict{Symbol, Vector{ftype_ncur}}; globvars...)
+    #=
+    Calculate the basic diffusion coefficient, AT^s/n.
+    Inputs:
+        z: An altitude or array of altitudes in cm.
+        sp: Species for which to calculate.
+        T: Temperature in K or array of temperatures.
+        atmdict: Present atmospheric state.
+    Outputs: 
+        D: Diffusion coefficient AT^s/n
+
+    Usable at either a specific altitude or all altitudes (array format). z and T must be same type.
+    =#
+    GV = values(globvars)
+    @assert all(x->x in keys(GV), [:all_species, :n_alt_index])
+
+    if (typeof(z)==Float64) & (typeof(b)==Float64)
+        return b ./ n_tot(atmdict, z; GV.all_species, GV.n_alt_index)
+    else 
+        return b ./ n_tot(atmdict; GV.all_species, GV.n_alt_index)
+    end
+end
+
+
 function Dcoef!(D_arr, T_arr, sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}; globvars...) 
     #=
     Calculates the molecular diffusion coefficient for an atmospheric layer.
@@ -2262,14 +2325,14 @@ function Dcoef!(D_arr, T_arr, sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncu
     GV = values(globvars)
     @assert all(x->x in keys(GV), [:all_species, :molmass, :neutral_species, :n_alt_index, :polarizability, :q, :speciesbclist])
    
-    # Calculate as if it was a neutral
-    D_arr[:] .= (diffparams(sp)[1] .* 1e17 .* T_arr .^ (diffparams(sp)[2])) ./ n_tot(atmdict; GV.all_species, GV.n_alt_index)
+    # Calculate as if it was a neutral - not using function above because this is faster than going into 
+    # the function and using an if/else block since we know we'll always have vectors in this case.
+    D_arr[:] .= (binary_dcoeff_inCO2(sp, T_arr)) ./ n_tot(atmdict; GV.all_species, GV.n_alt_index)
 
-    # a place to store the density array
-    species_density = zeros(size(T_arr))
-    
     # If an ion, overwrite with the ambipolar diffusion
     if charge_type(sp) == "ion"
+        # a place to store the density array and nu_in
+        species_density = zeros(size(T_arr))
         sum_nu_in = zeros(size(T_arr))
 
         # mi = GV.molmass[sp] .* mH
@@ -2658,6 +2721,53 @@ function Keddy(z::Vector, nt::Vector)
     k[upperatm] .= 2e13 ./ sqrt.(nt[upperatm])
 
     return k
+end
+
+function limiting_flux(sp, atmdict, T_arr; globvars...)
+    #=
+    Calculate the limiting upward flux (Hunten, 1974; Zahnle, 2008). 
+    Inputs:
+        sp: A species that is traveling upwards
+        atmdict: present atmospheric state
+        T_arr: Array of neutral temperatures
+    Output:
+        Φ, limiting flux for a hydrostatic atmosphere
+    =#
+    GV = values(globvars)
+    @assert all(x->x in keys(GV), [:all_species, :alt, :non_bdy_layers, :molmass, :n_alt_index])
+    
+    # Calculate some common things: mixing ratio, scale height, binary diffusion coefficient AT^s
+    fi = atmdict[sp] ./ n_tot(atmdict; globvars...)
+    Ha = scaleH(atmdict, T_arr; globvars..., alt=GV.non_bdy_layers)
+    bi = binary_dcoeff_inCO2(sp, T_arr)
+
+    mass_ratio = GV.molmass[sp] / meanmass(atmdict; globvars...) 
+
+    if (all(m->m<0.1, mass_ratio)) & (all(f->f<0.0001, fi)) # Light minor species approximation
+        return bi .* fi ./ Ha
+    else # Any species
+        D = Dcoef_neutrals(non_bdy_layers, sp, bi, atmdict; globvars...)    
+        return (D .* atmdict[sp] ./ Ha) .* (1 .- GV.molmass[sp] ./ meanmass(atmdict; globvars...))
+    end
+end
+
+function limiting_flux_molef(sp, atmdict, T_arr; globvars...)
+    #=
+    Roger requested the limiting flux in in mole fraction. This is actually the same result as above. But this way we're sure
+    =#
+    GV = values(globvars)
+    @assert all(x->x in keys(GV), [:all_species, :alt, :non_bdy_layers, :molmass, :n_alt_index])
+
+    avogadro = 6.022e23
+
+    X = (atmdict[sp] ./ avogadro) ./ (n_tot(atmdict; globvars...) ./ avogadro)
+    # Calculate some common things: mixing ratio, scale height, binary diffusion coefficient AT^s
+
+    Ha = scaleH(atmdict, T_arr; globvars..., alt=GV.non_bdy_layers)
+    bi = binary_dcoeff_inCO2(sp, T_arr)
+    Hi = scaleH(non_bdy_layers, sp, T_arr; globvars...)
+
+    return bi .* X .* (1 ./ Ha - 1 ./ Hi), X
 end
 
 # thermal diffusion factors
@@ -5062,14 +5172,22 @@ function T(z, Tsurf, Tmeso, Texo, sptype::String; lapserate=-1.4e-5)
         #=
         This is a totally arbitary functional form for the region from [z_meso_top, 138]
         =#
-        M = 47/13
-        B = -3480/13
+        # Values used for Gwen's DD* profile, SZA 40, Hanley+2021:
+        #M = 47/13
+        #B = -3480/13
+        # New values for fit to SZA 60,Hanley+2022:
+        M = 3.39157034
+        B = -286.48716122
         return M*(z/1e5) + B
     end
     
     function T_meso_ions_byeye(z)
         # This is completely made up! Not fit to any data!
-        return 170/49 * (z/1e5) -11990/49
+        # It is only designed to make a smooth curve between the upper atmospheric temperatures,
+        # which WERE fit to data, and the mesosphere, where we demand the ions thermalize.
+
+        # Values used for Gwen's DD8 profile, SZA 40:  170/49 * (z/1e5) -11990/49
+        return 136/49 * (z/1e5) -9000/49 # These values are for the new fit to SZA 60, Hanley+2022. (11/2/22)
     end
     
     # In the lower atmosphere, neutrals, ions, and electrons all 
@@ -5087,6 +5205,7 @@ function T(z, Tsurf, Tmeso, Texo, sptype::String; lapserate=-1.4e-5)
             # This region connects the upper atmosphere with the isothermal mesosphere
             if z_meso_top <= z < stitch_alt_electrons
                 return bobs_profile(z, -1289.05806755, 469.31681082, 72.24740123, -50.84113252)
+            
             # This next region is a fit of the tanh electron temperature expression in Ergun+2015 and 2021 
             # to the electron profile in Hanley+2021, DD8
             elseif z >= stitch_alt_electrons
@@ -5097,7 +5216,7 @@ function T(z, Tsurf, Tmeso, Texo, sptype::String; lapserate=-1.4e-5)
             if z_meso_top < z <= stitch_alt_ions
                 return T_meso_ions_byeye(z) < Tmeso ? Tmeso : T_meso_ions_byeye(z)
             elseif z > stitch_alt_ions
-                return T_upper_atmo_ions(z)#bobs_profile(z, 4.87796600e+06, 2.15643719e+02, 7.83610155e+02, 1.16129872e+02)
+                return T_upper_atmo_ions(z)
             end
         end
     end

@@ -57,7 +57,7 @@ println("$(Dates.format(now(), "(HH:MM:SS)")) Loaded modules in $(format_sec_or_
 include("CONSTANTS.jl")
 include("CUSTOMIZATIONS.jl")
 
-paramfile = get_paramfile(code_dir)
+paramfile = get_paramfile(code_dir; use_default=true) # Set use_default to false to select from available files
 include(paramfile)
 
 t3 = time()
@@ -147,8 +147,10 @@ function evolve_atmosphere(atm_init::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_s
     end
 
     # Now define the problem function to be solved
-    println("$(Dates.format(now(), "(HH:MM:SS)")) Defining ODE function")
-    odefunc = ODEFunction(PnL_eqn, jac=jacobian_wrapper, jac_prototype=example_jacobian)
+    if problem_type != "Gear"
+        println("$(Dates.format(now(), "(HH:MM:SS)")) Defining ODE function")
+        odefunc = ODEFunction(PnL_eqn, jac=jacobian_wrapper, jac_prototype=example_jacobian)
+    end
 
     # Log solver options and run the solver
     push!(PARAMETERS_SOLVER, ("JAC_NONZERO", sparsity))
@@ -191,12 +193,12 @@ function evolve_atmosphere(atm_init::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_s
         push!(PARAMETERS_SOLVER, ("RELTOL", reltol))
         write_to_log(logfile, write_time_stuff, mode="a")
         println("$(Dates.format(now(), "(HH:MM:SS)")) Calling the solver")
-        sol = converge(atm_init, log_t_start, log_t_end; abstol=abstol, reltol=reltol, globvars...) # this is where the action happens
+        sol, sim_time = converge(atm_init, log_t_start, log_t_end; abstol=abstol, reltol=reltol, globvars...) # this is where the action happens
     else
         throw("Invalid problem_type")
     end 
 
-    return sol 
+    return sol, sim_time
 end
 
 function record_atmospheric_state(t, n, actively_solved, E_prof; opt="", globvars...)
@@ -500,7 +502,7 @@ function update_Jrates!(n_cur_densities::Dict{Symbol, Array{ftype_ncur, 1}}; glo
     # Each sub-array is an array of length 2000, corresponding to 2000 wavelengths.
     solarabs = Array{Array{Float64}}(undef, GV.num_layers)
     for i in range(1, length=GV.num_layers)
-        solarabs[i] = zeros(Float64, 2000)
+        solarabs[i] = zeros(Float64, 2000)#2000)
     end
 
     nalt = size(solarabs, 1)
@@ -756,7 +758,7 @@ function get_rates_and_jacobian(n, p, t; globvars...)
     D_arr, M, E = p 
 
     # Records the atmospheric state whenever the total time elapsed has progressed 10x. Does not land on perfect powers of 10.
-    if t >= checkpoint 
+    if t >= checkpoint  # (checkpoint - (sol_in_sec/2)) <= t <= (checkpoint + (sol_in_sec/2))  #
         record_atmospheric_state(t, n, GV.active_longlived, E; opt=GV.opt, globvars...)
         global t_i += 1
 
@@ -765,7 +767,7 @@ function get_rates_and_jacobian(n, p, t; globvars...)
         else
             global checkpoint = times_to_save[end] * 10 # This will update the checkpoint so the simulation doesn't stop at every dt in the last t. 
         end
-        
+        println("New checkpoint = $(checkpoint)")
     end
 
     # retrieve the shortlived species from their storage and flatten them
@@ -1092,11 +1094,31 @@ function converge(n_current::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_start, lo
         goodsteps = 0
         goodstep_limit = 1 # Need at least this many successful iterations before increasing timestep
        
-        while dt < 10.0^log_t_end
+        while (dt < 10.0^log_t_end) #& (total_time <= season_length_in_sec)
+            
+            # n_old = deepcopy(n_current)
+            n_temp = deepcopy(n_current)
+
+            # SPECIAL BLOCK
+            # if seasonal_cycle == true
+            #     if ((total_time + dt) > checkpoint) | (checkpoint == season_length_in_sec)
+            #         println("Entering special block to try and meet $(checkpoint)")
+            #         temp_dt = checkpoint - total_time
+            #         n_temp = update!(n_temp, total_time+temp_dt, temp_dt; abstol=abstol, reltol=reltol, globvars...)
+            #     end 
+
+            #     # This should take care of the case where we are trying to collect the season end
+            #     if (checkpoint == season_length_in_sec)
+            #         temp_total_time = total_time + temp_dt 
+            #         println("Entering special block to try and meet $(checkpoint)")
+            #         temp_dt = checkpoint - temp_total_time
+            #         n_temp = update!(n_temp, temp_total_time+temp_dt, temp_dt; abstol=abstol, reltol=reltol, globvars...)
+            #     end 
+            # end
+            # END SPECIAL BLOCK 
+
             total_time += dt
-            # println("t  = $total_time")
-            # println("dt = $dt")
-            n_old = deepcopy(n_current)
+        
             try
                 n_current = update!(n_current, total_time, dt; abstol=abstol, reltol=reltol, globvars...)
                 goodsteps += 1
@@ -1117,7 +1139,7 @@ function converge(n_current::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_start, lo
         end
     end
     
-    return n_current
+    return n_current, total_time
 end
 
 function plot_production_and_loss(final_atm, results_dir, thefolder; globvars...)
@@ -1316,7 +1338,7 @@ const n_inactive = flatten_atm(n_current, inactive_species; num_layers)
 if reset_water_profile
     # hygropause_alt is an optional argument. If using, must be a unit of length in cm i.e. 40e5 = 40 km.
     println("$(Dates.format(now(), "(HH:MM:SS)")) Setting up the water profile...")
-    setup_water_profile!(n_current; multiplier=water_case, all_species, num_layers, non_bdy_layers, DH, alt, plot_grid, # hygropause_alt, 
+    setup_water_profile!(n_current; dust_storm_on=dust_storm_on, tanh_prof=water_case, all_species, num_layers, non_bdy_layers, DH, alt, plot_grid, # hygropause_alt, 
                                     H2O_excess, HDO_excess, ealt=excess_peak_alt, H2Osat, water_mixing_ratio, n_alt_index, results_dir, 
                                     sim_folder_name, upper_lower_bdy_i)
 end
@@ -1324,12 +1346,13 @@ end
 # If you want to just modify the water profile, i.e. when running several simulations
 # in succession to simulate seasons: 
 if update_water_profile     
-    fdict = Dict("high"=>10, "low"=>0.1)
+    fdict = Dict("high"=>50, "low"=>0.05)
     if water_case!="standard"
-        new_frac_H2O = (n_current[:H2O] ./ n_tot(n_current; n_alt_index, all_species)) .* water_multiplier(non_bdy_layers./1e5; f=fdict[water_case])
-        new_frac_HDO = (n_current[:HDO] ./ n_tot(n_current; n_alt_index, all_species))  .* water_multiplier(non_bdy_layers./1e5; f=fdict[water_case])
-        n_current[:H2O] = new_frac_H2O .* n_current[:H2O]
-        n_current[:HDO] = new_frac_HDO .* n_current[:HDO]
+        new_frac_H2O = (n_current[:H2O] ./ n_tot(n_current; n_alt_index, all_species)) .* water_tanh_prof(non_bdy_layers./1e5; f=fdict[water_case])
+        new_frac_HDO = (n_current[:HDO] ./ n_tot(n_current; n_alt_index, all_species))  .* water_tanh_prof(non_bdy_layers./1e5; f=fdict[water_case])
+        # Update the densities, changing only below the fixed point
+        n_current[:H2O][1:upper_lower_bdy_i] = new_frac_H2O[1:upper_lower_bdy_i] .* n_current[:H2O][1:upper_lower_bdy_i]
+        n_current[:HDO][1:upper_lower_bdy_i] = new_frac_HDO[1:upper_lower_bdy_i] .* n_current[:HDO][1:upper_lower_bdy_i]
         plot_water_profile(new_frac_H2O, new_frac_HDO, n_current[:H2O], n_current[:HDO], results_dir*sim_folder_name; plot_grid) 
     end
 end
@@ -1711,7 +1734,7 @@ const crosssection = populate_xsect_dict(photochem_data_files; ion_xsects=ions_i
 #                                SOLAR INPUT                                   #
 #                                                                              #
 # **************************************************************************** #
-solarflux = readdlm(code_dir*solarfile,'\t', Float64, comments=true, comment_char='#')[1:2000,:]
+solarflux = readdlm(code_dir*solarfile,'\t', Float64, comments=true, comment_char='#')[1:2000,:] # 2000
 solarflux[:,2] = solarflux[:,2] * cosd(SZA)  # Adjust the flux according to specified SZA
 
 lambdas = Float64[]
@@ -1720,7 +1743,7 @@ for j in Jratelist, ialt in 1:length(alt)
 end
 
 if !(setdiff(solarflux[:,1],lambdas)==[])
-    throw("Need a broader range of solar flux values!")
+    throw("Solar flux wavelengths don't match cross section wavelengths!")
 end
 
 # pad all cross-sections to solar
@@ -1798,8 +1821,8 @@ const mindt = dt_min_and_max[converge_which][1]
 const maxdt = dt_min_and_max[converge_which][2]
 # times to save for cycling:
 if seasonal_cycle==true
-    const times_to_save = collect(1:sol_in_sec*7:season_length_in_sec) # save every 7 mars days
-    push!(times_to_save, times_to_save[end]+sol_in_sec*6.1) # The last save step is 6.1 days forward so we don't go over the timeframe.
+    const times_to_save = collect(sol_in_sec:sol_in_sec*7:season_length_in_sec) # save every 7 mars days
+    push!(times_to_save, times_to_save[end]+sol_in_sec*( (season_length_in_sec - times_to_save[end])/sol_in_sec) ) # The last save step is less than a week forward so we don't go over the timeframe.
 else
     const times_to_save = [10.0^t for t in mindt:maxdt]
 end
@@ -1810,7 +1833,7 @@ plotnum = 1 # To order the plots for each timestep correctly in the folder so it
 
 # Record setup time
 t5 = time()
-write_to_log(logfile, "\n$(Dates.format(now(), "(HH:MM:SS)")) Setup time $(format_sec_or_min(t5-t4))", mode="a")
+write_to_log(logfile, ["\nRequesting timesteps $(join(times_to_save, ", "))", "\n$(Dates.format(now(), "(HH:MM:SS)")) Setup time $(format_sec_or_min(t5-t4))"], mode="a")
 
 # **************************************************************************** #
 #                                                                              #
@@ -1865,7 +1888,7 @@ Dcoef_arr_template = zeros(size(Tn_arr)) # initialize diffusion coefficient arra
 atm_soln = Dict()
 
 try
-    global atm_soln = evolve_atmosphere(n_current, mindt, maxdt; t_to_save=times_to_save, abstol=atol, reltol=rel_tol, 
+    global atm_soln, sim_time = evolve_atmosphere(n_current, mindt, maxdt; t_to_save=times_to_save, abstol=atol, reltol=rel_tol, 
                                  # glob vars from here.  
                                  absorber, active_species, active_longlived, active_shortlived, all_species, alt, 
                                  collision_xsect, crosssection, Dcoef_arr_template, dt_incr_factor, dt_decr_factor, dz, 
@@ -1899,25 +1922,28 @@ println("$(Dates.format(now(), "(HH:MM:SS)")) Simulation active convergence runt
 # ! NO GUARANTEE THAT SS AND ODE SOLVERS WORK RIGHT NOW !
 if problem_type == "SS"
     # Update short-lived species one more time
+    println("One last update of short-lived species")
     n_short = flatten_atm(external_storage, active_shortlived; num_layers)
     Jrates = deepcopy(Float64[external_storage[jr][ialt] for jr in Jratelist, ialt in 1:num_layers])
     set_concentrations!(external_storage, atm_soln.u, n_short, inactive, 
                         active_longlived, active_shortlived, inactive_species, Jrates, Tn_arr, Ti_arr, Te_arr)
     nc_all = merge(external_storage, unflatten_atm(atm_soln.u, active_longlived; num_layers))
 
+    println("Plotting final atmosphere, writing out state")
     # Make final atmosphere plot
     plot_atm(nc_all, [neutral_species, ion_species], results_dir*sim_folder_name*"/final_atmosphere.png", t="final converged state", plot_grid, 
                       speciescolor, speciesstyle, zmax, abs_tol_for_plot)
 
 
     write_final_state(nc_all, results_dir, sim_folder_name, final_atm_file; alt, num_layers, hrshortcode, Jratedict=Jrates, rshortcode, external_storage)
+    write_to_log(logfile, "$(Dates.format(now(), "(HH:MM:SS)")) Making production/loss plots", mode="a")
+    println("Making production/loss plots (this tends to take several minutes)")
     plot_production_and_loss(nc_all, results_dir, sim_folder_name; nonthermal=nontherm, all_species, alt, chem_species, collision_xsect, 
                               dz, hot_D_rc_funcs, hot_H_rc_funcs, hot_H2_rc_funcs, hot_HD_rc_funcs, Hs_dict, 
                               hot_H_network, hot_D_network, hot_H2_network, hot_HD_network, hrshortcode, ion_species, Jratedict,
                               molmass, neutral_species, non_bdy_layers, num_layers, n_all_layers, n_alt_index, polarizability, 
                               plot_grid, q, rshortcode, reaction_network, speciesbclist, Tn=Tn_arr, Ti=Ti_arr, Te=Te_arr, Tp=Tplasma_arr, 
                               Tprof_for_Hs, Tprof_for_diffusion, transport_species, upper_lower_bdy_i, upper_lower_bdy, zmax)
-
 elseif problem_type == "ODE"
 
     L = length(atm_soln.u)
@@ -1934,6 +1960,7 @@ elseif problem_type == "ODE"
             write_atmosphere(nc_all, results_dir*sim_folder_name*"/atm_state_t_$(timestep).h5"; alt, num_layers, hrshortcode, rshortcode) 
         elseif i == L
             # Update short-lived species one more time
+            println("One last update of short-lived species")
             local n_short = flatten_atm(external_storage, active_shortlived; num_layers)
             local Jrates = deepcopy(Float64[external_storage[jr][ialt] for jr in Jratelist, ialt in 1:num_layers])
             set_concentrations!(external_storage, atm_state, n_short, inactive, Jrates; active_longlived, active_shortlived, 
@@ -1941,10 +1968,13 @@ elseif problem_type == "ODE"
             local nc_all = merge(external_storage, unflatten_atm(atm_state, active_longlived; num_layers))
 
             # Make final atmosphere plot
+            println("Plotting final atmosphere, writing out state")
             plot_atm(nc_all, results_dir*sim_folder_name*"/final_atmosphere.png", t="final converged state", abs_tol_for_plot; neutral_species, ion_species, 
                      plot_grid, speciescolor, speciesstyle, zmax)
 
             write_final_state(nc_all, results_dir, sim_folder_name, final_atm_file; alt, num_layers, hrshortcode, Jratedict=Jrates, rshortcode, external_storage)
+            write_to_log(logfile, "$(Dates.format(now(), "(HH:MM:SS)")) Making production/loss plots", mode="a")
+            println("Making production/loss plots (this tends to take several minutes)")
             plot_production_and_loss(nc_all, results_dir, sim_folder_name; nonthermal=nontherm, all_species, alt, chem_species, collision_xsect, 
                                       dz, hot_D_rc_funcs, hot_H_rc_funcs, hot_H2_rc_funcs, hot_HD_rc_funcs, Hs_dict, 
                                       hot_H_network, hot_D_network, hot_H2_network, hot_HD_network, hrshortcode, ion_species, Jratedict,
@@ -1956,18 +1986,18 @@ elseif problem_type == "ODE"
         global i += 1 
     end
 elseif problem_type == "Gear"
-
     # Plot the final atmospheric state
+    println("Plotting final atmosphere, writing out state")
     plot_atm(atm_soln, results_dir*sim_folder_name*"/final_atmosphere.png", abs_tol_for_plot, sum([atm_soln[i] for i in ion_species]); 
-             t="final converged state", neutral_species, ion_species, plot_grid, speciescolor, speciesstyle, zmax, hrshortcode, rshortcode)
+             t="final converged state, total time = $(sim_time)", neutral_species, ion_species, plot_grid, speciescolor, speciesstyle, zmax, hrshortcode, rshortcode)
 
-   
     # Collect the J rates
     Jratedict = Dict([j=>external_storage[j] for j in keys(external_storage) if occursin("J", string(j))])
     # Write out the final state to a unique file for easy finding
     write_final_state(atm_soln, results_dir, sim_folder_name, final_atm_file; alt, num_layers, hrshortcode, Jratedict, rshortcode, external_storage)
     
-
+    write_to_log(logfile, "$(Dates.format(now(), "(HH:MM:SS)")) Making production/loss plots", mode="a")
+    println("$(Dates.format(now(), "(HH:MM:SS)")) Making production/loss plots (this tends to take several minutes)")
     # make production and loss plots
     plot_production_and_loss(atm_soln, results_dir, sim_folder_name; nonthermal=nontherm, all_species, alt, chem_species, collision_xsect, 
                               dz, hot_D_rc_funcs, hot_H_rc_funcs, hot_H2_rc_funcs, hot_HD_rc_funcs, Hs_dict, 

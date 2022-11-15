@@ -15,7 +15,7 @@ using DoubleFloats
 
 const code_dir = "$(@__DIR__)/"
 # const extra_plots_dir = code_dir*"../Auxiliary plots/"
-const results_dir = code_dir*"../Results-Paper3/"
+const results_dir = code_dir*"../Results/"#-Paper3/"
 const xsecfolder = code_dir*"uvxsect/";
 
 # Float types for calculations =================================================
@@ -33,7 +33,6 @@ const intaltgrid = round.(Int64, alt/1e5)[2:end-1]; # the altitude grid CELLS bu
 const non_bdy_layers = alt[2:end-1]  # all layers, centered on 2 km, 4...248. Excludes the boundary layers which are [-1, 1] and [249, 251].
 const num_layers = length(non_bdy_layers) # there are 124 non-boundary layers.
 const plot_grid = non_bdy_layers ./ 1e5;  # for plotting. Points located at atmospheric layer cell centers and in units of km.
-#const plot_grid_bdys = collect(1:2:((max_alt / 1e5)-1))  # the boundaries; includes the boundary layers at top and bottom.
 
 const zmin = alt[1]
 const zmax = alt[end];

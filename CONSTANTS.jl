@@ -78,7 +78,8 @@ const molmass = Dict(:H=>1, :Hpl=>1,
                      :O3=>48, 
                      )
 
-const collision_xsect = Dict(:H=>4e-15, :D=>4.5e-15, # Zhang 2009
+const collision_xsect = Dict(:H=>4e-15, # Zhang 2009
+                             :D=>4.5e-15, 
                              :H2=>4.5e-15, # assume same as D since they have the same mass...
                              :HD=>5e-15 # assumption that adding a proton or neutron adds 0.5e-15 to the cross section...
                             ) # Units of cm^2; Bohr radius 8.79e-17
