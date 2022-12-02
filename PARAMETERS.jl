@@ -25,24 +25,25 @@ using DataFrames
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
 
 # Basic simulation parameters
-const optional_logging_note = "Just testing I didn't break anything before committing" # Simulation goal
-
-const simset = "paper2" #"paper3" # # Fine to leave this as paper3
-const results_version = "vTEST"  # Helps keep track of attempts 
-const initial_atm_file = "INITIAL_GUESS.h5" #  "cycle_coldexo_manual.h5" # "cycle_mid_manual.h5"# "cycle_hotexo_manual.h5" #"cycle_start_manual.h5" # 
+const optional_logging_note = "TEST module rework" # "High mesospheric water, re-run after improvements" # Simulation goal
+const simset = "paper3" #"paper2" # # Fine to leave this as paper3
+const results_version = "v2"  # Helps keep track of attempts 
+const initial_atm_file = "INITIAL_GUESS.h5" # "cycle_coldexo.h5"# "cycle_mid.h5" # "cycle_hotexo.h5"# "cycle_start.h5" #
 # Other options:
 # "low_water.h5" # "midcycle_water.h5" # "cycle_highwater.h5"# "cycle_stdwater.h5"# 
+# 
 
-const seasonal_cycle = false # true #  whether testing how things change with seasonal cycles
+const seasonal_cycle = false #true #   whether testing how things change with seasonal cycles
+const timestep_type =  "dynamic-log"#"log-linear"#  # basically never use this one: "static-log"# 
 
 # SET EXPERIMENT
-const paper3_exp = "temperature" #"water" #  "insolation"#
+const paper3_exp =  "temperature" #"water" # "insolation"#
 # temperature
 const use_for_Texo = 225.
 #water
-const water_case = "standard" # "high" # "low"# # You can use these to use various tanh profiles that Mike invented
+const water_case = "standard" # "high" #"low"# # You can use these to use various tanh profiles that Mike invented
 const water_mixing_ratio = 1.3e-4 #  6.35e-4 #1.25e-5 # 
-const update_water_profile = false
+const update_water_profile = false # this is for modifying the profile during cycling, currently doesn't work well
 # solar cycle
 const solarcyc = "mean" # "max" # "min"#
 
@@ -67,7 +68,7 @@ if simset=="paper3"
     const solarfile = "marssolarphotonflux_solarmean_NEW.dat"
     const controltemps = [230., 130., use_for_Texo]
     const meanexo = paper3_Texo_opts["mean"]
-    extra_str = seasonal_cycle==true ? "cycle" : ""
+    extra_str = seasonal_cycle==true ? "cycle" : "eq"
 
     if paper3_exp=="temperature"
         println("Testing T_exo = $(controltemps[3])")
@@ -94,11 +95,12 @@ end
 # Temperature and water
 
 const meantemps = [230., 130., meanexo] # Used for saturation vapor pressure. DON'T CHANGE!
-const reset_water_profile = seasonal_cycle==true ? false : true# should be off if trying to run simulations that test seasonal cycling
+const reinitialize_water_profile = seasonal_cycle==true ? false : true# should be off if trying to run simulations that test seasonal cycling
 
 # Tolerance and timespans 
 const season_length_in_sec = seasonal_cycle==true ? 1.4838759e7 : 1e16
-const dt_min_and_max = Dict("neutrals"=>[-3, 14], "ions"=>[-4, 6], "both"=>[-3, log10(season_length_in_sec)]) 
+const maxlogdt = seasonal_cycle==true ? 5 : 16
+const dt_min_and_max = Dict("neutrals"=>[-3, 14], "ions"=>[-4, 6], "both"=>[-3, maxlogdt]) # log10(season_length_in_sec)
 const rel_tol = 1e-6
 const abs_tol = 1e-12 
 
@@ -129,7 +131,6 @@ const adding_new_species = false # set to true if introducing a new species.
 
 # Algorithm and timestepping scheme
 const problem_type = "Gear" #"SS" #"ODE" #  
-const timestep_type = "dynamic"#"static"#  
 # for static timesteps:
 const n_steps = 800 # for static case
 # for dynamic timesteps:

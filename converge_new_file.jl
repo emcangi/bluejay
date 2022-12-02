@@ -456,36 +456,6 @@ function ratefn(n_active_longlived, n_active_shortlived, n_inactive, Jrates, tup
     return [returnrates...;]
 end
 
-function compile_ncur_all(n_long, n_short, n_inactive; globvars...)
-    #=
-    While the simulation runs, "n", the vector passed to the solver, only contains densities
-    for long-lived, active species. Every time the atmospheric state changes, the transport coefficients
-    and Jrates must be updated, but those all depend on the densities of ALL species. It's easiest for 
-    the functions updating those things to pull from one atmospheric state dictionary, 
-    so this function combines disparate density vectors back into one dictionary.
-
-    Input:
-        n_long: active, long-lived species densities
-        n_short: same but for short-lived species
-        n_inactive: inactive species densities (truly, these never change)
-    Output:
-        atmospheric state dictionary of species densities only (no Jrates).
-    =#
-
-    GV = values(globvars)
-    @assert all(x->x in keys(GV), [:active_longlived, :active_shortlived, :inactive_species, :num_layers])
-
-    n_cur_active_long = unflatten_atm(n_long, GV.active_longlived; num_layers=GV.num_layers)
-    n_cur_active_short = unflatten_atm(n_short, GV.active_shortlived; num_layers=GV.num_layers)
-    n_cur_inactive = unflatten_atm(n_inactive, GV.inactive_species; num_layers=GV.num_layers)
-
-    n_cur_all = Dict(vcat([k=>n_cur_active_long[k] for k in keys(n_cur_active_long)],
-                          [k=>n_cur_active_short[k] for k in keys(n_cur_active_short)],
-                          [k=>n_cur_inactive[k] for k in keys(n_cur_inactive)]))
-    
-    return n_cur_all
-end
-
 function update_Jrates!(n_cur_densities::Dict{Symbol, Array{ftype_ncur, 1}}; globvars...)
     #=
     this function updates the photolysis rates stored in n_cur_densities to
@@ -1046,7 +1016,7 @@ function update!(n_current::Dict{Symbol, Array{ftype_ncur, 1}}, t, dt; abstol=1e
     return n_current
 end
 
-function converge(n_current::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_start, log_t_end; verbose=false,
+function converge(n_current::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_start, log_t_end; verbose=false, t_to_save=nothing,
                   abstol=1e-12, reltol=1e-2, globvars...)
     #= 
     Calls update! in logarithmiclly spaced timesteps until convergence, returning converged atmosphere 
@@ -1058,7 +1028,7 @@ function converge(n_current::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_start, lo
     Output: 
         n_current, but fully converged (hopefully).
     =#
-    
+
     GV = values(globvars)
     @assert all(x->x in keys(GV), [:absorber, :active_species, :active_longlived, :active_shortlived, :all_species, :alt, :crosssection, 
                                    :Dcoef_arr_template, :dt_decr_factor, :dt_incr_factor, :dz, :e_profile_type, :error_checking_scheme, 
@@ -1067,25 +1037,101 @@ function converge(n_current::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_start, lo
                                    :plot_grid, :polarizability, :q, :reaction_network, :solarflux, :speciesbclist, :speciescolor, :speciesstyle, 
                                    :Te, :Ti, :Tn, :Tp, :timestep_type, :Tprof_for_diffusion, :upper_lower_bdy_i, :zmax])
     
-    if GV.timestep_type=="static"
-        println("Using static timesteps")
-        # DUMB but perhaps fast:
+    # A combination of log timesteps when simulation time is low, and linear after
+    if GV.timestep_type=="log-linear"
+        println("Using a combo of log and linear timesteps")
+        log_timesteps = 10. .^(range(log_t_start, stop=log_t_end, length=GV.n_steps));
+        linear_timestep = sol_in_sec*7
+
+        # Set up the trackers
+        total_time = 0
+        ts_i = 1
+        dt = log_timesteps[ts_i]
+        iters = 0
+
+        # Do log steps for the first day of simulation time while the system is still quite stiff
+        while (total_time+dt <= sol_in_sec)
+            iters += 1 
+
+            # println("t  = $(total_time)")
+            # println("dt = $(dt)")
+
+            # Update total time and model 
+            total_time += dt # update total time
+            # n_old = deepcopy(n_current)
+            n_current = update!(n_current, total_time, dt; abstol=abstol, reltol=reltol, globvars...)
+            # if verbose==true
+            #     println("max(n_current-n_old) = $(max([max((abs.(n_current[sp] - n_old[sp]))...) for sp in GV.all_species]...))\n\n")
+            # end
+
+            # Increase timestep
+            ts_i += 1
+            dt = log_timesteps[ts_i]
+
+            # Check to see if timestep increase will put us over the one-day barrier
+            if (total_time+dt > sol_in_sec)
+                dt = sol_in_sec - total_time
+                total_time += dt
+                # n_old = deepcopy(n_current)
+                n_current = update!(n_current, total_time, dt; abstol=abstol, reltol=reltol, globvars...)
+                # if verbose==true
+                #     println("max(n_current-n_old) = $(max([max((abs.(n_current[sp] - n_old[sp]))...) for sp in GV.all_species]...))\n\n")
+                # end
+            end
+        end
+
+        write_to_log(logfile, ["Final time after log while loop: $(total_time) with $(iters) iters\n"], mode="a")
+
+        # Reset iters
+        iters=0
+
+        # Now do the human-scale timesteps 
+        while (total_time < season_length_in_sec)
+            iters += 1
+            println("$(total_time) + $(linear_timestep) = new total time $(total_time+linear_timestep)")
+            total_time += linear_timestep
+            # n_old = deepcopy(n_current)
+            n_current = update!(n_current, total_time, linear_timestep; abstol=abstol, reltol=reltol, globvars...)
+            # if verbose==true
+            #     println("max(n_current-n_old) = $(max([max((abs.(n_current[sp] - n_old[sp]))...) for sp in GV.all_species]...))\n\n")
+            # end
+            
+            # Check if the next step will put us past the end
+            if (total_time+linear_timestep > season_length_in_sec)
+
+                dt = season_length_in_sec - total_time
+                println("Adjusting dt for the last timestep. dt=$(dt)")
+                total_time += dt
+                # n_old = deepcopy(n_current)
+                n_current = update!(n_current, total_time, dt; abstol=abstol, reltol=reltol, globvars...)
+                # if verbose==true
+                #     println("max(n_current-n_old) = $(max([max((abs.(n_current[sp] - n_old[sp]))...) for sp in GV.all_species]...))\n\n")
+                # end
+            end
+        end
+
+        write_to_log(logfile, ["Final time after linear timesteps: $(total_time) with $(iters) iters"], mode="a")
+
+    # Static timesteps, logarithmically spaced
+    elseif GV.timestep_type=="static-log"
         log_time_steps = 10. .^(range(log_t_start, stop=log_t_end, length=GV.n_steps))
 
         total_time = 0.0
         for dt in log_time_steps
             total_time += dt
-            if verbose==true
-                println("t  = $total_time")
-                println("dt = $dt")
-            end
-            n_old = deepcopy(n_current)
+            # if verbose==true
+            #     println("t  = $total_time")
+            #     println("dt = $dt")
+            #     println()
+            # end
+            # n_old = deepcopy(n_current)
             n_current = update!(n_current, total_time, dt; abstol=abstol, reltol=reltol, globvars...)
-            if verbose==true
-                println("max(n_current-n_old) = $(max([max((abs.(n_current[sp] - n_old[sp]))...) for sp in GV.all_species]...))\n\n")
-            end
+            # if verbose==true
+            #     println("max(n_current-n_old) = $(max([max((abs.(n_current[sp] - n_old[sp]))...) for sp in GV.all_species]...))\n\n")
+            # end
         end
-    elseif GV.timestep_type=="dynamic"
+    # Dynamically adjusting timesteps, logarithmic
+    elseif GV.timestep_type=="dynamic-log"
         println("Using dynamically adjusting timesteps")
         # FANCY: Modifies timesteps when it gets stuck due to large timesteps being > rel error.
         dt = 10.0^log_t_start
@@ -1094,15 +1140,17 @@ function converge(n_current::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_start, lo
         goodsteps = 0
         goodstep_limit = 1 # Need at least this many successful iterations before increasing timestep
        
-        while (dt < 10.0^log_t_end) #& (total_time <= season_length_in_sec)
+        # the first clause before the & will help prevent the simulation stalling out if it has to reduce dt too much.
+        while (dt < 10.0^log_t_end) | (total_time <= season_length_in_sec)
             
             # n_old = deepcopy(n_current)
-            n_temp = deepcopy(n_current)
+            # n_temp = deepcopy(n_current)
 
-            # SPECIAL BLOCK
+            # SPECIAL BLOCK ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
             # if seasonal_cycle == true
+            #     println("Alert: Using the special block for seasonal cycle, forcing certain timesteps")
             #     if ((total_time + dt) > checkpoint) | (checkpoint == season_length_in_sec)
-            #         println("Entering special block to try and meet $(checkpoint)")
+            #         println("total_time+dt = $(total_time+dt). Entering special block to try and meet $(checkpoint)")
             #         temp_dt = checkpoint - total_time
             #         n_temp = update!(n_temp, total_time+temp_dt, temp_dt; abstol=abstol, reltol=reltol, globvars...)
             #     end 
@@ -1114,8 +1162,8 @@ function converge(n_current::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_start, lo
             #         temp_dt = checkpoint - temp_total_time
             #         n_temp = update!(n_temp, temp_total_time+temp_dt, temp_dt; abstol=abstol, reltol=reltol, globvars...)
             #     end 
-            # end
-            # END SPECIAL BLOCK 
+            # else
+            # END SPECIAL BLOCK ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
             total_time += dt
         
@@ -1135,48 +1183,17 @@ function converge(n_current::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_start, lo
                     rethrow(e)
                 end
             end
-            # println("max(n_current-n_old) = $(max([max((abs.(n_current[sp] - n_old[sp]))...) for sp in GV.all_species]...))\n\n")
+                # println("max(n_current-n_old) = $(max([max((abs.(n_current[sp] - n_old[sp]))...) for sp in GV.all_species]...))\n\n")
         end
+    end
+
+    if (log10(dt) / log10(total_time) > 1e-6)
+        println("Quitting because the timestep is 1 ppm of the total time or smaller, so we'll never advance further")
     end
     
     return n_current, total_time
 end
 
-function plot_production_and_loss(final_atm, results_dir, thefolder; globvars...)
-    #=
-
-    =#
-    GV = values(globvars)
-    @assert all(x->x in keys(GV), [:all_species, :alt, :chem_species, :collision_xsect, :dz, :hot_D_rc_funcs, :hot_H_rc_funcs, 
-                                  :hot_H2_rc_funcs, :hot_HD_rc_funcs, :Hs_dict, :hot_H_network, :hot_D_network, :hot_H2_network, :hot_HD_network,
-                                  :hrshortcode, :ion_species, :Jratedict, :molmass, :neutral_species, :non_bdy_layers, :nonthermal,
-                                  :num_layers, :n_all_layers, :n_alt_index, :polarizability, :plot_grid, :q, :rshortcode, :reaction_network,
-                                  :speciesbclist, :Tn, :Ti, :Te, :Tp, :Tprof_for_Hs, :Tprof_for_diffusion, 
-                                  :transport_species, :upper_lower_bdy_i, :upper_lower_bdy, :zmax])
-
-    println("Creating production and loss plots to show convergence of species...")
-    create_folder("chemeq_plots", results_dir*thefolder*"/")
-    for sp in all_species
-        plot_rxns(sp, final_atm, results_dir; subfolder=thefolder,num="final_atmosphere", globvars...)
-    end
-    println("Finished convergence plots")
-end
-
-function write_final_state(atmdict, thedir, thefolder, fname; alt, num_layers, hrshortcode, Jratedict, rshortcode, external_storage)
-    #=
-    Write out the final atmosphere to a file, first making sure the current Jrates are included.
-    =#
-
-    # Make sure we have the updated Jrates
-    println("Adding stored Jrates to the final output file")
-    for j in keys(Jratedict)
-        atmdict[j] = external_storage[j]
-    end
-
-    # Write out final atmosphere
-    write_atmosphere(atmdict, thedir*thefolder*"/"*fname; alt, num_layers, hrshortcode, rshortcode)
-    println("Saved final atmospheric state")
-end
 
 # **************************************************************************** #
 #                                                                              #
@@ -1321,21 +1338,12 @@ end
 #===============================================================================#
 E = electron_density(n_current; e_profile_type, non_bdy_layers, ion_species)
 
-#           Define storage for species/Jrates not solved for actively           #
-#===============================================================================#
-# Short lived species, when defined, are solved for assuming photochemical equilibrium
-# outside of the primary ODE solver. Inactive species never change during simulation.
-# Jrates must be stored here because they have to be updated alongside evolution
-# of the atmospheric densities--the solver doesn't handle their values currently.
-const external_storage = Dict([j=>n_current[j] for j in union(short_lived_species, inactive_species, Jratelist)])
-const n_inactive = flatten_atm(n_current, inactive_species; num_layers)
-
-
 #                          Set up the water profile                             #
 #===============================================================================#
 # If you want to completely wipe out the water profile and install the initial one
 # (i.e. when running a stand alone simulation)
-if reset_water_profile
+if reinitialize_water_profile
+    println("Initializing the water profile anew (reinitialize_water_profile=true)")
     # hygropause_alt is an optional argument. If using, must be a unit of length in cm i.e. 40e5 = 40 km.
     println("$(Dates.format(now(), "(HH:MM:SS)")) Setting up the water profile...")
     setup_water_profile!(n_current; dust_storm_on=dust_storm_on, tanh_prof=water_case, all_species, num_layers, non_bdy_layers, DH, alt, plot_grid, # hygropause_alt, 
@@ -1356,6 +1364,15 @@ if update_water_profile
         plot_water_profile(new_frac_H2O, new_frac_HDO, n_current[:H2O], n_current[:HDO], results_dir*sim_folder_name; plot_grid) 
     end
 end
+
+#           Define storage for species/Jrates not solved for actively           #
+#===============================================================================#
+# Short lived species, when defined, are solved for assuming photochemical equilibrium
+# outside of the primary ODE solver. Inactive species never change during simulation.
+# Jrates must be stored here because they have to be updated alongside evolution
+# of the atmospheric densities--the solver doesn't handle their values currently.
+const external_storage = Dict([j=>n_current[j] for j in union(short_lived_species, inactive_species, Jratelist)])
+const n_inactive = flatten_atm(n_current, inactive_species; num_layers)
 
 # Calculate precipitable microns, including boundary layers (assumed same as nearest bulk layer)
 H2Oprum = precip_microns(:H2O, [n_current[:H2O][1]; n_current[:H2O]; n_current[:H2O][end]]; molmass)
@@ -1595,6 +1612,7 @@ const set_concentration_arglist_typed = [:($s::ftype_chem) for s in set_concentr
         net_chem_change = zeros(size(result, 1))
         net_trans_change = zeros(size(result, 1))
         
+        # This section calculates the net change but arranges entries by size, so we don't have floating point errors.
         for r in 1:size(result,1)
             net_chem_change[r] = subtract_difflength(sort(result[r, :][1], rev=true), sort(result[r, :][2], rev=true))
             net_trans_change[r] = subtract_difflength(sort(result[r, :][3], rev=true), sort(result[r, :][4], rev=true))
@@ -1821,8 +1839,10 @@ const mindt = dt_min_and_max[converge_which][1]
 const maxdt = dt_min_and_max[converge_which][2]
 # times to save for cycling:
 if seasonal_cycle==true
-    const times_to_save = collect(sol_in_sec:sol_in_sec*7:season_length_in_sec) # save every 7 mars days
+    const times_to_save = [1., 60., 3600., sol_in_sec/2] # save at 1 sec, 1 min, 1 hour, 1/2 day
+    append!(times_to_save, collect(sol_in_sec:sol_in_sec*7:season_length_in_sec)) # save every 7 mars days
     push!(times_to_save, times_to_save[end]+sol_in_sec*( (season_length_in_sec - times_to_save[end])/sol_in_sec) ) # The last save step is less than a week forward so we don't go over the timeframe.
+    println("I will try to save the following times: $(times_to_save)")
 else
     const times_to_save = [10.0^t for t in mindt:maxdt]
 end
