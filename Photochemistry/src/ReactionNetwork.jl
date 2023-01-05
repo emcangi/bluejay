@@ -442,6 +442,14 @@ function format_ion_network(reactions_spreadsheet, used_species; saveloc=nothing
     return returndict
 end
 
+function get_Jrate_symb(reactant::String, products::Array)::Symbol
+    #=
+    All inputs are strings or arrays of strings.
+    Formats a Jrate symbol.
+    =#
+    return Symbol("J$(reactant)to" * join(products, "p"))
+end
+
 function load_reaction_network(spreadsheet; saveloc=nothing, write_rxns=false, to_return="all", ions_on=true, get_hot_rxns=false, globvars...)
     #=
     Inputs:
@@ -521,14 +529,6 @@ function load_reaction_network(spreadsheet; saveloc=nothing, write_rxns=false, t
 
         return hot_H_network, hot_D_network, hot_H2_network, hot_HD_network
     end
-end
-
-function get_Jrate_symb(reactant::String, products::Array)::Symbol
-    #=
-    All inputs are strings or arrays of strings.
-    Formats a Jrate symbol.
-    =#
-    return Symbol("J$(reactant)to" * join(products, "p"))
 end
 
 function log_reactions(df, sheetname, spreadsheetname)

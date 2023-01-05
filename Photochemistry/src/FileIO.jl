@@ -188,12 +188,17 @@ function load_bcdict_from_paramdf(df)
     return speciesbclist_reconstructed
 end
 
-function load_from_paramlog(folder)
+function load_from_paramlog(folder; globvars...)
     #=
     Given a folder containing simulation results, this will open the parameter log spreadsheet, 
     load as dataframe, and extract all the entries so as to return the global parameters that were used for
     that simulation. 
     =#
+
+    
+
+    # Load the workbook
+    paramlog_wb = XLSX.readxlsx("$(folder)PARAMETERS.xlsx")
 
     # Basic variables
     df_gen = DataFrame(XLSX.readtable("$(folder)PARAMETERS.xlsx", "General"));
@@ -214,9 +219,23 @@ function load_from_paramlog(folder)
 
     # Atmospheric conditions
     df_atmcond = DataFrame(XLSX.readtable("$(folder)PARAMETERS.xlsx", "AtmosphericConditions"));
-    Tn_arr = [T(a, get_param("TSURF", df_atmcond), get_param("TMESO", df_atmcond), get_param("TEXO", df_atmcond), "neutral") for a in alt];
-    Ti_arr = [T(a, get_param("TSURF", df_atmcond), get_param("TMESO", df_atmcond), get_param("TEXO", df_atmcond), "ion") for a in alt];
-    Te_arr = [T(a, get_param("TSURF", df_atmcond), get_param("TMESO", df_atmcond),  get_param("TEXO", df_atmcond), "electron") for a in alt];
+
+    ## Temperatures first
+    if "TemperatureArrays" in XLSX.sheetnames(paramlog_wb)
+        df_temps = DataFrame(XLSX.readtable("$(folder)PARAMETERS.xlsx", "TemperatureArrays"));
+        Tn_arr = df_temps.Neutrals
+        Ti_arr = df_temps.Ions
+        Te_arr = df_temps.Electrons
+    else 
+        GV = values(globvars)
+        @assert all(x->x in keys(GV), [:alt])
+        println("WARNING: Reconstructing temperature profiles with default options based on logged control temperatures. It is POSSIBLE the reconstruction could be wrong.")
+        T_dict = T(get_param("TSURF", df_atmcond), get_param("TMESO", df_atmcond), get_param("TEXO", df_atmcond); alt)
+        Tn_arr = T_dict["neutrals"]
+        Ti_arr = T_dict["ions"]
+        Te_arr = T_dict["electrons"]
+    end
+
     Tplasma_arr = Ti_arr .+ Te_arr;
     Tprof_for_Hs = Dict("neutral"=>Tn_arr, "ion"=>Ti_arr);
     Tprof_for_diffusion = Dict("neutral"=>Tn_arr, "ion"=>Tplasma_arr)

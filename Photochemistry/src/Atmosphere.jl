@@ -133,7 +133,7 @@ function find_exobase(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}; ret
 
     H_s = scaleH(GV.non_bdy_layers, sp, GV.Tn[2:end-1]; globvars...)
     mfp_sp = 1 ./ (GV.collision_xsect[sp] .* n_tot(atmdict; GV.all_species, GV.n_alt_index))
-    exobase_alt = findfirst(mfp_sp .> H_s)
+    exobase_alt = findfirst(mfp_sp .>= H_s)
 
     if typeof(exobase_alt)==Nothing # If no exobase is found, use the top of the atmosphere.
         if verbose

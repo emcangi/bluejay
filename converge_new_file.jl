@@ -2019,12 +2019,14 @@ elseif problem_type == "Gear"
     write_to_log(logfile, "$(Dates.format(now(), "(HH:MM:SS)")) Making production/loss plots", mode="a")
     println("$(Dates.format(now(), "(HH:MM:SS)")) Making production/loss plots (this tends to take several minutes)")
     # make production and loss plots
-    plot_production_and_loss(atm_soln, results_dir, sim_folder_name; nonthermal=nontherm, all_species, alt, chem_species, collision_xsect, 
-                              dz, hot_D_rc_funcs, hot_H_rc_funcs, hot_H2_rc_funcs, hot_HD_rc_funcs, Hs_dict, 
-                              hot_H_network, hot_D_network, hot_H2_network, hot_HD_network, hrshortcode, ion_species, Jratedict,
-                              molmass, neutral_species, non_bdy_layers, num_layers, n_all_layers, n_alt_index, polarizability, 
-                              plot_grid, q, rshortcode, reaction_network, speciesbclist, Tn=Tn_arr, Ti=Ti_arr, Te=Te_arr, Tp=Tplasma_arr, 
-                              Tprof_for_Hs, Tprof_for_diffusion, transport_species, upper_lower_bdy_i, upper_lower_bdy, zmax)
+    if make_P_and_L_plots
+        plot_production_and_loss(atm_soln, results_dir, sim_folder_name; nonthermal=nontherm, all_species, alt, chem_species, collision_xsect, 
+                                  dz, hot_D_rc_funcs, hot_H_rc_funcs, hot_H2_rc_funcs, hot_HD_rc_funcs, Hs_dict, 
+                                  hot_H_network, hot_D_network, hot_H2_network, hot_HD_network, hrshortcode, ion_species, Jratedict,
+                                  molmass, neutral_species, non_bdy_layers, num_layers, n_all_layers, n_alt_index, polarizability, 
+                                  plot_grid, q, rshortcode, reaction_network, speciesbclist, Tn=Tn_arr, Ti=Ti_arr, Te=Te_arr, Tp=Tplasma_arr, 
+                                  Tprof_for_Hs, Tprof_for_diffusion, transport_species, upper_lower_bdy_i, upper_lower_bdy, zmax)
+    end
 
 else
     throw("Invalid problem_type")
@@ -2035,7 +2037,7 @@ t7 = time()
 # Write out the parameters as the final step 
 
 XLSX.writetable("$(results_dir)$(sim_folder_name)/PARAMETERS.xlsx", "General"=>PARAMETERS_GEN, "AtmosphericConditions"=>PARAMETERS_CONDITIONS, "SpeciesLists"=>PARAMETERS_SPLISTS,
-                "Solver"=>PARAMETERS_SOLVER, "Crosssections"=>PARAMETERS_XSECTS, "BoundaryConditions"=>PARAMETERS_BCS)
+                "Solver"=>PARAMETERS_SOLVER, "Crosssections"=>PARAMETERS_XSECTS, "BoundaryConditions"=>PARAMETERS_BCS, "TemperatureArrays"=>PARAMETERS_TEMPERATURE_ARRAYS)
 println("Saved parameter spreadsheet")
 write_to_log(logfile, "Simulation total runtime $(format_sec_or_min(t7-t1))", mode="a")
 println("Simulation finished!")

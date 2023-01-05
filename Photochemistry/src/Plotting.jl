@@ -61,14 +61,20 @@ function plot_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, savepath::String, a
     Makes a "spaghetti plot" of the species concentrations by altitude in the
     atmosphere. 
 
-    atmdict: dictionary of vertical profiles of a plottable quantity, keys are species names.
-    species_lists: a list of species lists. The first is usually neutrals and goes in column 1; the second, ions, column 2.
-    savepath: path and name for saving resulting .png file
-    t: title for the overall plot
-    showonly: whether to just show() the plot instead of saving. If setting to true, send in junk string for savepath.
-    xlab: override for x axis label
-    xlim_1: override for x axis limits in column 1 or entire plot of length(species_lists)==1
-    xlim_2: override for x axis limits in column 2
+    Input:
+        atmdict: dictionary of vertical profiles of a plottable quantity, keys are species names.
+        savepath: path and name for saving resulting .png file
+        atol: absolute tolerance to plot
+        E_prof: E densities for plotting the electron line
+        print_shortcodes: whether to print unique simulation IDs on plots
+        t: title text for whole plot
+        showonly: whether to just show() the plot instead of saving. If setting to true, send in junk string for savepath.
+        xlab: override for x axis label
+        xlim_1: override for x axis limits in column 1 or entire plot of length(species_lists)==1
+        xlim_2: override for x axis limits in column 2
+        legloc: legend location
+    Output:
+        Big atmospheric density plot
     =#
 
     GV = values(globvars)

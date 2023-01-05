@@ -25,13 +25,13 @@ using DataFrames
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
 
 # Basic simulation parameters
-const optional_logging_note = "TEST module rework" # "High mesospheric water, re-run after improvements" # Simulation goal
+const optional_logging_note = "TEST updated temperature function" # "High mesospheric water, re-run after improvements" # Simulation goal
 const simset = "paper3" #"paper2" # # Fine to leave this as paper3
 const results_version = "v2"  # Helps keep track of attempts 
 const initial_atm_file = "INITIAL_GUESS.h5" # "cycle_coldexo.h5"# "cycle_mid.h5" # "cycle_hotexo.h5"# "cycle_start.h5" #
 # Other options:
 # "low_water.h5" # "midcycle_water.h5" # "cycle_highwater.h5"# "cycle_stdwater.h5"# 
-# 
+const make_P_and_L_plots = true # Turn off to save several minutes of runtime if you're not doing runs aimed at producing published results
 
 const seasonal_cycle = false #true #   whether testing how things change with seasonal cycles
 const timestep_type =  "dynamic-log"#"log-linear"#  # basically never use this one: "static-log"# 
@@ -178,24 +178,23 @@ const T_surf = controltemps[1]
 const T_meso = controltemps[2]
 const T_exo = controltemps[3]
 
-const Tn_arr = [T(a, controltemps[1], controltemps[2], controltemps[3], "neutral") for a in alt];
-const Ti_arr = [T(a, controltemps[1], controltemps[2], controltemps[3], "ion") for a in alt];
-const Te_arr = [T(a, controltemps[1], controltemps[2], controltemps[3], "electron") for a in alt];
+T_array_dict = T(T_surf, T_meso, T_exo; alt);
+const Tn_arr = T_array_dict["neutrals"]
+const Ti_arr = T_array_dict["ions"]
+const Te_arr = T_array_dict["electrons"]
 
 const Tplasma_arr = Ti_arr .+ Te_arr;
 const Tprof_for_diffusion = Dict("neutral"=>Tn_arr, "ion"=>Tplasma_arr)
 const Tprof_for_Hs = Dict("neutral"=>Tn_arr, "ion"=>Ti_arr)
-const T_top = T(zmax, controltemps[1], controltemps[2], controltemps[3], "neutral")
-
-Temp_keepSVP(z::Float64) = T(z, meantemps..., "neutral") # Needed for boundary conditions.
+const Tn_meanSVP = T(meantemps...; alt)["neutrals"]; # Needed for boundary conditions.
 
 # **************************************************************************** #
 #                                                                              #
 #                             Boundary conditions                              #
 #                                                                              #
 # **************************************************************************** #
-const H2Osat = map(x->Psat(x), map(Temp_keepSVP, alt)) # Using this function keeps SVP fixed 
-const HDOsat = map(x->Psat_HDO(x), map(Temp_keepSVP, alt))
+const H2Osat = map(x->Psat(x), Tn_meanSVP) # Using this function keeps SVP fixed 
+const HDOsat = map(x->Psat_HDO(x), Tn_meanSVP)
 
 const speciesbclist=Dict(:CO2=>Dict("n"=>[2.1e17, NaN], "f"=>[NaN, 0.]),
                         :Ar=>Dict("n"=>[2.0e-2*2.1e17, NaN], "f"=>[NaN, 0.]),
@@ -203,10 +202,10 @@ const speciesbclist=Dict(:CO2=>Dict("n"=>[2.1e17, NaN], "f"=>[NaN, 0.]),
                         :H2O=>Dict("n"=>[H2Osat[1], NaN], "f"=>[NaN, 0.]), # bc doesnt matter if H2O fixed
                         :HDO=>Dict("n"=>[HDOsat[1], NaN], "f"=>[NaN, 0.]),
                         :O=> Dict("f"=>[0., 1.2e8]),
-                        :H2=>Dict("f"=>[0., NaN], "v"=>[NaN, effusion_velocity(T_top, 2.0; zmax)], "ntf"=>[NaN, "see boundaryconditions()"]),  # velocities are in cm/s
-                        :HD=>Dict("f"=>[0., NaN], "v"=>[NaN, effusion_velocity(T_top, 3.0; zmax)], "ntf"=>[NaN, "see boundaryconditions()"]),
-                        :H=> Dict("f"=>[0., NaN], "v"=>[NaN, effusion_velocity(T_top, 1.0; zmax)], "ntf"=>[NaN, "see boundaryconditions()"]),
-                        :D=> Dict("f"=>[0., NaN], "v"=>[NaN, effusion_velocity(T_top, 2.0; zmax)], "ntf"=>[NaN, "see boundaryconditions()"]),
+                        :H2=>Dict("f"=>[0., NaN], "v"=>[NaN, effusion_velocity(Tn_arr[end], 2.0; zmax)], "ntf"=>[NaN, "see boundaryconditions()"]),  # velocities are in cm/s
+                        :HD=>Dict("f"=>[0., NaN], "v"=>[NaN, effusion_velocity(Tn_arr[end], 3.0; zmax)], "ntf"=>[NaN, "see boundaryconditions()"]),
+                        :H=> Dict("f"=>[0., NaN], "v"=>[NaN, effusion_velocity(Tn_arr[end], 1.0; zmax)], "ntf"=>[NaN, "see boundaryconditions()"]),
+                        :D=> Dict("f"=>[0., NaN], "v"=>[NaN, effusion_velocity(Tn_arr[end], 2.0; zmax)], "ntf"=>[NaN, "see boundaryconditions()"]),
                        );
 
 # **************************************************************************** #
@@ -408,8 +407,9 @@ PARAMETERS_SPLISTS = DataFrame(AllSpecies=[[string(a) for a in all_species]..., 
                                NoChem=[[string(nc) for nc in no_chem_species]..., ["" for i in 1:L-length(no_chem_species)]...],
                                NoTransport=[[string(nt) for nt in no_transport_species]..., ["" for i in 1:L-length(no_transport_species)]...],
                                Jratelist=[[string(j) for j in Jratelist]..., ["" for i in 1:L-length(Jratelist)]...]);
-
 PARAMETERS_SOLVER = DataFrame(Field=[], Value=[]);
 PARAMETERS_XSECTS = DataFrame(Species=[], Description=[], Filename=[]);
 PARAMETERS_BCS = DataFrame(Species=[], Type=[], Lower=[], Upper=[]);
 
+# LOG THE TEMPERATURES
+PARAMETERS_TEMPERATURE_ARRAYS = DataFrame(Neutrals=Tn_arr, Ions=Ti_arr, Electrons=Te_arr); 

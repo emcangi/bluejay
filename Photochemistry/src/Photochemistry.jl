@@ -163,8 +163,6 @@ code_loc = "$(@__DIR__)/../../"
 include(code_loc*"CUSTOMIZATIONS.jl") 
 include(code_loc*"CONSTANTS.jl")
                                                                                 
-
-
 include("Atmosphere.jl")
 include("BasicUtilities.jl")
 include("Chemistry.jl")
