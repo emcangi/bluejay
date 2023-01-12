@@ -60,6 +60,7 @@ unflatten_atm,
 calculate_stiffness, 
 check_jacobian_eigenvalues, 
 chemical_jacobian, 
+chemical_lifetime,
 eval_rate_coef, 
 get_column_rates, 
 get_volume_rates,
@@ -138,6 +139,7 @@ T,
     Dcoef_neutrals, 
     Dcoef!, 
     diffparams, 
+    diffusion_timescale,
     fluxcoefs, 
     flux_param_arrays,  
     get_transport_PandL_rate, 
@@ -147,7 +149,7 @@ T,
 
 
 # UnitConversions.jl
-GEL_to_molecule, molec_to_GEL, 
+GEL_to_molecule, molec_to_GEL, DH_conversion, 
 
 # Water profile functions  
 precip_microns, 

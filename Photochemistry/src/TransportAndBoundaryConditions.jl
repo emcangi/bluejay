@@ -559,6 +559,32 @@ diffparams(s) = get(Dict(:H=>[8.4, 0.597], :H2=>[2.23, 0.75],
                              :Dpl=>[5.98, 0.597], :HDpl=>[1.84, 0.75]),
                         s,[1.0, 0.75])
 
+function diffusion_timescale(s::Symbol, T_arr::Array, atmdict, Dcoef_template::Array; globvars...)
+    #=
+    Inputs:
+        s: species symbol
+        T_arr: temperature array for the given species 
+        atmdict: atmospheric state dict
+        Dcoef_template: array of 0s to use in Dcoef!
+    Output: Molecular and eddy diffusion timescale (s) by alt
+    =#
+    
+    GV = values(globvars)
+    @assert all(x->x in keys(GV), [:all_species, :alt, :molmass, :n_alt_index, :neutral_species, :polarizability, :q, :speciesbclist])
+
+    Hs = scaleH(GV.alt, s, T_arr; GV.molmass)
+    
+    ncur_with_bdys =  ncur_with_boundary_layers(atmdict; GV.all_species, GV.n_alt_index)
+    
+    # Molecular diffusion timescale: H_s^2 / D, scale height over diffusion constant
+    molec_timescale = (Hs .^ 2) ./ Dcoef!(Dcoef_template, T_arr, s, ncur_with_bdys; GV.all_species, GV.molmass, GV.neutral_species, GV.n_alt_index, GV.polarizability, GV.q, GV.speciesbclist)
+   
+    # Eddy timescale... this was in here only as scale H... 
+    eddy_timescale = (Hs .^ 2) ./ Keddy(alt, n_tot(ncur_with_bdys; GV.all_species, GV.molmass)) 
+
+    return molec_timescale, eddy_timescale
+end
+
 function fluxcoefs(sp::Symbol, Kv, Dv, H0v; globvars...)
     #= 
     base function to generate flux coefficients of the transport network. 

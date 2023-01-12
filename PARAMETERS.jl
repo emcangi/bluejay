@@ -396,7 +396,9 @@ push!(PARAMETERS_CONDITIONS, ("TEXO", T_exo, "K"));
 push!(PARAMETERS_CONDITIONS, ("MEAN_TEMPS", join(meantemps, " "), "K"));
 push!(PARAMETERS_CONDITIONS, ("WATER_MR", water_mixing_ratio, "mixing ratio"));
 push!(PARAMETERS_CONDITIONS, ("WATER_CASE", water_case, "whether running with 10x, 1/10th, or standard water in middle/upper atmo"));
-push!(PARAMETERS_CONDITIONS, ("WATER_BDY", upper_lower_bdy/1e5, "km"))
+
+waterbdy = :H2O in fixed_species ? 250 : upper_lower_bdy/1e5
+push!(PARAMETERS_CONDITIONS, ("WATER_BDY", waterbdy, "km"))
 
 # This is so ugly because the XLSX package won't write columns of different lengths, so I have to pad all the shorter lists
 # with blanks up to the length of the longest list and also transform all the symbols into strings. 

@@ -3,7 +3,31 @@
 #                            Unit conversions                                  #
 #                                                                              #
 # **************************************************************************** #
+function DH_conversion(; deltaD=0, VSMOW_multiplier=1, DH=1.56e-4)
+    #=
+    Convert between a D/H ratio, a multiplier of VSMOW (e.g. Mars atmosphere = 5.5 x VSMOW) 
+    and delta D, which is quoted in milles and is either negative or positive.
 
+    =#
+
+    if (deltaD!=0) & ((VSMOW_multiplier!=1) | (DH != 1.56e-4))
+        throw("InputError: Enter either deltaD, or (VSMOW_multiplier or DH), but not both.")
+    end
+
+
+    if (deltaD==0) & (VSMOW_multiplier==1.56)
+        println(L"No conversion requested. VSMOW = 1.56e-4, which is $\delta$D = 0.") 
+    elseif (deltaD != 0)
+        # this is for when delta D is quoted as some number > 1 away from 0, not a fraction.
+        multiplier = deltaD/1000 + 1
+        return "D/H = $(round(multiplier*1.56, digits=2))e-4 which is $(multiplier)x VSMOW"
+    elseif (VSMOW_multiplier!=1)
+        return 1000*(VSMOW_multiplier - 1) # returns deltaD
+    elseif (DH != 1.56e-4)
+        println("Input: D/H ratio = $DH")
+        return 1000*((DH/1.56e-4) - 1) # returns deltaD also
+    end
+end
 
 function GEL_to_molecule(GEL, HorH2O)
     #=

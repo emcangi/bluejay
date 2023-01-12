@@ -148,7 +148,7 @@ function plot_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, savepath::String, a
         for i in 1:3
             plot_bg(atm_ax[i, 1])
             atm_ax[i, 1].set_xlim(xlim_1[1], xlim_1[2])
-            atm_ax[i, 1].fill_betweenx(GV.plot_grid,#=plotalts,=# xlim_1[1] .* ones(size(GV.plot_grid,)), x2=atol, alpha=0.1, color=medgray, zorder=10)
+            atm_ax[i, 1].fill_betweenx(GV.plot_grid, xlim_1[1] .* ones(size(GV.plot_grid,)), x2=atol, alpha=0.1, color=medgray, zorder=10)
             atm_ax[i, 1].tick_params(which="both", labeltop=false, top=true, labelbottom=true, bottom=true)
             atm_ax[i, 1].set_ylabel("Altitude (km)")
         end

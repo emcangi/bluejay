@@ -78,6 +78,28 @@ function check_jacobian_eigenvalues(J, path)
     end
 end
 
+function chemical_lifetime(s::Symbol, atmdict; globvars...)
+    #=
+    Calculates chemical lifetime of a molecule s in the atmosphere atmdict. 
+    
+    Good for comparing with the results of diffusion_timescale.
+    =#
+    GV = values(globvars)
+    @assert all(x->x in keys(GV), [:all_species, :Jratelist, :n_alt_index, :reaction_network, :Tn, :Ti, :Te])
+
+    loss_all_rxns, ratecoefs = get_volume_rates(s, atmdict; species_role="reactant", which="all", remove_sp_density=true, 
+                                               GV.all_species, GV.ion_species, GV.num_layers, GV.reaction_network, 
+                                               Tn=GV.Tn[2:end-1], Ti=GV.Ti[2:end-1], Te=GV.Te[2:end-1])
+
+    total_loss_by_alt = zeros(size(Tn[2:end-1]))
+
+    for k in keys(loss_all_rxns)
+        total_loss_by_alt += loss_all_rxns[k]
+    end
+
+    return chem_lt = 1 ./ total_loss_by_alt
+end
+
 function chemical_jacobian(specieslist, dspecieslist; diff_wrt_e=true, diff_wrt_m=true, globvars...)
     #= 
     Compute the symbolic chemical jacobian of a supplied chemnet and transportnet
@@ -268,7 +290,7 @@ function get_column_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}};
     return sorted
 end
 
-function get_volume_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}; species_role="both", which="all", globvars...)
+function get_volume_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}; species_role="both", which="all", remove_sp_density=false, globvars...)
     #=
     Input:
         sp: Species name
@@ -277,6 +299,7 @@ function get_volume_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}};
         species_role: whether to look for the species as a reactant, product, or both.  If it has a value, so must species.
         which: "all", "Jrates", "krates". Whether to fill the dictionary with all reactions, only photochemistry/photoionization 
                (Jrates) or only chemistry (krates).
+       remove_sp_density: if set to true, the density of sp will be removed from the calculation k[sp][B][C].... Useful for chemical lifetimes.
     Output: 
         rxn_dat: Evaluated rates, i.e. k[A][B], units #/cm^3/s for bimolecular rxns
         rate_coefs: Evaluated rate coefficients for each reaction 
@@ -302,10 +325,15 @@ function get_volume_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}};
 
         # Fill in rate coefficient * species density for all reactions
         if typeof(rxn[3]) == Symbol # for photodissociation
-            rxn_dat[rxn_str] = atmdict[rxn[1][1]] .* atmdict[rxn[3]]
+            if remove_sp_density==false
+                rxn_dat[rxn_str] = atmdict[rxn[1][1]] .* atmdict[rxn[3]]
+            else 
+                rxn_dat[rxn_str] = 1 .* atmdict[rxn[3]]  # this will functionally be the same as the rate coefficient for photodissociation.
+            end
             rate_coefs[rxn_str] = atmdict[rxn[3]]
         else                        # bi- and ter-molecular chemistry
-            density_prod = reactant_density_product(atmdict, rxn[1]; globvars...)
+            remove_me = remove_sp_density==true ? sp : nothing
+            density_prod = reactant_density_product(atmdict, rxn[1]; removed_sp=remove_me, globvars...)
             thisrate = typeof(rxn[3]) != Expr ? :($rxn[3] + 0) : rxn[3]
             rate_coef = eval_rate_coef(atmdict, thisrate; globvars...)
 
@@ -584,7 +612,7 @@ function production_rate(sp::Symbol, network; return_peqn_unmapped=false, sepvec
     end
 end
 
-function reactant_density_product(atmdict::Dict{Symbol, Vector{ftype_ncur}}, reactants; globvars...)
+function reactant_density_product(atmdict::Dict{Symbol, Vector{ftype_ncur}}, reactants; removed_sp=nothing, globvars...)
     #=
     Calculates the product of all reactant densities for a chemical reaction for the whole atmosphere, 
     i.e. for A + B --> C + D, return n_A * n_B.
@@ -599,6 +627,9 @@ function reactant_density_product(atmdict::Dict{Symbol, Vector{ftype_ncur}}, rea
     GV = values(globvars)
     @assert all(x->x in keys(GV),  [:all_species, :ion_species, :num_layers])
 
+    if removed_sp != nothing # remove reactant if requested - useful for calculating chemical lifetimes
+        deleteat!(reactants, findfirst(x->x==removed_sp, reactants))
+    end
 
     density_product = ones(GV.num_layers)
     for r in reactants
