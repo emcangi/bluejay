@@ -1365,18 +1365,18 @@ if update_water_profile
     end
 end
 
+# Calculate precipitable microns, including boundary layers (assumed same as nearest bulk layer)
+H2Oprum = precip_microns(:H2O, [n_current[:H2O][1]; n_current[:H2O]; n_current[:H2O][end]]; molmass)
+HDOprum = precip_microns(:HDO, [n_current[:HDO][1]; n_current[:HDO]; n_current[:HDO][end]]; molmass)
+
 #           Define storage for species/Jrates not solved for actively           #
 #===============================================================================#
 # Short lived species, when defined, are solved for assuming photochemical equilibrium
 # outside of the primary ODE solver. Inactive species never change during simulation.
 # Jrates must be stored here because they have to be updated alongside evolution
 # of the atmospheric densities--the solver doesn't handle their values currently.
-const external_storage = Dict([j=>n_current[j] for j in union(short_lived_species, inactive_species, Jratelist)])
+const external_storage = Dict{Symbol, Vector{Float64}}([j=>n_current[j] for j in union(short_lived_species, inactive_species, Jratelist)])
 const n_inactive = flatten_atm(n_current, inactive_species; num_layers)
-
-# Calculate precipitable microns, including boundary layers (assumed same as nearest bulk layer)
-H2Oprum = precip_microns(:H2O, [n_current[:H2O][1]; n_current[:H2O]; n_current[:H2O][end]]; molmass)
-HDOprum = precip_microns(:HDO, [n_current[:HDO][1]; n_current[:HDO]; n_current[:HDO][end]]; molmass)
 
 # **************************************************************************** #
 #                                                                              #
@@ -2008,11 +2008,12 @@ elseif problem_type == "ODE"
 elseif problem_type == "Gear"
     # Plot the final atmospheric state
     println("Plotting final atmosphere, writing out state")
-    plot_atm(atm_soln, results_dir*sim_folder_name*"/final_atmosphere.png", abs_tol_for_plot, sum([atm_soln[i] for i in ion_species]); 
+    final_E_profile = electron_density(atm_soln; e_profile_type, non_bdy_layers, ion_species)   
+    plot_atm(atm_soln, results_dir*sim_folder_name*"/final_atmosphere.png", abs_tol_for_plot, final_E_profile; 
              t="final converged state, total time = $(sim_time)", neutral_species, ion_species, plot_grid, speciescolor, speciesstyle, zmax, hrshortcode, rshortcode)
 
     # Collect the J rates
-    Jratedict = Dict([j=>external_storage[j] for j in keys(external_storage) if occursin("J", string(j))])
+    Jratedict = Dict{Symbol, Vector{Float64}}([j=>external_storage[j] for j in keys(external_storage) if occursin("J", string(j))])
     # Write out the final state to a unique file for easy finding
     write_final_state(atm_soln, results_dir, sim_folder_name, final_atm_file; alt, num_layers, hrshortcode, Jratedict, rshortcode, external_storage)
     

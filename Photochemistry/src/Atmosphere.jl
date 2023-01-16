@@ -52,7 +52,7 @@ function electron_density(atmdict; globvars...)
     elseif GV.e_profile_type=="none"  # For neutrals-only simulation but without changing how E is passed to other functions. 
         E = [0. for i in GV.non_bdy_layers]
     else
-        throw("Unhandled electron profile specification: $(e_schema)")
+        throw("Unhandled electron profile specification: $(e_profile_type)")
     end
     return E
 end
