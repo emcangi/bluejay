@@ -15,7 +15,7 @@ using DoubleFloats
 
 const code_dir = "$(@__DIR__)/"
 # const extra_plots_dir = code_dir*"../Auxiliary plots/"
-const results_dir = code_dir*"../Results/"#-Paper3/"
+const results_dir = code_dir*"../Results-Paper3/"
 const xsecfolder = code_dir*"uvxsect/";
 
 # Float types for calculations =================================================
@@ -89,9 +89,11 @@ const medgray = "#444444"
 
 # Crosssection filenames ======================================================
 
+println("ALERT: HDO is using the H2O xsects. Change!")
 const photochem_data_files = Dict(:CO2=>Dict("main"=>"CO2.dat"), 
                                    :H2O=>Dict("main"=>"h2oavgtbl.dat"), 
-                                   :HDO=>Dict("main"=>"HDO.dat"), 
+                                   :HDO=>Dict("main"=>"h2oavgtbl.dat"), 
+                                   # :HDO=>Dict("main"=>"HDO.dat"), 
                                    :H2O2=>Dict("main"=>"H2O2.dat"), 
                                    :HDO2=>Dict("main"=>"H2O2.dat"), 
                                    :O3=>Dict("main"=>"O3.dat", "chapman"=>"O3Chap.dat"), 

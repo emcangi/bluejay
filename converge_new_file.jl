@@ -468,44 +468,14 @@ function update_Jrates!(n_cur_densities::Dict{Symbol, Array{ftype_ncur, 1}}; glo
     GV = values(globvars)
     @assert all(x->x in keys(GV), [:absorber, :dz, :crosssection, :Jratelist, :num_layers, :solarflux])
 
-    # Initialize an array, length=number of active layers
-    # Each sub-array is an array of length 2000, corresponding to 2000 wavelengths.
-    solarabs = Array{Array{Float64}}(undef, GV.num_layers)
-    for i in range(1, length=GV.num_layers)
-        solarabs[i] = zeros(Float64, 2000)#2000)
-    end
-
-    nalt = size(solarabs, 1)
-    nlambda = size(solarabs[1],1)
-
-    for jspecies in GV.Jratelist
-        species = GV.absorber[jspecies]
-
-        jcolumn = convert(Float64, 0.)
-        for ialt in [nalt:-1:1;]
-            #get the vertical column of the absorbing constituent
-            jcolumn += convert(Float64, n_cur_densities[species][ialt])*GV.dz
-
-            # add the total extinction to solarabs:
-            # multiplies air column density (N, #/cm^2) at all wavelengths by crosssection (σ)
-            # to get optical depth (τ). This is an override of axpy! to use the
-            # full arguments. For the equation Y' = alpha*X + Y:
-            # ARG 1: n (length of arrays in ARGS 3, 5)
-            # ARG 2: alpha, a scalar.
-            # ARG 3: X, an array of length n.
-            # ARG 4: the increment of the index values of X, maybe?
-            # ARG 5: Y, an array of length n
-            # ARG 6: increment of index values of Y, maybe?
-            BLAS.axpy!(nlambda, jcolumn, GV.crosssection[jspecies][ialt+1], 1, solarabs[ialt], 1)
-        end
-    end
-
+    solarabs = optical_depth(n_cur_densities; globvars...)
+    nlambda = 2000
     # solarabs now records the total optical depth of the atmosphere at
     # each wavelength and altitude
 
     # actinic flux at each wavelength is solar flux diminished by total
     # optical depth
-    for ialt in [1:nalt;]
+    for ialt in [1:GV.num_layers;]
         solarabs[ialt] = GV.solarflux[:,2] .* exp.(-solarabs[ialt])
     end
 
@@ -521,7 +491,7 @@ function update_Jrates!(n_cur_densities::Dict{Symbol, Array{ftype_ncur, 1}}; glo
     # (a·b) = aa + ab + ab + bb etc that kind of thing
     for j in GV.Jratelist
         n_cur_densities[j] = zeros(GV.num_layers)
-        for ialt in [1:nalt;]
+        for ialt in [1:GV.num_layers;]
             n_cur_densities[j][ialt] = ftype_ncur(BLAS.dot(nlambda, solarabs[ialt], 1, GV.crosssection[j][ialt+1], 1))
         end
     end
@@ -928,7 +898,7 @@ function next_timestep(nstart, params, t, dt; reltol=1e-2, abstol=1e-12, verbose
             end
 
             # TROUBLESHOOTING - what's going on at the index where the maximum occurs?
-            imax_nrel = argmax(n_relerr[.!check_n_abserr])
+            # imax_nrel = argmax(n_relerr[.!check_n_abserr])
             # println("nthis[imax]: $(nthis[.!check_n_abserr][imax_nrel])")
             # println("nold[imax]: $(nold[.!check_n_abserr][imax_nrel])")
             # println("dndt[imax]: $(dndt[.!check_n_abserr][imax_nrel])")
@@ -1049,12 +1019,9 @@ function converge(n_current::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_start, lo
         dt = log_timesteps[ts_i]
         iters = 0
 
-        # Do log steps for the first day of simulation time while the system is still quite stiff
+        # LOGARITHMIC TIMESTEPS FOR FIRST DAY, while the system is still quite stiff -----------------------------------------
         while (total_time+dt <= sol_in_sec)
             iters += 1 
-
-            # println("t  = $(total_time)")
-            # println("dt = $(dt)")
 
             # Update total time and model 
             total_time += dt # update total time
@@ -1068,7 +1035,7 @@ function converge(n_current::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_start, lo
             ts_i += 1
             dt = log_timesteps[ts_i]
 
-            # Check to see if timestep increase will put us over the one-day barrier
+            # If timestep increase will put us over the one-day barrier, adjust the dt to force it to meet the 1-day barrier
             if (total_time+dt > sol_in_sec)
                 dt = sol_in_sec - total_time
                 total_time += dt
@@ -1085,7 +1052,7 @@ function converge(n_current::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_start, lo
         # Reset iters
         iters=0
 
-        # Now do the human-scale timesteps 
+        # LINEAR TIMESTEPS fur human-scale time ---------------------------------------------------------------------------------
         while (total_time < season_length_in_sec)
             iters += 1
             println("$(total_time) + $(linear_timestep) = new total time $(total_time+linear_timestep)")
@@ -1141,11 +1108,12 @@ function converge(n_current::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_start, lo
         goodstep_limit = 1 # Need at least this many successful iterations before increasing timestep
        
         # the first clause before the & will help prevent the simulation stalling out if it has to reduce dt too much.
-        while (dt < 10.0^log_t_end) | (total_time <= season_length_in_sec)
+        while (dt < 10.0^log_t_end) & (total_time <= season_length_in_sec)
             
             # n_old = deepcopy(n_current)
             # n_temp = deepcopy(n_current)
 
+            # DON'T USE?
             # SPECIAL BLOCK ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
             # if seasonal_cycle == true
             #     println("Alert: Using the special block for seasonal cycle, forcing certain timesteps")
@@ -1187,9 +1155,9 @@ function converge(n_current::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_start, lo
         end
     end
 
-    if (log10(dt) / log10(total_time) > 1e-6)
-        println("Quitting because the timestep is 1 ppm of the total time or smaller, so we'll never advance further")
-    end
+    # if (log10(dt) / log10(total_time) > 1e-6)
+    #     println("Quitting because the timestep is 1 ppm of the total time or smaller, so we'll never advance further")
+    # end
     
     return n_current, total_time
 end
@@ -1346,22 +1314,57 @@ if reinitialize_water_profile
     println("Initializing the water profile anew (reinitialize_water_profile=true)")
     # hygropause_alt is an optional argument. If using, must be a unit of length in cm i.e. 40e5 = 40 km.
     println("$(Dates.format(now(), "(HH:MM:SS)")) Setting up the water profile...")
-    setup_water_profile!(n_current; dust_storm_on=dust_storm_on, tanh_prof=water_case, all_species, num_layers, non_bdy_layers, DH, alt, plot_grid, # hygropause_alt, 
-                                    H2O_excess, HDO_excess, ealt=excess_peak_alt, H2Osat, water_mixing_ratio, n_alt_index, results_dir, 
-                                    sim_folder_name, upper_lower_bdy_i)
+    setup_water_profile!(n_current; dust_storm_on=dust_storm_on, water_amt=water_case, ealt=excess_peak_alt, hygropause_alt=opt_halt,
+                                    excess_water_in=water_loc, 
+                                    all_species, alt, DH, num_layers, non_bdy_layers, n_alt_index, plot_grid,
+                                    H2O_excess, HDO_excess,  H2Osat, water_mixing_ratio,  results_dir, 
+                                    sim_folder_name, speciescolor, speciesstyle, upper_lower_bdy_i)
 end
 
 # If you want to just modify the water profile, i.e. when running several simulations
 # in succession to simulate seasons: 
-if update_water_profile     
-    fdict = Dict("high"=>50, "low"=>0.05)
+if update_water_profile
     if water_case!="standard"
-        new_frac_H2O = (n_current[:H2O] ./ n_tot(n_current; n_alt_index, all_species)) .* water_tanh_prof(non_bdy_layers./1e5; f=fdict[water_case])
-        new_frac_HDO = (n_current[:HDO] ./ n_tot(n_current; n_alt_index, all_species))  .* water_tanh_prof(non_bdy_layers./1e5; f=fdict[water_case])
-        # Update the densities, changing only below the fixed point
-        n_current[:H2O][1:upper_lower_bdy_i] = new_frac_H2O[1:upper_lower_bdy_i] .* n_current[:H2O][1:upper_lower_bdy_i]
-        n_current[:HDO][1:upper_lower_bdy_i] = new_frac_HDO[1:upper_lower_bdy_i] .* n_current[:HDO][1:upper_lower_bdy_i]
-        plot_water_profile(new_frac_H2O, new_frac_HDO, n_current[:H2O], n_current[:HDO], results_dir*sim_folder_name; plot_grid) 
+        fdict = Dict("high"=>500, "low"=>0.005)
+
+        # Create the new multipliers to change the profiles
+        multiplier = water_tanh_prof(non_bdy_layers./1e5; f=fdict[water_case], z0=excess_peak_alt)
+        if modified_water_alts == "below fixed point"
+            multiplier[upper_lower_bdy_i+1:end] .= 1
+        elseif modified_water_alts == "above fixed point"
+            multiplier[1:upper_lower_bdy_i] .= 1
+        end
+
+        prevh2o = deepcopy(n_current[:H2O])
+        prevhdo = deepcopy(n_current[:HDO])
+
+        # Update densities, effectively only above the fixed point.
+        n_current[:H2O] = n_current[:H2O] .* multiplier
+        n_current[:HDO] = n_current[:HDO] .* multiplier
+
+        # Make the plot
+        plot_water_profile(n_current, results_dir*sim_folder_name; prev_profs=[prevh2o, prevhdo], plot_grid, all_species, non_bdy_layers, speciescolor, speciesstyle) 
+    else
+        # Recalculate the initialization fraction for H2O 
+        H2Oinitfrac = set_h2oinitfrac_bySVP(n_current, opt_halt; all_species, alt, num_layers, n_alt_index, H2Osat, water_mixing_ratio)
+
+        prevh2o = deepcopy(n_current[:H2O])
+        prevhdo = deepcopy(n_current[:HDO])
+
+        if modified_water_alts == "below fixed point"
+            # in this case, we are going to re-set the lower atmosphere directly
+            # but not change the upper atmosphere from whatever it previously was.
+            n_current[:H2O][1:upper_lower_bdy_i] = H2Oinitfrac[1:upper_lower_bdy_i] .* n_tot(n_current; n_alt_index, all_species)[1:upper_lower_bdy_i]
+            n_current[:HDO][1:upper_lower_bdy_i] = 2 * DH * n_current[:H2O][1:upper_lower_bdy_i]
+        elseif modified_water_alts == "above fixed point"
+            # in this case, we modify the upper atmosphere. For some reason. Probably never do this.
+            n_current[:H2O][upper_lower_bdy_i+1:end] = H2Oinitfrac[upper_lower_bdy_i+1:end] .* n_tot(n_current; n_alt_index, all_species)[upper_lower_bdy_i+1:end]
+            n_current[:HDO][upper_lower_bdy_i+1:end] = 2 * DH * n_current[:H2O][upper_lower_bdy_i+1:end]
+        end
+
+        # Now plot it
+        plot_water_profile(n_current, results_dir*sim_folder_name; prev_profs=[prevh2o, prevhdo], plot_grid, all_species, non_bdy_layers, speciescolor, speciesstyle) 
+        println("I have reset the water profile to the standard initial mixing fraction $(modified_water_alts)")
     end
 end
 
