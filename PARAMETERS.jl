@@ -25,25 +25,36 @@ using DataFrames
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
 
 # Basic simulation parameters
-const optional_logging_note = "TEST updated temperature function" # "High mesospheric water, re-run after improvements" # Simulation goal
+const optional_logging_note = "Equilibrium temperature, hot, with same xsects for HDO, H2O" # Simulation goal
 const simset = "paper3" #"paper2" # # Fine to leave this as paper3
-const results_version = "v2"  # Helps keep track of attempts 
-const initial_atm_file = "INITIAL_GUESS.h5" # "cycle_coldexo.h5"# "cycle_mid.h5" # "cycle_hotexo.h5"# "cycle_start.h5" #
-# Other options:
-# "low_water.h5" # "midcycle_water.h5" # "cycle_highwater.h5"# "cycle_stdwater.h5"# 
-const make_P_and_L_plots = true # Turn off to save several minutes of runtime if you're not doing runs aimed at producing published results
+const results_version = "v3"  # Helps keep track of attempts 
+const initial_atm_file =  "INITIAL_GUESS.h5" #
+# water changed in mesosphere, same xsects for HDO, H2O: # "cycle_water_meso_low_xsects.h5"#"cycle_water_meso_mid_xsects.h5"#"cycle_water_meso_high_xsects.h5"#"cycle_water_meso_start_xsects.h5"#
+# water changed in mesosphere: # "cycle_water_meso_low.h5"#"cycle_water_meso_mid.h5"# "cycle_water_meso_high.h5"# 
+# water changed everywhere: # "cycle_water_low.h5"#"cycle_water_mid.h5"#"cycle_water_high.h5"#
+# Temp options: # "cycle_coldexo.h5"# "cycle_mid.h5" # "cycle_hotexo.h5"# "cycle_start.h5" #
 
+const make_P_and_L_plots = true # Turn off to save several minutes of runtime if you're not doing runs aimed at producing published results
 const seasonal_cycle = false #true #   whether testing how things change with seasonal cycles
-const timestep_type =  "dynamic-log"#"log-linear"#  # basically never use this one: "static-log"# 
+const timestep_type = seasonal_cycle==true ? "log-linear" : "dynamic-log" # basically never use this one: "static-log"# 
 
 # SET EXPERIMENT
 const paper3_exp =  "temperature" #"water" # "insolation"#
 # temperature
-const use_for_Texo = 225.
+const use_for_Texo = 275.
+
 #water
-const water_case = "standard" # "high" #"low"# # You can use these to use various tanh profiles that Mike invented
-const water_mixing_ratio = 1.3e-4 #  6.35e-4 #1.25e-5 # 
-const update_water_profile = false # this is for modifying the profile during cycling, currently doesn't work well
+const water_case = "standard" #"high" # "low" # # You can use these to use various tanh profiles that Mike invented
+const water_loc = "mesosphere" # "everywhere" #  "loweratmo" # 
+const opt_halt = 45e5
+const water_MRs = Dict("loweratmo"=>Dict("standard"=>1.3e-4, "low"=>0.65e-4, "high"=>2.6e-4), 
+                 "mesosphere"=>Dict("standard"=>1.3e-4, "high"=>1.3e-4, "low"=>1.3e-4), 
+                 "everywhere"=>Dict("standard"=>1.3e-4, "high"=>1.3e-4, "low"=>1.3e-4))
+const water_mixing_ratio = water_MRs[water_loc][water_case]
+const reinitialize_water_profile = seasonal_cycle==true ? false : true # should be off if trying to run simulations that test seasonal cycling
+const update_water_profile = seasonal_cycle==true ? true : false # this is for modifying the profile during cycling, MAY be fixed?
+const modified_water_alts = "below fixed point"
+
 # solar cycle
 const solarcyc = "mean" # "max" # "min"#
 
@@ -51,8 +62,19 @@ const solarcyc = "mean" # "max" # "min"#
 const dust_storm_on = false
 const H2O_excess = 250 # excess H2O in ppm
 const HDO_excess = 0.350 # excess HDO in ppm (divide by 1000 to get ppb)
-const excess_peak_alt = 60 # altitude at which to add the extra water 
 
+# altitude at which to add the extra water -- applies to both dust storm parcels and the tanh profile
+if dust_storm_on==true
+    const excess_peak_alt = 60
+else
+    if water_case=="high"
+        const excess_peak_alt = 65
+    elseif water_case=="low"
+        const excess_peak_alt = 45 
+    elseif water_case=="standard"
+        const excess_peak_alt = 60
+    end
+end
 
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
 # !!                                                                        !! #
@@ -78,9 +100,8 @@ if simset=="paper3"
         const solarfile = "marssolarphotonflux_solar$(solarcyc)_NEW.dat"
         const tag = "paper3_solar$(solarcyc)_$(results_version)"
     elseif paper3_exp=="water"
-        println("Testing water case = $(water_case)")
-        const update_water_profile = true # false # 
-        const tag = "paper3_water$(extra_str)_$(water_case)_$(results_version)"
+        println("Testing water case = $(water_case) $(water_loc)")
+        const tag = "paper3_water$(extra_str)_$(water_case)_$(water_loc)_$(results_version)"
     else
         throw("Simulation type is paper3 but no testing parameter specified")
     end
@@ -91,16 +112,12 @@ elseif simset == "paper2"
     
     const controltemps = [230., 130., paper2_Texo_opts[solarcyc]]
 end
-
-# Temperature and water
-
 const meantemps = [230., 130., meanexo] # Used for saturation vapor pressure. DON'T CHANGE!
-const reinitialize_water_profile = seasonal_cycle==true ? false : true# should be off if trying to run simulations that test seasonal cycling
 
 # Tolerance and timespans 
 const season_length_in_sec = seasonal_cycle==true ? 1.4838759e7 : 1e16
 const maxlogdt = seasonal_cycle==true ? 5 : 16
-const dt_min_and_max = Dict("neutrals"=>[-3, 14], "ions"=>[-4, 6], "both"=>[-3, maxlogdt]) # log10(season_length_in_sec)
+const dt_min_and_max = Dict("neutrals"=>[-3, 14], "ions"=>[-4, 6], "both"=>[-3, maxlogdt])
 const rel_tol = 1e-6
 const abs_tol = 1e-12 
 
@@ -118,7 +135,7 @@ const reaction_network_spreadsheet = code_dir*"REACTION_NETWORK.xlsx" # "REACTIO
 # Ionospheric chemistry and non-thermal escape
 const nontherm = ions_included==true ? true : false  
 const converge_which = "both"
-const e_profile_type = "quasineutral" #"O2+" # "constant"# 
+const e_profile_type = ions_included==true ? "quasineutral" : "none" #"O2+" # "constant"# 
 const remove_unimportant = true # Whether to use a slightly smaller list of species and reactions (removing minor species that Roger had in his model)
 const adding_new_species = false # set to true if introducing a new species.
 

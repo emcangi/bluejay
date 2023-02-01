@@ -242,7 +242,7 @@ function plot_bg(axob; bg="#ededed")
     end
 end
 
-function plot_extinction(solabs; fnextr="", path=nothing, tauonly=false, xsect_info=nothing, solflux=nothing, linth=1e-8, vm=1e-6, globvars...)
+function plot_extinction(solabs; fnextr="", path=nothing, tauonly=false, xsect_info=nothing, solflux=nothing, extra_t="", linth=1e-8, vm=1e-6, globvars...)
     #=
 
     TODO: This is out of date and needs updating
@@ -252,8 +252,6 @@ function plot_extinction(solabs; fnextr="", path=nothing, tauonly=false, xsect_i
     solabs: a ROW VECTOR (sadly) of solar absorption in the atmosphere. rows = altitudes, "columns" = wavelengths,
             but being a row vector it supposedly has only one column, but each element is a row.
     path: a path at which to save the plot
-    dt: timestep, used for making a unique image file name
-    iter: iteration number, same purpose as dt
     tauonly: plot just tau rather than e^-tau
     xsect_info: a list containing two things:
                 xsect: list of crosssections for some Jrate, shape (124, 2000)
@@ -262,7 +260,7 @@ function plot_extinction(solabs; fnextr="", path=nothing, tauonly=false, xsect_i
     =#
 
     GV = values(globvars)
-    @assert all(x->x in keys(GV),  [:zmax])
+    @assert all(x->x in keys(GV),  [:zmax, :plot_grid])
 
     
     fig, ax = subplots()
@@ -271,8 +269,9 @@ function plot_extinction(solabs; fnextr="", path=nothing, tauonly=false, xsect_i
 
     num_x = length(solabs[1])  # extinction is in an awkward format
     num_y = size(solabs)[1]
-    X = 1:num_x  # start with 0 because we are sending it into a python plotting library, not julia 
-    Y = 0:2:(GV.zmax/1e5 - 2)
+    println("num_x = $(num_x), num_y = $(num_y)")
+    X = 1:num_x  
+    Y = GV.plot_grid
 
     # Don't mess with this line. It is witchcraft that translates the row vector that is extinction
     # into an actual 2D matrix so that we can do normal math on it. 
@@ -287,7 +286,7 @@ function plot_extinction(solabs; fnextr="", path=nothing, tauonly=false, xsect_i
         titlestr = L"\tau"
         savestr = "tau_$(fnextr).png"
         z_min = 0
-        z_max = 5
+        z_max = 1
         heatmap = ax.pcolor(X, Y, z, cmap="bone", vmin=z_min, vmax=z_max)
         cbarlbl = L"\tau"
     else  # this is if we want to plot the extinction.
@@ -306,12 +305,19 @@ function plot_extinction(solabs; fnextr="", path=nothing, tauonly=false, xsect_i
         end
 
         if solflux != nothing
-            solflux = reshape(solflux, (1, length(solflux)))
-            z = solflux .* z # solflux is an an array (actually a vector, tbh) of shape (1, 2000);
-                             # exp.(-solabs) is an array of shape (124, 2000). This multiplies the solar flux
-                             # values by the extinction across the 2000 wavelengths. Unbelievably, this 
-                             # operation works in Julia in either direction, whether you do solflux .* z or reverse.
-            titlestr = L"J_{\lambda} e^{-\tau}\sigma_{\lambda}" * ", $(string_to_latexstr(string(jr)))"
+            # The following multiplies the solar flux at every wavelength by z, which currently = exp(-solabs). 
+            @time z = solflux[:, 2]' .* z # solflux is an an array (actually a vector, tbh) of shape (1, 2000);
+                                    # exp.(-solabs) is an array of shape (124, 2000). This multiplies the solar flux
+                                    # values by the extinction across the 2000 wavelengths. Unbelievably, this 
+                                    # operation works in Julia in either direction, whether you do solflux .* z or reverse.
+
+            # Actinic flux
+            # @time for ialt in 1:num_layers
+            #     z[ialt, :] = solflux[:,2] .* z[ialt, :]#exp.(-solarabs[ialt])
+            # end
+
+
+            titlestr = L"J_{\lambda} e^{-\tau}\sigma_{\lambda}" * ", $(string_to_latexstr(string(jr)))" * " $(extra_t)"
         end
         heatmap = ax.pcolor(X, Y, z, cmap="bone", norm=PyPlot.matplotlib.colors.SymLogNorm(vmin=0, vmax=vm, linthresh=linth))# 
         cbarlbl = "photons/sec"
@@ -338,8 +344,7 @@ function plot_extinction(solabs; fnextr="", path=nothing, tauonly=false, xsect_i
     end
 end
 
-function plot_Jrates(sp, atmdict::Dict{Symbol, Vector{ftype_ncur}}, savedir::String; 
-                     opt="", globvars...)                
+function plot_Jrates(sp, atmdict::Dict{Symbol, Vector{ftype_ncur}}; savedir=nothing, opt="", globvars...)                
     #=
     Plots the Jrates for each photodissociation or photoionizaiton reaction. Override for small groups of species.
     Input:
@@ -380,15 +385,16 @@ function plot_Jrates(sp, atmdict::Dict{Symbol, Vector{ftype_ncur}}, savedir::Str
         for kv in rxd_prod  # loop through the dict of format reaction => [rates by altitude]
             lbl = "$(kv[1])"
 
-            if source2 != nothing 
-                if !all(x->x<=1e-10, abs.(kv[2] - rxd_prod2[kv[1]]))
-                    ax.semilogx(kv[2] - rxd_prod2[kv[1]], GV.plot_grid, linestyle="-", linewidth=1, label=lbl)
-                else
-                    text(0.5, 0.5, "Everything is basically 0, nothing to plot", transform=ax.transAxes)
-                end
-            else
-                ax.semilogx(kv[2], GV.plot_grid, linestyle="-", linewidth=1, label=lbl)
-            end
+            # if source2 != nothing 
+            #     if !all(x->x<=1e-10, abs.(kv[2] - rxd_prod2[kv[1]]))
+            #         ax.semilogx(kv[2] - rxd_prod2[kv[1]], GV.plot_grid, linestyle="-", linewidth=1, label=lbl)
+            #     else
+            #         text(0.5, 0.5, "Everything is basically 0, nothing to plot", transform=ax.transAxes)
+            #     end
+            # else
+            #     ax.semilogx(kv[2], GV.plot_grid, linestyle="-", linewidth=1, label=lbl)
+            # end
+            ax.semilogx(kv[2], GV.plot_grid, linestyle="-", linewidth=1, label=lbl)
             
             # set the xlimits
             if minimum(kv[2]) <= minx
@@ -408,9 +414,14 @@ function plot_Jrates(sp, atmdict::Dict{Symbol, Vector{ftype_ncur}}, savedir::Str
         end
         maxx = 10^(ceil(log10(maxx)))
         ax.set_xlim([minx, maxx])
-        savefig(savedir*"J_rates_$(sp)_$(opt).png", bbox_inches="tight", dpi=300)
+
+        if savedir!=nothing
+            savefig(savedir*"J_rates_$(sp)_$(opt).png", bbox_inches="tight", dpi=300)
+            close(fig)
+        else
+            show()
+        end
     end
-    close(fig)
 end
 
 function plot_production_and_loss(final_atm, results_dir, thefolder; globvars...)
@@ -791,7 +802,7 @@ function plot_temp_prof(Tprof_1; opt="", lbls=["Neutrals", "Ions", "Electrons"],
     end
 end
 
-function plot_water_profile(H2Oinitf, HDOinitf, nH2O, nHDO, savepath::String; showonly=false, watersat=nothing, globvars...) 
+function plot_water_profile(atmdict, savepath::String; showonly=false, watersat=nothing, H2Oinitf=nothing, prev_profs=nothing, globvars...)  # H2Oinitf, HDOinitf, nH2O, nHDO, 
     #=
     Plots the water profile in mixing ratio and number densities, in two panels.
 
@@ -807,41 +818,72 @@ function plot_water_profile(H2Oinitf, HDOinitf, nH2O, nHDO, savepath::String; sh
     =#
 
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:plot_grid])
+    @assert all(x->x in keys(GV), [:plot_grid, :all_species, :non_bdy_layers, :speciescolor, :speciesstyle])
 
-    fig = figure(figsize=(4,6))
-    ax = gca()
-    plot_bg(ax)
-    ax.tick_params(axis="x", which="minor", bottom=true, top=true)
+    rcParams = PyDict(matplotlib."rcParams")
+    rcParams["font.sans-serif"] = ["Louis George Caf?"]
+    rcParams["font.monospace"] = ["FreeMono"]
+    rcParams["font.size"] = 16
+    rcParams["axes.labelsize"]= 18
+    rcParams["xtick.labelsize"] = 14
+    rcParams["ytick.labelsize"] = 14
 
-    ax1col = "#88527F"
-    
-    # mixing ratio in PPM axis
-    ax.semilogx(convert(Array{Float64}, H2Oinitf)/1e-6, GV.plot_grid, color=ax1col, linewidth=2)
-    ax.semilogx(convert(Array{Float64}, HDOinitf)/1e-6, GV.plot_grid, color=ax1col, linestyle="--", linewidth=2)
-    ax.set_xlabel("Volume Mixing Ratio [ppm]", color=ax1col)
-    ax.set_ylabel("Altitude [km]")
-    ax.tick_params(axis="x", labelcolor=ax1col)
-    ax.set_xticks(collect(logrange(1e-6, 1e2, 5)))
-
-    # LEgend
-    L2D = PyPlot.matplotlib.lines.Line2D
-    lines = [L2D([0], [0], color="black"),
-             L2D([0], [0], color="black", linestyle="--")]
-    ax.legend(lines, [L"H_2O", "HDO"], fontsize=12)#, loc="center left")
-
-    ax2 = ax.twiny()
-    ax2col = "#429EA6" 
-    ax2.tick_params(axis="x", labelcolor=ax2col)
-    ax2.semilogx(convert(Array{Float64}, nH2O), GV.plot_grid, color=ax2col, linewidth=2, label=L"H$_2$O")
-    ax2.semilogx(convert(Array{Float64}, nHDO), GV.plot_grid, color=ax2col, linestyle="--", linewidth=2, label="HDO")
-    ax2.set_xlabel(L"Number density [cm$^{-3}$]", color=ax2col, y=1.07)
-    ax2.set_xticks(collect(logrange(1e-4, 1e16, 6)))
-    for side in ["top", "bottom", "left", "right"]
-        ax2.spines[side].set_visible(false)
+    fig, ax = subplots(1, 3, sharey=true, figsize=(14,6))
+    for a in ax
+        plot_bg(a)
+        a.tick_params(axis="x", which="minor", bottom=true, top=true)
     end
+    subplots_adjust(wspace=0.12)
 
-    # suptitle(L"H$_2$O and HDO vertical profiles", y=1.05)
+    prevcol = "#666"
+    
+    # mixing ratio axis
+    # to get in ppmv, divide the mixing ratio by 1e-6. 
+    if prev_profs != nothing
+        ax[1].semilogx(prev_profs[1] ./ n_tot(atmdict; globvars...), GV.plot_grid, color=prevcol)
+        ax[1].semilogx(prev_profs[2] ./ n_tot(atmdict; globvars...), GV.plot_grid, color=prevcol)
+    end
+    ax[1].semilogx(atmdict[:H2O] ./ n_tot(atmdict; globvars...), GV.plot_grid, color=GV.speciescolor[:H2O], linewidth=2)
+    ax[1].semilogx(atmdict[:HDO] ./ n_tot(atmdict; globvars...), GV.plot_grid, color=GV.speciescolor[:HDO], linestyle=GV.speciesstyle[:HDO], linewidth=2)
+    ax[1].set_xlabel("Mixing Ratio")
+    ax[1].set_ylabel("Altitude (km)")
+    ax[1].set_xticks(collect(logrange(1e-12, 1e-2, 6)))
+    
+    # Number density 
+    if prev_profs != nothing
+        ax[2].semilogx(prev_profs[1], GV.plot_grid, color=prevcol)
+        ax[2].semilogx(prev_profs[2], GV.plot_grid, color=prevcol, linestyle=GV.speciesstyle[:HDO])
+    end
+    ax[2].semilogx(atmdict[:H2O], GV.plot_grid, color=GV.speciescolor[:H2O], linewidth=2, label=string_to_latexstr("H2O"))
+    ax[2].semilogx(atmdict[:HDO], GV.plot_grid, color=GV.speciescolor[:HDO], linestyle=GV.speciesstyle[:HDO], linewidth=2, label="HDO")
+    ax[2].set_xlabel(L"Number density (cm$^{-3}$)")
+    ax[2].set_xticks(collect(logrange(1e-4, 1e16, 6)))
+
+    # ppm
+    if prev_profs != nothing
+        ax[3].semilogx((prev_profs[1] ./ n_tot(atmdict; globvars...)) ./ 1e-6, GV.plot_grid, color=prevcol)
+        ax[3].semilogx((prev_profs[2] ./ n_tot(atmdict; globvars...)) ./ 1e-6, GV.plot_grid, color=prevcol, linestyle=GV.speciesstyle[:HDO])
+    end
+    ax[3].semilogx((atmdict[:H2O] ./ n_tot(atmdict; globvars...)) ./ 1e-6, GV.plot_grid, color=GV.speciescolor[:H2O], linewidth=2)
+    ax[3].semilogx((atmdict[:HDO] ./ n_tot(atmdict; globvars...)) ./ 1e-6, GV.plot_grid, color=GV.speciescolor[:HDO], linestyle=GV.speciesstyle[:HDO], linewidth=2)
+    ax[3].set_xlabel("ppmv")
+
+    # Title and legend
+    suptitle(L"Initial H$_2$O and HDO vertical profiles", y=1.05)
+
+    L2D = PyPlot.matplotlib.lines.Line2D
+    if prev_profs != nothing
+        lines = [L2D([0], [0], color=GV.speciescolor[:H2O]),
+                 L2D([0], [0], color=GV.speciescolor[:HDO], linestyle=GV.speciesstyle[:HDO]),
+                 L2D([0], [0], color=prevcol)]
+        lbls = ["$(string_to_latexstr("H2O")) (new)", "HDO (new)", "Initial"]
+    else  
+        lines = [L2D([0], [0], color=GV.speciescolor[:H2O]),
+                 L2D([0], [0], color=GV.speciescolor[:HDO], linestyle=GV.speciesstyle[:HDO])]
+        lbls = ["$(string_to_latexstr("H2O"))", "HDO"]
+    end 
+    ax[1].legend(lines, lbls, fontsize=12)
+    
     # save it
     if showonly==true
         show()
@@ -851,10 +893,11 @@ function plot_water_profile(H2Oinitf, HDOinitf, nH2O, nHDO, savepath::String; sh
     end
 
     # Will make a plot of the water profile and the saturation vapor pressure curve on the same axis for comparison
-    if watersat != nothing
+    if (watersat != nothing) & (H2Oinitf!=nothing)
+        throw("Need to update the code to plot water saturation")
         fig, ax = subplots(figsize=(4,6))
         plot_bg(ax)
-        semilogx(convert(Array{Float64}, H2Oinitf), GV.plot_grid, color=ax1col, linewidth=3, label=L"H$_2$O initial fraction")
+        semilogx(convert(Array{Float64}, H2Oinitf), GV.plot_grid, color=col, linewidth=3, label=L"H$_2$O initial fraction")
         semilogx(convert(Array{Float64}, watersat[2:end-1]), GV.plot_grid, color="black", alpha=0.5, linewidth=3, label=L"H$_2$O saturation")
         xlabel("Mixing ratio", fontsize=18)
         ylabel("Altitude [km]", fontsize=18)

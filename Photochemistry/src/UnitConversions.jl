@@ -45,8 +45,6 @@ function GEL_to_molecule(GEL, HorH2O)
     end
 end
 
-
-
 function molec_to_GEL(molecules, HorH2O)
     #=
     Converts molecules of H2O per cm^2 to a global equivalent layer in meters. 
@@ -59,3 +57,11 @@ function molec_to_GEL(molecules, HorH2O)
         
     return molecules * 1e4 * 18 * 1.67e-27 / 999.89
 end
+
+#                       Converting joules and eletron volts                     #
+#===============================================================================#
+
+kJ_to_eV(kj) = kj * 6.242e21
+
+ev_per_molecule(eV_per_mole) = eV_per_mole/6.022e23
+

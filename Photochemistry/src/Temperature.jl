@@ -66,7 +66,10 @@ function T(Tsurf, Tmeso, Texo; lapserate=-1.4e-5, z_meso_top=108e5, weird_Tn_par
         Te[i_meso] .= Tmeso
 
         # This region connects the upper atmosphere with the isothermal mesosphere
-        Te[i_meso_top:i_stitch_elec] .= upper_atmo_electrons(GV.alt[i_meso_top:i_stitch_elec], -1289.05806755, 469.31681082, 72.24740123, -50.84113252)
+        Te[i_meso_top+1:i_stitch_elec] .= upper_atmo_electrons(GV.alt[i_meso_top+1:i_stitch_elec], -1289.05806755, 469.31681082, 72.24740123, -50.84113252)
+
+        # Don't let profile get lower than specified meso temperature
+        Te[findall(t->t < Tmeso, Te)] .= Tmeso
 
         # This next region is a fit of the tanh electron temperature expression in Ergun+2015 and 2021 
         # to the electron profile in Hanley+2021, DD8
@@ -81,7 +84,7 @@ function T(Tsurf, Tmeso, Texo; lapserate=-1.4e-5, z_meso_top=108e5, weird_Tn_par
             fit to Gwen's DD8 profile, SZA 40, Hanley+2021, with values M = 47/13, B = -3480/13
             =#
             # New values for fit to SZA 60,Hanley+2022:
-            M = 3.59157034
+            M = 3.40157034 
             B = -286.48716122
             @. return M*(z_arr/1e5) + B
         end
@@ -102,6 +105,9 @@ function T(Tsurf, Tmeso, Texo; lapserate=-1.4e-5, z_meso_top=108e5, weird_Tn_par
 
         # try as an average of neutrals and electrons. There is no real physical reason for this.
         Ti[i_meso_top:i_stitch_ions] = meso_ions_byeye(alt[i_meso_top:i_stitch_ions])
+
+        # Don't let profile get lower than specified meso temperature
+        Ti[findall(t->t < Tmeso, Ti)] .= Tmeso
 
         # This next region is a fit of the tanh electron temperature expression in Ergun+2015 and 2021 
         # to the electron profile in Hanley+2021, DD8

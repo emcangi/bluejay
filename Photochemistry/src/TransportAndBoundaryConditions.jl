@@ -234,6 +234,49 @@ function escaping_hot_atom_production(sp, source_rxns, source_rxn_rc_funcs, atmd
     end
 end
 
+function final_escape(thefolder, thefile; globvars...)
+    #=
+    thefolder: Folder in which an atmosphere file lives
+    thefile: the file containing an atmosphere for which you'd like to calculate the final escape fluxes of H and D.
+    =#
+    
+    GV = values(globvars)
+    @assert all(x->x in keys(GV), [:alt, :all_species, :dz, :hHnet, :hDnet, :hH2net, :hHDnet, :hHrc, :hDrc, :hH2rc, :hHDrc])
+    
+    # First load the atmosphere and associated variables.
+    atmdict = get_ncurrent(thefolder*thefile);
+
+    vardict = load_from_paramlog(thefolder; alt);
+    
+    # Get Jrate list 
+    Jratelist = format_Jrates(thefolder*"active_rxns.xlsx", GV.all_species, "Jratelist"; hot_atoms=true, ions_on=true)[1];
+    Jratedict = Dict([j=>atmdict[j] for j in Jratelist])
+    
+    # Make a dataframe to store things
+    escdf = DataFrame("EscapeType"=>["Thermal", "Nonthermal", "Total"], 
+                      "H"=>[0, 0, 0], "D"=>[0, 0, 0], "H2"=>[0, 0, 0], "HD"=>[0, 0, 0])
+
+    # Now collect non-thermal and thermal fluxes for each species. 
+    for s in ["H", "D", "H2", "HD"]
+        nonthermal_esc, thermal_esc = get_transport_PandL_rate(Symbol(s), atmdict; returnfluxes=true, all_species=vardict["all_species"], alt=GV.alt, 
+                                                               collision_xsect, GV.dz,
+                                                               hot_H_network=GV.hHnet, hot_D_network=GV.hDnet, hot_H2_network=GV.hH2net, hot_HD_network=GV.hHDnet,
+                                                               hot_H_rc_funcs=GV.hHrc, hot_D_rc_funcs=GV.hDrc, hot_H2_rc_funcs=GV.hH2rc, hot_HD_rc_funcs=GV.hHDrc, 
+                                                               Hs_dict=vardict["Hs_dict"], ion_species=vardict["ion_species"], Jratedict, molmass, 
+                                                               neutral_species=vardict["neutral_species"], non_bdy_layers, num_layers, n_all_layers, n_alt_index, 
+                                                               polarizability, q, speciesbclist=vardict["speciesbclist"],
+                                                               Tprof_for_Hs=vardict["Tprof_for_Hs"], Tprof_for_diffusion=vardict["Tprof_for_diffusion"], 
+                                                               transport_species=vardict["transport_species"], 
+                                                               Tn=vardict["Tn_arr"], Ti=vardict["Ti_arr"], Te=vardict["Te_arr"], Tp=vardict["Tplasma_arr"], zmax=GV.alt[end])
+        escdf.:($s) = [thermal_esc, nonthermal_esc, thermal_esc+nonthermal_esc]
+    end
+    
+    # Calculate total thermal, total non-thermal, and total total.
+    escdf."TotalAtomicEscape" = sum(eachcol(escdf[!, Not([:EscapeType, :H2, :HD])])) .+ 2 .* escdf[:, :H2] .+ 2 .* escdf[:, :HD]
+    
+    return escdf
+end
+
 function nonthermal_escape_flux(source_rxn_network, prod_rates_by_alt; verbose=false, returntype="dataframe", globvars...) 
     #=
     Given a matrix where each column is a vertical profile of the production rates (#/cm³/s) of escaping hot atoms

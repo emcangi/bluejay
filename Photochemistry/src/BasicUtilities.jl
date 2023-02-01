@@ -17,6 +17,17 @@ function deletefirst(A, v)
     return A[keep]
 end
 
+function df_lookup(df, indcol, indcolentry, col)
+    #=
+    df: Dataframe to search, produced by final_escape.
+    indcol: The name of the index column, such as "EscapeType"
+    indcolentry: The value you want in the index column, i.e. which row to use, such as 'Thermal' or 'Total'
+    col: Column name, probably a species like "H"
+    =#
+    return df[in([indcolentry]).(df.:($indcol)), col]
+end
+
+
 function find_nonfinites(collection; collec_name="collection")
     #=
     Returns indices of any nonfinite values (inf or nan) in collection.

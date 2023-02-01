@@ -188,14 +188,12 @@ function load_bcdict_from_paramdf(df)
     return speciesbclist_reconstructed
 end
 
-function load_from_paramlog(folder; globvars...)
+function load_from_paramlog(folder; quiet=true, globvars...)
     #=
     Given a folder containing simulation results, this will open the parameter log spreadsheet, 
     load as dataframe, and extract all the entries so as to return the global parameters that were used for
     that simulation. 
     =#
-
-    
 
     # Load the workbook
     paramlog_wb = XLSX.readxlsx("$(folder)PARAMETERS.xlsx")
@@ -229,7 +227,9 @@ function load_from_paramlog(folder; globvars...)
     else 
         GV = values(globvars)
         @assert all(x->x in keys(GV), [:alt])
-        println("WARNING: Reconstructing temperature profiles with default options based on logged control temperatures. It is POSSIBLE the reconstruction could be wrong.")
+        if quiet==false
+            println("WARNING: Reconstructing temperature profiles with default options based on logged control temperatures. It is POSSIBLE the reconstruction could be wrong if the temp function changed.")
+        end
         T_dict = T(get_param("TSURF", df_atmcond), get_param("TMESO", df_atmcond), get_param("TEXO", df_atmcond); alt)
         Tn_arr = T_dict["neutrals"]
         Ti_arr = T_dict["ions"]

@@ -450,6 +450,25 @@ function get_Jrate_symb(reactant::String, products::Array)::Symbol
     return Symbol("J$(reactant)to" * join(products, "p"))
 end
 
+function load_network_and_make_functions(rxn_sheet; globvars...)
+    #=
+    Useful when analyzing results.
+
+    Inputs: 
+        rxn_sheet: reaction spreadsheet
+    =#
+    GV = values(globvars)
+    @assert all(x->x in keys(GV), [:all_species])
+
+    reaction_network, hHnet, hDnet, hH2net, hHDnet = load_reaction_network(rxn_sheet; get_hot_rxns=true, GV.all_species);
+    hot_H_rc_funcs = Dict([rxn => mk_function(:((Tn, Ti, Te, M) -> $(rxn[3]))) for rxn in hHnet]);
+    hot_D_rc_funcs = Dict([rxn => mk_function(:((Tn, Ti, Te, M) -> $(rxn[3]))) for rxn in hDnet]);
+    hot_H2_rc_funcs = Dict([rxn => mk_function(:((Tn, Ti, Te, M) -> $(rxn[3]))) for rxn in hH2net]);
+    hot_HD_rc_funcs = Dict([rxn => mk_function(:((Tn, Ti, Te, M) -> $(rxn[3]))) for rxn in hHDnet]);
+    
+    return reaction_network, hHnet, hDnet, hH2net, hHDnet, hot_H_rc_funcs, hot_D_rc_funcs, hot_H2_rc_funcs, hot_HD_rc_funcs
+end
+
 function load_reaction_network(spreadsheet; saveloc=nothing, write_rxns=false, to_return="all", ions_on=true, get_hot_rxns=false, globvars...)
     #=
     Inputs:
@@ -639,3 +658,230 @@ function troe_expr(k0, kinf, F)
     FF = :(10 .^ (($(outer_numer)) ./ ($(outer_denom))))
     return FF
 end
+
+#                        Functions to calculate enthalpies                      #
+#                                                                               #
+# ALERT: YOU *MUST* RUN modify_rxn_spreadsheet once the first time you try to   #
+# generate results for a new planet because it has a DIFFERENT ESCAPE V!        #
+#===============================================================================#
+
+function escape_energy(z)
+    #=
+    Calculates escape energy from planet P for a molecule containing z protons.
+    =#
+    
+    kJ_to_eV((0.5 * z * (1.67e-27 #=kg=#) * (escape_velocity() #=m/s=#)^2) / 1000 #=kJ/J=#)
+end
+
+function enthalpy_of_reaction(reactants, products, enthalpy_dict)
+    #=
+    Calculates the total enthalpy of reaction, amount needed to escape hot atoms and molecules in the products,
+    and the total excess to figure out if its exothermic or not. Note that it just automatically looks for H, D, H2, HD right now...
+
+    Inputs:
+        reactants, products: lists of exactly what it sounds like, with symbols for the species.
+        enthalpy_dict: dictionary containing enthalpies of formation for many species found in the network. 
+    =#
+    
+    dfH_products = 0
+    dfH_reactants = 0
+
+    for p in products
+        dfH_products += enthalpy_dict[p]
+    end
+    for r in reactants
+        dfH_reactants += enthalpy_dict[r]
+    end
+
+    # Calculate the total enthalpy of reaction:
+    enthalpy_of_rxn = dfH_products - dfH_reactants
+    
+    # this block adds up the total mass that needs to escape, allows for reactions that produce, e.g., both H and D
+    m = 0 
+    flag = 0
+    if :H in products
+        m += 1
+        flag += 1
+    end
+    if :H2 in products
+        m += 2
+        flag += 1
+    end
+    if :D in products
+        m += 2
+        flag += 1
+    end
+    if :HD in products
+        m += 3
+        flag += 1
+    end
+        
+    # Convert the total enthalpy of reaction to eV:
+    total_reaction_enthalpy_ev = ev_per_molecule(kJ_to_eV(-1*(enthalpy_of_rxn)))
+    
+    # Calculate how much energy goes into escaping the hot atoms:
+    energy_required_to_escape_all_hot = escape_energy(m)
+    
+    # Calculate how much excess energy we have
+    excess_energy = round(total_reaction_enthalpy_ev - energy_required_to_escape_all_hot, digits=2)
+
+    # Calculate whether endothermic or exothermic
+    endo_exo = excess_energy > 0 ? "exothermic" : "endothermic"
+    
+    println("Reaction $(format_chemistry_string(reactants, products))")
+    if flag > 1
+        println("Flag! Reaction produces two hot atoms")
+    end
+    println("Raw enthalpy is $(total_reaction_enthalpy_ev) eV")
+    println("Mass to escape $(m), so need a minimum of $(m*escape_energy(1)) eV")
+    println("excess energy $(excess_energy).")
+    println("Positive excess energy: $(excess_energy > 0), so reaction is $(endo_exo)")
+    println()
+    
+    return endo_exo, total_reaction_enthalpy_ev, energy_required_to_escape_all_hot, excess_energy
+end
+
+function get_product_and_reactant_cols(df)
+    # Determine how many reactant and product columns there are 
+    possible_Rcols = ["R1", "R2", "R3"]
+    possible_Pcols = ["P1", "P2", "P3"]
+    rcols = Symbol.(possible_Rcols[possible_Rcols .∈ Ref(names(df))])
+    pcols = Symbol.(possible_Pcols[possible_Pcols .∈ Ref(names(df))])
+    
+    return rcols, pcols
+end
+
+function calculate_enthalpies(df; species=[:H, :D, :H2, :HD], new_cols=nothing, insert_i=nothing)
+    #=
+    Inputs:
+        df: A dataframe containing the contents of a reaction spreadsheet to which we must add excess energies
+        species: species for which we want to identify reactions producing hot ones.
+        new_cols: strings containing names for new columns to put into the df/spreadsheet.
+        insert_i: first integer at which we will begin inserting columns.
+    =#
+    
+    # Enthalpy of formation 
+    enthalpy = Dict(:Ar=>0, :CO=>-113.8, :CO2=>-393.1, :D=>221.72, :H=>216.0, :HD=>0.32, :H2=>0, :DCO=>40.945, :HCO=>44.8, :HDO=>-245.28, :H2O=>-238.9, 
+                     :H2O2=>-130.0, :DO2=>6.487, :HO2=>13.4, :DOCO=>185.8, :HOCO=>183.97, :N2=>0, :O=>246.8, :O1D=>246.8, :O2=>0, :O3=>141.80, :OD=>37.23, 
+                     :OH=>38.4, :HDO2=>-140.242, :C=>711.2, :N=>470.8, :NO=>89.8, :Nup2D=>470.8, :CO2pl=>935.7, :DCO2pl=>594.9, :HCO2pl=>589.0, :Opl=>1560.7, 
+                     :O2pl=>1164.7, :Arpl=>166.40, :ArDpl=>1176.9, :ArHpl=>1165.2, :Cpl=>1797.6, :CHpl=>1619.1, :COpl=>1238.3, :Dpl=>1540.320, :Hpl=>1528.0, 
+                     :HDpl=>1496.793, :H2pl=>1488.3, :H2Dpl=>1118.1, :H3pl=>1107.0, :HDOpl=>987.7, :H2Opl=>977.9, :H3Opl=>597.0, :H2DOpl=>1119.6, 
+                     :HO2pl=>1108.5, :DCOpl=>833.9, :HCOpl=>825.6, :DOCpl=>972.6, :HOCpl=>963.0, :HNOpl=>1074.4, :Npl=>1873.1, :NHpl=>1359, :N2pl=>1503.3, 
+                     :N2Dpl=>1045.9, :N2Hpl=>1035.5, :NOpl=>984.0, :ODpl=>1305.6, :OHpl=>1292.7, :E=>0);
+
+    
+    if new_cols != nothing
+        j = 0
+        for name in new_cols
+            insertcols!(df, insert_i+j, "$(name)"=>["" for x in collect(1:size(df)[1])])
+            j += 1
+        end
+    end
+    
+    rcols, pcols = get_product_and_reactant_cols(df)
+    
+    # Count endothermic and exothermic
+    endo_count = 0
+    exo_count = 0
+    
+    for row in eachrow(df)
+        reactants = [Symbol(row.:($r)) for r in rcols]
+        products = filter!(x->x!=:none, [Symbol(row.:($p)) for p in pcols])
+        
+        # Ignore reactions for which we don't have enthalpies of a species:
+        if any(x->!(x in keys(enthalpy)), union(reactants, products))
+            continue
+        end
+
+        if any(x->x in products, species)
+            exo_or_endo, total_enthalpy, loss_energy, excess_energy = enthalpy_of_reaction(reactants, products, enthalpy)
+            row.rxnEnthalpy = total_enthalpy
+            row.totalEscE = loss_energy
+            row.excessE = excess_energy
+            
+            if exo_or_endo == "exothermic"
+                exo_count += 1
+                row.NTEscape = "Yes"
+
+                if :D in products
+                    row.hotD = "Yes"
+                end
+                if :HD in products
+                    row.hotHD = "Yes"
+                end
+                
+                if :H in products
+                    row.hotH = "Yes"
+                end
+                if :H2 in products
+                    row.hotH2 = "Yes"
+                end
+            else 
+                endo_count += 1
+                row.NTEscape = "No"
+                if :D in products
+                    row.hotD = ""
+                end
+                if :HD in products
+                    row.hotHD = ""
+                end
+                
+                if :H in products
+                    row.hotH = ""
+                end
+                if :H2 in products
+                    row.hotH2 = ""
+                end
+            end
+        end
+    end
+    
+    println("Exothermic: $(exo_count), Endothermic: $(endo_count)")
+    return df
+end
+
+function modify_rxn_spreadsheet(spreadsheet; spc=[:H, :D, :H2, :HD], new_cols=nothing, insert_i=nothing)
+    #=
+    Inputs:
+        spreadsheet: A starting spreadsheet with reaction rate data.
+        spc: spc for which we want to determine if hot ones are produced.
+        new_cols: strings containing names for new columns to put into the df/spreadsheet.
+        insert_i: a list of integers at which to insert columns. The order in this list corresponds to the order of sheets in the workbook.
+    =#
+    xf = XLSX.readxlsx(spreadsheet)
+    original_sheets = XLSX.sheetnames(xf)
+    
+    new_file = "REACTION_NETWORK_VENUS.xlsx"   # "MOLEC_NT_$(spreadsheet)"#
+    
+    if Set(spc) != (:H, :D, :H2, :HD)
+        throw("Error: The code that calculates hot atom excess energies is not set up to handle extra species beyond H, D, H2, HD.")
+    end
+    
+    # Go through each available sheet and open it as a dataframe for modification
+    for (j, sheet) in enumerate(original_sheets)
+        df = DataFrame(XLSX.readtable(spreadsheet, sheet));
+               
+        # Now process:        
+        if sheet in ["Ion reactions", "Photodissociation", "Photoionization"]
+            # Replace any missing values so we don't get rid of all our reactions before processing:
+            rcols, pcols = get_product_and_reactant_cols(df)
+            for r in rcols
+                replace!(df.:($r), missing=>"none")
+            end
+            for p in pcols
+                replace!(df.:($p), missing=>"none")
+            end
+            
+            if insert_i != nothing
+                df_to_write = calculate_enthalpies(df; species=spc, new_cols=new_cols, insert_i=insert_i[j])
+            else 
+                df_to_write = calculate_enthalpies(df; species=spc)
+            end
+        else
+            df_to_write = df
+        end
+        println()
+        log_reactions(df_to_write, sheet, new_file)
+    end
+end
+
