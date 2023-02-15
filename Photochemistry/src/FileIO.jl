@@ -31,6 +31,13 @@ function delete_old_h5file(filename::String)
     end
 end
 
+function get_elapsed_time(filepath)
+    #=
+    Given an .h5 file located at filepath, this extracts the total elapsed time in seconds. 
+    =# 
+    return parse(Float64, split(h5read(filepath, "info")[end])[1])
+end
+
 function get_ncurrent(readfile::String)
     #=
     Input:

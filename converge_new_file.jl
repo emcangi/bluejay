@@ -1324,6 +1324,7 @@ end
 # If you want to just modify the water profile, i.e. when running several simulations
 # in succession to simulate seasons: 
 if update_water_profile
+    println("Seasonal modification of water profile")
     if water_case!="standard"
         fdict = Dict("high"=>500, "low"=>0.005)
 

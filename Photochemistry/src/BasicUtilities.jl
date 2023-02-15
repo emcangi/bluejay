@@ -27,7 +27,6 @@ function df_lookup(df, indcol, indcolentry, col)
     return df[in([indcolentry]).(df.:($indcol)), col]
 end
 
-
 function find_nonfinites(collection; collec_name="collection")
     #=
     Returns indices of any nonfinite values (inf or nan) in collection.

@@ -23,7 +23,6 @@ const xsecfolder = code_dir*"uvxsect/";
 ftype_ncur = Float64 #Double64 #  used to store n_current values
 ftype_chem = Float64 #Double64 #  used to compute chemical reaction rates and chemical jacobian
 
-
 # Altitude grid specifications =================================================
 const max_alt = 250e5
 const dz = 2e5
@@ -89,11 +88,12 @@ const medgray = "#444444"
 
 # Crosssection filenames ======================================================
 
-println("ALERT: HDO is using the H2O xsects. Change!")
+# for i in 1:10
+#     println("WARNING!!! WARNING!!! HDO CROSS SECTIONS = H2O CROSS SECTIONS! EXPERIENCING WEIRD RESULTS?? CHANGE THIS YOU DUMMY")
+# end
 const photochem_data_files = Dict(:CO2=>Dict("main"=>"CO2.dat"), 
                                    :H2O=>Dict("main"=>"h2oavgtbl.dat"), 
-                                   :HDO=>Dict("main"=>"h2oavgtbl.dat"), 
-                                   # :HDO=>Dict("main"=>"HDO.dat"), 
+                                   :HDO=>Dict("main"=>"HDO.dat"),# 
                                    :H2O2=>Dict("main"=>"H2O2.dat"), 
                                    :HDO2=>Dict("main"=>"H2O2.dat"), 
                                    :O3=>Dict("main"=>"O3.dat", "chapman"=>"O3Chap.dat"), 

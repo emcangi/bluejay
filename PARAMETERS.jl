@@ -25,26 +25,27 @@ using DataFrames
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
 
 # Basic simulation parameters
-const optional_logging_note = "Equilibrium temperature, hot, with same xsects for HDO, H2O" # Simulation goal
+const optional_logging_note = "Water eq - low - same HDO,H2Oxsects - after adding RCE" # Simulation goal
 const simset = "paper3" #"paper2" # # Fine to leave this as paper3
-const results_version = "v3"  # Helps keep track of attempts 
-const initial_atm_file =  "INITIAL_GUESS.h5" #
+const results_version = "v4"  # Helps keep track of attempts 
+const initial_atm_file = "INITIAL_GUESS.h5" #
+
 # water changed in mesosphere, same xsects for HDO, H2O: # "cycle_water_meso_low_xsects.h5"#"cycle_water_meso_mid_xsects.h5"#"cycle_water_meso_high_xsects.h5"#"cycle_water_meso_start_xsects.h5"#
-# water changed in mesosphere: # "cycle_water_meso_low.h5"#"cycle_water_meso_mid.h5"# "cycle_water_meso_high.h5"# 
+# water changed in mesosphere: #  "cycle_water_meso_high.h5"#  "cycle_water_meso_start.h5"# "cycle_water_meso_low.h5"# "cycle_water_meso_mid.h5"#
 # water changed everywhere: # "cycle_water_low.h5"#"cycle_water_mid.h5"#"cycle_water_high.h5"#
-# Temp options: # "cycle_coldexo.h5"# "cycle_mid.h5" # "cycle_hotexo.h5"# "cycle_start.h5" #
+# Temp options: # "cycle_temp_low.h5"#"cycle_temp_mid.h5" # "cycle_temp_high.h5"# "cycle_temp_start.h5" #
 
 const make_P_and_L_plots = true # Turn off to save several minutes of runtime if you're not doing runs aimed at producing published results
-const seasonal_cycle = false #true #   whether testing how things change with seasonal cycles
+const seasonal_cycle = false #true #    whether testing how things change with seasonal cycles
 const timestep_type = seasonal_cycle==true ? "log-linear" : "dynamic-log" # basically never use this one: "static-log"# 
 
 # SET EXPERIMENT
-const paper3_exp =  "temperature" #"water" # "insolation"#
-# temperature
-const use_for_Texo = 275.
+const paper3_exp = "water" #"temperature" #  "insolation"#
+const solarcyc = "mean" # "max" #  "min"# 
+const tempcyc = "mean" #"max" #"min"#   
 
 #water
-const water_case = "standard" #"high" # "low" # # You can use these to use various tanh profiles that Mike invented
+const water_case = "low" #"standard" #"high" #   # You can use these to use various tanh profiles that Mike invented
 const water_loc = "mesosphere" # "everywhere" #  "loweratmo" # 
 const opt_halt = 45e5
 const water_MRs = Dict("loweratmo"=>Dict("standard"=>1.3e-4, "low"=>0.65e-4, "high"=>2.6e-4), 
@@ -54,9 +55,6 @@ const water_mixing_ratio = water_MRs[water_loc][water_case]
 const reinitialize_water_profile = seasonal_cycle==true ? false : true # should be off if trying to run simulations that test seasonal cycling
 const update_water_profile = seasonal_cycle==true ? true : false # this is for modifying the profile during cycling, MAY be fixed?
 const modified_water_alts = "below fixed point"
-
-# solar cycle
-const solarcyc = "mean" # "max" # "min"#
 
 # Add a bonus water parcel to simulate dust storm if you like
 const dust_storm_on = false
@@ -88,25 +86,29 @@ const paper2_Texo_opts = Dict("min"=>190., "mean"=>210., "max"=>280.)
 if simset=="paper3"
     println("Running simulations for paper 3")
     const solarfile = "marssolarphotonflux_solarmean_NEW.dat"
-    const controltemps = [230., 130., use_for_Texo]
+    # const controltemps = [230., 130., paper3_Texo_opts[solarcyc]]
     const meanexo = paper3_Texo_opts["mean"]
     extra_str = seasonal_cycle==true ? "cycle" : "eq"
+    const controltemps = [230., 130., paper3_Texo_opts[tempcyc]]
 
     if paper3_exp=="temperature"
         println("Testing T_exo = $(controltemps[3])")
         const tag = "paper3_temp$(extra_str)_Texo=$(Int64(controltemps[3]))_$(results_version)"
+        const controltemps = [230., 130., paper3_Texo_opts[tempcyc]]
     elseif paper3_exp=="insolation"
         println("Testing solar case = $(solarcyc)")
         const solarfile = "marssolarphotonflux_solar$(solarcyc)_NEW.dat"
         const tag = "paper3_solar$(solarcyc)_$(results_version)"
+        const controltemps[3] = paper3_Texo_opts["mean"]
     elseif paper3_exp=="water"
         println("Testing water case = $(water_case) $(water_loc)")
         const tag = "paper3_water$(extra_str)_$(water_case)_$(water_loc)_$(results_version)"
+        const controltemps[3] = paper3_Texo_opts["mean"]
     else
         throw("Simulation type is paper3 but no testing parameter specified")
     end
 elseif simset == "paper2"
-    const solarfile = "marssolarphotonflux_solar$(solarcyc)_NEW.dat"#"marssolarphotonflux_orbit12807_dl01.dat"#
+    const solarfile = "marssolarphotonflux_solar$(solarcyc)_NEW.dat"
     const tag = "s$(solarcyc)_$(results_version)"
     meanexo = paper2_Texo_opts["mean"]
     
@@ -240,7 +242,7 @@ const orig_neutrals = [:Ar, :CO, :CO2, :H, :H2, :H2O, :H2O2,
                        :D, :DO2, :DOCO, :HD, :HDO, :HDO2, :OD,
 
                        # Turn these off for minimal ionosphere:
-                       :C, :CH, :CN, :DCO, :HCN, :HCO, :HNO, :N, :NH, :NH2, :N2O, :NO, :NO2, :Nup2D,
+                       :C, :DCO, :HCN, :HCO, :N, :NO, :Nup2D, # :CH, :CN,  :HNO, :NH, :NH2, :N2O, :NO2,
                        ]; 
 const conv_neutrals = remove_unimportant==true ? setdiff(orig_neutrals, unimportant) : orig_neutrals
 const new_neutrals = [];
@@ -249,13 +251,13 @@ const neutral_species = [conv_neutrals..., new_neutrals...];
 # Ions -------------------------------------------------------------------------
 const orig_ions = [:CO2pl, :HCO2pl, :Opl, :O2pl, # Nair minimal ionosphere 
                    :Arpl, :ArHpl, :ArDpl, 
-                   :Cpl, :CHpl, :CNpl, :COpl, 
+                   :Cpl, :CHpl,  :COpl, 
                    :Hpl, :Dpl, :H2pl, :HDpl, :H3pl, :H2Dpl, :HD2pl, 
                    :H2Opl,  :HDOpl, :H3Opl, :H2DOpl, 
                    :HO2pl, :HCOpl, :DCOpl, :HOCpl, :DOCpl, :DCO2pl, 
-                   :HCNpl, :HCNHpl, :HNOpl, :HN2Opl,  
-                   :Npl,  :NHpl, :NH2pl, :NH3pl, :N2pl, :N2Hpl, :N2Dpl, :N2Opl, :NOpl, :NO2pl,
-                   :OHpl, :ODpl];
+                   :HNOpl,   
+                   :Npl, :NHpl, :N2pl, :N2Hpl, :N2Dpl, :NOpl,
+                   :OHpl, :ODpl]; # :HCNHpl,:NH2pl, :NH3pl,:CNpl,:HCNpl, :HN2Opl,:N2Opl, :NO2pl,
 const new_ions = []; 
 # const ion_species = [conv_ions..., new_ions...];
 const ion_species = remove_unimportant==true ? setdiff([orig_ions..., new_ions...], unimportant) : [orig_ions..., new_ions...]
