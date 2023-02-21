@@ -88,12 +88,12 @@ You may fork and use or expand this model for your own research purposes. Any us
   year         = 2022, 
   publisher    = {Zenodo},
   version      = {v1.2}, #<----Fill in with the most current version, please
-  doi          = {10.5281/zenodo.7392379},
-  url          = {https://doi.org/10.5281/zenodo.7659272}
+  doi          = {10.5281/zenodo.7662300}, #<----Fill in with the most current DOI, shown in the badge below.
+  url          = {https://doi.org/10.5281/zenodo.7662300} #<----Fill in with the most current DOI, shown in the badge below.
 }
 ```
 
-Or click here: [![DOI](https://zenodo.org/badge/285645653.svg)](https://zenodo.org/badge/latestdoi/285645653)
+Click here to access the Zenodo DOI. This badge will display the most current release's DOI: [![DOI](https://zenodo.org/badge/285645653.svg)](https://zenodo.org/badge/latestdoi/285645653)
   
 If you do not use LaTeX, please use the above information and adapt it to your preferred style.
 
