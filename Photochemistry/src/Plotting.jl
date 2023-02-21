@@ -222,7 +222,7 @@ function plot_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, savepath::String, a
     end
 
     if showonly==false  
-        atm_fig.savefig(savepath, bbox_inches="tight", dpi=300)
+        atm_fig.savefig(savepath, format="pdf", bbox_inches="tight", dpi=300)
         close(atm_fig)
     else
         show()

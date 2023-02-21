@@ -4,34 +4,51 @@
 #                                                                              #
 # **************************************************************************** #
 
-function atm_dict_to_matrix(atmdict::Dict{Symbol, Vector{ftype_ncur}}, species_list)
+function column_density(n::Vector; start_alt=1, end_alt=9999)
     #=
-    Converts atmospheric state dictionary atmdict to a matrix,
-    such that rows correspond to species in the order listed in species_list
-    and columns correspond to altitudes in the order lowest-->highest.
+    Returns column density of n above ONE atmospheric layer defined by start_alt.
+
+    Input
+        n: species number density (#/cm³) by altitude
+    Optional input:
+        start_alt: index of starting altitude
+        end_alt: index of end altitude. If 9999, end_alt will be set to the length of n.
+    Output
+        Column density (#/cm²)
     =#
-    
-    num_alts = length(atmdict[collect(keys(atmdict))[1]])
-    n_mat = zeros(length(species_list), num_alts)
-    
-    for i in 1:length(species_list)
-        n_mat[i, :] = atmdict[species_list[i]]
-    end
-    
-    return n_mat
+
+    end_alt = end_alt==9999 ? length(n) : end_alt 
+    return sum(n[start_alt:end_alt] .* dz)
 end
 
-function atm_matrix_to_dict(n_matrix, species_list)
+function column_density_above(n_tot_by_alt::Vector)
     #=
-    Input:
-        n_matrix: matrix of the atmospheric state
-    Output:
-        dictionary for only the species in species_list
-    =#
-    atmdict = Dict{Symbol, Vector{ftype_ncur}}([species_list[k]=>n_matrix[k, :] for k in 1:length(species_list)])
+    Returns an array where entries are the total integrated column density above
+    that level of the atmosphere. e.g. the value at the topmost altitude is 
+    called 0 since we assume anything beyond that level can escape. 
+
+    This is NOT redundant with column_density.
     
-    return atmdict
+    n_tot_by_alt: Total atmospheric density at each altitude layer.
+    =#
+    col_above = zeros(size(n_tot_by_alt))
+
+    for i in 1:num_layers
+        col_above[i] = column_density(n_tot_by_alt; start_alt=i+1)
+    end
+
+    return col_above
 end
+
+function column_density_species(atmdict, sp; start_alt=0., end_alt=250e5, globvars...)
+    #=
+    Returns the column density of species sp in atmosphere atmdict between the two altitudes (inclusive).
+    =#
+    GV = values(globvars)
+    @assert all(x->x in keys(GV), [:n_alt_index, :dz])
+
+    return column_density(atmdict[sp]; start_alt=n_alt_index[start_alt], end_alt=n_alt_index[end_alt])
+end 
 
 function electron_density(atmdict; globvars...)
     #=
@@ -55,74 +72,6 @@ function electron_density(atmdict; globvars...)
         throw("Unhandled electron profile specification: $(e_profile_type)")
     end
     return E
-end
-
-function column_density(n::Vector; start_alt=1)
-    #=
-    Returns column density above a given atmospheric layer. 
-
-    Input
-        n: species number density (#/cm³) by altitude
-    Output
-        Column density (#/cm²)
-    =#
-    return sum(n[start_alt:end] .* dz)
-end
-
-function column_density_above(n_tot_by_alt::Vector)
-    #=
-    Returns an array where entries are the total integrated column density above
-    that level of the atmosphere. e.g. the value at the topmost altitude is 
-    called 0 since we assume anything beyond that level can escape. 
-    
-    n_tot_by_alt: Total atmospheric density at each altitude layer.
-    =#
-    col_above = zeros(size(n_tot_by_alt))
-
-    for i in 1:num_layers
-        col_above[i] = column_density(n_tot_by_alt, start_alt=i+1)
-    end
-
-    return col_above
-end
-
-function column_density_species(atmdict, sp; start_alt=0., end_alt=250e5, globvars...)
-    #=
-    Returns the column density of species sp in atmosphere atmdict between the two altitudes (inclusive).
-    =#
-    GV = values(globvars)
-    @assert all(x->x in keys(GV), [:n_alt_index, :dz])
-    return sum(atmdict[sp][n_alt_index[start_alt]:n_alt_index[end_alt]] .* dz)
-end 
-
-function compile_ncur_all(n_long, n_short, n_inactive; globvars...)
-    #=
-    While the simulation runs, "n", the vector passed to the solver, only contains densities
-    for long-lived, active species. Every time the atmospheric state changes, the transport coefficients
-    and Jrates must be updated, but those all depend on the densities of ALL species. It's easiest for 
-    the functions updating those things to pull from one atmospheric state dictionary, 
-    so this function combines disparate density vectors back into one dictionary.
-
-    Input:
-        n_long: active, long-lived species densities
-        n_short: same but for short-lived species
-        n_inactive: inactive species densities (truly, these never change)
-    Output:
-        atmospheric state dictionary of species densities only (no Jrates).
-    =#
-
-    GV = values(globvars)
-    @assert all(x->x in keys(GV), [:active_longlived, :active_shortlived, :inactive_species, :num_layers])
-
-    n_cur_active_long = unflatten_atm(n_long, GV.active_longlived; num_layers=GV.num_layers)
-    n_cur_active_short = unflatten_atm(n_short, GV.active_shortlived; num_layers=GV.num_layers)
-    n_cur_inactive = unflatten_atm(n_inactive, GV.inactive_species; num_layers=GV.num_layers)
-
-    n_cur_all = Dict(vcat([k=>n_cur_active_long[k] for k in keys(n_cur_active_long)],
-                          [k=>n_cur_active_short[k] for k in keys(n_cur_active_short)],
-                          [k=>n_cur_inactive[k] for k in keys(n_cur_inactive)]))
-    
-    return n_cur_all
 end
 
 function find_exobase(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}; returntype="index", verbose=false, globvars...)
@@ -153,38 +102,6 @@ function find_exobase(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}; ret
         returnme = Dict("altitude"=>GV.alt[exobase_alt], "index"=>exobase_alt)
     end
     return returnme[returntype]
-end
-
-function flatten_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, species_list; globvars...) 
-    #=
-    Input:
-        atmdict: atmospheric densities by altitude
-        species_list: Included species which will have profiles flattened
-    Output:
-        Vector of form [n_sp1(z=0), n_sp2(z=0)...n_sp1(z=zmax)...n_spN(z=zmax)]
-    
-    This function is the reverse of unflatten_atm. 
-    =#
-
-    GV = values(globvars)
-    @assert all(x->x in keys(GV),  [:num_layers])
-
-    return deepcopy(ftype_ncur[[atmdict[sp][ialt] for sp in species_list, ialt in 1:GV.num_layers]...])
-end
-
-function get_deuterated(sp_list; exclude=[:O1D, :Nup2D])
-    #=
-    Just returns the same list but containing only deuterated species.
-    Inputs:
-        sp_list: List to search for the D-bearing species.
-        Optional:
-            exclude: a list of species names that may be identified as D-bearing but really are not 
-                     (usually because their name involves a D that represents an excited state).
-    Output:
-        The same list, but with only the D-bearing species.
-
-    =#
-    return [s for s in setdiff(sp_list, exclude) if occursin('D', string(s))];
 end
 
 function meanmass(atmdict::Dict{Symbol, Vector{ftype_ncur}}, z; globvars...)
@@ -401,19 +318,3 @@ function scaleH(atmdict::Dict{Symbol, Vector{ftype_ncur}}, T::Vector; globvars..
     return @. kB*T/(mm_vec*mH*marsM*bigG)*(((GV.alt+radiusM))^2)
 end
 
-function unflatten_atm(n_vec, species_list; globvars...)
-    #=
-    Input:
-        n_vec: flattened density vector for the species in species_list: [n_sp1(z=0), n_sp2(z=0)...n_sp1(z=250)...n_spN(z=250)] 
-    Output:
-        dictionary of atmospheric densities by altitude with species as keys 
-
-    This function is the reverse of flatten_atm.
-    =#
-    GV = values(globvars)
-    @assert all(x->x in keys(GV),  [:num_layers])
-
-    n_matrix = reshape(n_vec, (length(species_list), GV.num_layers))
-
-    return atm_matrix_to_dict(n_matrix, species_list)
-end

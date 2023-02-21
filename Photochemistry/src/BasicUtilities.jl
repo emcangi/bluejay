@@ -85,6 +85,21 @@ function generate_code(ii, TS, TM, TE, water, scyc;
     return hrcode, randstring()
 end
 
+function get_deuterated(sp_list; exclude=[:O1D, :Nup2D])
+    #=
+    Just returns the same list but containing only deuterated species.
+    Inputs:
+        sp_list: List to search for the D-bearing species.
+        Optional:
+            exclude: a list of species names that may be identified as D-bearing but really are not 
+                     (usually because their name involves a D that represents an excited state).
+    Output:
+        The same list, but with only the D-bearing species.
+
+    =#
+    return [s for s in setdiff(sp_list, exclude) if occursin('D', string(s))];
+end
+
 function get_paramfile(working_dir; use_default=false)
     #=
     Helper function to let the user select a parameter file form working_dir. 
@@ -179,36 +194,6 @@ function searchsortednearest(a,x)
     else
         return idx-1
     end
-end
-
-function subtract_difflength(a::Array, b::Array)
-    #=
-    A very specialized function that accepts two vectors, a and b, sorted
-    by value (largest first), of differing lengths. It will subtract b from a
-    elementwise up to the last index where they are equal, and then add any 
-    extra values in a, and subtract any extra values in b.
-
-    Used exclusively in ratefn_local. 
-
-    a: production rates 
-    b: loss rates
-
-    both a and b should be positive for the signs to work!
-    =#
-
-    shared_size = min(size(a), size(b))[1]
-
-    extra_a = 0
-    extra_b = 0
-    if shared_size < length(a)
-        extra_a += sum(a[shared_size+1:end])
-    end
-
-    if shared_size < length(b)
-        extra_b += sum(b[shared_size+1:end])
-    end
-
-    return sum(a[1:shared_size] .- b[1:shared_size]) + extra_a - extra_b
 end
 
 #                        String manipulation functions                          #

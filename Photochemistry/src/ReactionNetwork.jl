@@ -647,6 +647,35 @@ function make_modified_Troe(k0_ABC, kinf_ABC, kR_ABC, F, M2, M1, pow, BR)
     end
 end
 
+function rxns_where_species_is_observer(sp, chemnet)
+    #=
+    Input:
+        sp: Species which may be an observer
+        chemnet: chemistry reaction network
+    Output: either:
+        nothing: if the species was not found to be an observer in any reaction
+        twosides: List of reactions where the species is found on both LHS and RHS
+    =#
+
+    krate_rxns = filter(x->!occursin("J", string(x[3])), chemnet)
+    
+    twosides = []
+
+    flag = false
+    for rxn in krate_rxns
+        if in(sp, rxn[1]) && in(sp, rxn[2])
+            flag = true
+            twosides = push!(twosides, rxn)
+        end
+    end
+
+    if flag == true 
+        return twosides
+    else
+        return nothing
+    end
+end
+
 function troe_expr(k0, kinf, F)
     #=
     Put together a really nasty expression
@@ -664,6 +693,10 @@ end
 # ALERT: YOU *MUST* RUN modify_rxn_spreadsheet once the first time you try to   #
 # generate results for a new planet because it has a DIFFERENT ESCAPE V!        #
 #===============================================================================#
+
+function escape_velocity()
+    return sqrt(bigG * marsM / (radiusM + zmax)) / 100 # 100 converts from cm/s to m/s, bc escape energy function is written in MKS.
+end 
 
 function escape_energy(z)
     #=
@@ -760,14 +793,10 @@ function calculate_enthalpies(df; species=[:H, :D, :H2, :HD], new_cols=nothing, 
         insert_i: first integer at which we will begin inserting columns.
     =#
     
-    # Enthalpy of formation 
-    enthalpy = Dict(:Ar=>0, :CO=>-113.8, :CO2=>-393.1, :D=>221.72, :H=>216.0, :HD=>0.32, :H2=>0, :DCO=>40.945, :HCO=>44.8, :HDO=>-245.28, :H2O=>-238.9, 
-                     :H2O2=>-130.0, :DO2=>6.487, :HO2=>13.4, :DOCO=>185.8, :HOCO=>183.97, :N2=>0, :O=>246.8, :O1D=>246.8, :O2=>0, :O3=>141.80, :OD=>37.23, 
-                     :OH=>38.4, :HDO2=>-140.242, :C=>711.2, :N=>470.8, :NO=>89.8, :Nup2D=>470.8, :CO2pl=>935.7, :DCO2pl=>594.9, :HCO2pl=>589.0, :Opl=>1560.7, 
-                     :O2pl=>1164.7, :Arpl=>166.40, :ArDpl=>1176.9, :ArHpl=>1165.2, :Cpl=>1797.6, :CHpl=>1619.1, :COpl=>1238.3, :Dpl=>1540.320, :Hpl=>1528.0, 
-                     :HDpl=>1496.793, :H2pl=>1488.3, :H2Dpl=>1118.1, :H3pl=>1107.0, :HDOpl=>987.7, :H2Opl=>977.9, :H3Opl=>597.0, :H2DOpl=>1119.6, 
-                     :HO2pl=>1108.5, :DCOpl=>833.9, :HCOpl=>825.6, :DOCpl=>972.6, :HOCpl=>963.0, :HNOpl=>1074.4, :Npl=>1873.1, :NHpl=>1359, :N2pl=>1503.3, 
-                     :N2Dpl=>1045.9, :N2Hpl=>1035.5, :NOpl=>984.0, :ODpl=>1305.6, :OHpl=>1292.7, :E=>0);
+    #Enthalpy of formation 
+    enthalpy_df = DataFrame(XLSX.readtable("../Resources/Enthalpies_of_Formation.xlsx", "enthalpy"))
+    
+    enthalpy = Dict([Symbol(k)=>df_lookup(enthalpy_df, "Species", k, "Enthalpy")[1] for k in enthalpy_df."Species"])
 
     
     if new_cols != nothing
@@ -840,7 +869,7 @@ function calculate_enthalpies(df; species=[:H, :D, :H2, :HD], new_cols=nothing, 
     return df
 end
 
-function modify_rxn_spreadsheet(spreadsheet; spc=[:H, :D, :H2, :HD], new_cols=nothing, insert_i=nothing)
+function modify_rxn_spreadsheet(spreadsheet; new_file="REACTION_NETWORK_NEW.xlsx", spc=[:H, :D, :H2, :HD], new_cols=nothing, insert_i=nothing)
     #=
     Inputs:
         spreadsheet: A starting spreadsheet with reaction rate data.
@@ -851,7 +880,6 @@ function modify_rxn_spreadsheet(spreadsheet; spc=[:H, :D, :H2, :HD], new_cols=no
     xf = XLSX.readxlsx(spreadsheet)
     original_sheets = XLSX.sheetnames(xf)
     
-    new_file = "REACTION_NETWORK_VENUS.xlsx"   # "MOLEC_NT_$(spreadsheet)"#
     
     if Set(spc) != (:H, :D, :H2, :HD)
         throw("Error: The code that calculates hot atom excess energies is not set up to handle extra species beyond H, D, H2, HD.")

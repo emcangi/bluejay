@@ -25,9 +25,9 @@ using DataFrames
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
 
 # Basic simulation parameters
-const optional_logging_note = "Water eq - low - same HDO,H2Oxsects - after adding RCE" # Simulation goal
+const optional_logging_note = "TEST to make sure I didn't break the module" # Simulation goal
 const simset = "paper3" #"paper2" # # Fine to leave this as paper3
-const results_version = "v4"  # Helps keep track of attempts 
+const results_version = "v999"  # Helps keep track of attempts 
 const initial_atm_file = "INITIAL_GUESS.h5" #
 
 # water changed in mesosphere, same xsects for HDO, H2O: # "cycle_water_meso_low_xsects.h5"#"cycle_water_meso_mid_xsects.h5"#"cycle_water_meso_high_xsects.h5"#"cycle_water_meso_start_xsects.h5"#

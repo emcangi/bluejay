@@ -17,66 +17,109 @@ using Random
 using Printf
 
 export 
+
+# Core.jl
+    ## Basic mechanical functions
+    atm_dict_to_matrix, 
+    atm_matrix_to_dict, 
+    compile_ncur_all,
+    flatten_atm, 
+    solve_sparse,
+    subtract_difflength,
+    unflatten_atm, 
+
+    ## Chemistry functions
+    calculate_stiffness, 
+    check_jacobian_eigenvalues, 
+    chemical_jacobian, 
+    eval_rate_coef, 
+    getrate,
+    loss_equations, 
+    loss_rate, 
+    production_equations, 
+    production_rate, 
+    update_Jrates!,
+
+    ## Escape
+    effusion_velocity, 
+    escape_probability, 
+    escaping_hot_atom_production, 
+    nonthermal_escape_flux,
+
+    ## Photochemical equilibrium
+    choose_solutions, 
+    construct_quadratic, 
+    group_terms, 
+    loss_coef, 
+    linear_in_species_density,
+    setup_photochemical_equilibrium,
+
+    ## Transport and boundary conditions
+    binary_dcoeff_inCO2, 
+    boundaryconditions, 
+    Dcoef_neutrals, 
+    Dcoef!, 
+    diffparams, 
+    fluxcoefs, 
+    Keddy, 
+    update_diffusion_and_scaleH, 
+    update_transport_coefficients,  
+
 # Atmosphere.jl
-atm_dict_to_matrix, 
-atm_matrix_to_dict, 
 column_density, 
 column_density_above, 
 column_density_species,
-compile_ncur_all,
 electron_density, 
 find_exobase, 
-flatten_atm, 
-get_deuterated, 
 meanmass, 
 ncur_with_boundary_layers, 
 n_tot, 
 optical_depth,
 scaleH,
-unflatten_atm, 
 
 # BasicUtilities.jl
 ## Standard, miscellaneous functions
-    deletefirst, 
-    df_lookup,
-    find_nonfinites, 
-    fluxsymbol, 
-    generate_code, 
-    getpos, 
-    input, 
-    get_paramfile, 
-    logrange, 
-    nans_present, 
-    next_in_loop, 
-    searchsortednearest, 
-    subtract_difflength,
+deletefirst, 
+df_lookup,
+find_nonfinites, 
+fluxsymbol, 
+generate_code, 
+get_deuterated, 
+get_paramfile, 
+getpos, 
+input, 
+logrange, 
+nans_present, 
+next_in_loop, 
+searchsortednearest, 
 
 ## String Manipulation
-    charge_type, 
-    decompose_chemistry_string, 
-    format_chemistry_string, 
-    format_scin, 
-    format_sec_or_min, 
-    string_to_latexstr,
+charge_type, 
+decompose_chemistry_string, 
+format_chemistry_string, 
+format_scin, 
+format_sec_or_min, 
+string_to_latexstr,
 
-# Chemistry functions
-calculate_stiffness, 
-check_jacobian_eigenvalues, 
-chemical_jacobian, 
+# AnalyzeChemAndTransport.jl
+## Chemistry
 chemical_lifetime,
-eval_rate_coef, 
 get_column_rates, 
 get_volume_rates,
-getrate,
-loss_equations, 
-loss_rate, 
 make_chemjac_key, 
 make_net_change_expr, 
-production_equations, 
-production_rate, 
 reactant_density_product, 
-rxns_where_species_is_observer, 
 volume_rate_wrapper,
+
+## Transport and escape
+diffusion_timescale,
+final_escape,
+fractionation_factor,
+get_transport_PandL_rate, 
+flux_pos_and_neg,
+#get_flux, 
+limiting_flux, 
+limiting_flux_molef, 
 
 # Crosssections.jl
 padtosolar, 
@@ -90,19 +133,11 @@ searchdir,
 search_subfolders, 
 write_atmosphere,
 write_final_state,
-
 ## Logging functions
-    get_param, 
-    load_bcdict_from_paramdf, 
-    load_from_paramlog, 
-    write_to_log,
-
-# PhotochemicalEquilibrium.jl
-choose_solutions, 
-construct_quadratic, 
-group_terms, 
-loss_coef, 
-linear_in_species_density,
+get_param, 
+load_bcdict_from_paramdf, 
+load_from_paramlog, 
+write_to_log,
 
 # Plotting functions
 get_colors,
@@ -124,40 +159,15 @@ load_network_and_make_functions,
 load_reaction_network, 
 log_reactions, 
 modify_rxn_spreadsheet,
+rxns_where_species_is_observer, 
 
 # Temperature.jl
 T,
 
-# TransportAndBoundaryConditions.jl
-## Boundary conditions and flux
-    boundaryconditions, 
-    effusion_velocity, 
-    escape_probability, 
-    escaping_hot_atom_production, 
-    final_escape,
-    fractionation_factor,
-    nonthermal_escape_flux,
-    flux_pos_and_neg,
-    get_flux, 
-    limiting_flux, 
-    limiting_flux_molef, 
-
-## Vertical transport
-    binary_dcoeff_inCO2, 
-    Dcoef_neutrals, 
-    Dcoef!, 
-    diffparams, 
-    diffusion_timescale,
-    fluxcoefs, 
-    flux_param_arrays,  
-    get_transport_PandL_rate, 
-    Keddy, 
-    update_diffusion_and_scaleH, 
-    update_transport_coefficients,  
-
-
 # UnitConversions.jl
-GEL_to_molecule, molec_to_GEL, DH_conversion, 
+GEL_to_molecule, 
+molec_to_GEL, 
+DH_conversion, 
 
 # Water profile functions  
 precip_microns, 
@@ -173,17 +183,16 @@ code_loc = "$(@__DIR__)/../../"
 # println("Photochemistry.jl code_loc = $code_loc")
 include(code_loc*"CUSTOMIZATIONS.jl") 
 include(code_loc*"CONSTANTS.jl")
-                                                                                
+
+include("AnalyzeChemAndTransport.jl")                                                                                
 include("Atmosphere.jl")
 include("BasicUtilities.jl")
-include("Chemistry.jl")
+include("Core.jl")
 include("Crosssections.jl")
 include("FileIO.jl")
-include("PhotochemicalEquilibrium.jl")
 include("Plotting.jl")
 include("ReactionNetwork.jl")
 include("Temperature.jl")
-include("TransportAndBoundaryConditions.jl")
 include("UnitConversions.jl")
 include("Water.jl")
 
