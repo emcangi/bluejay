@@ -1,0 +1,66 @@
+! Quick flux.ipynb
+! RESULTS - Paper3.ipynb
+! RESULTS - solar cycle v16.ipynb
+! RESULTS - test Tenewitz2018.ipynb
+! Useful Plots.ipynb
+.idea/
+.ipynb_checkpoints/
+Chemical reaction rates.ipynb
+Chemistry vs diffusion timescale.ipynb
+Code Optimization 2.ipynb
+Code Optimization Notebook.ipynb
+Code Sandbox2.ipynb
+Comparison of diffusion and escape timescales- CHECKING WORK.ipynb
+Fitting exponential escape PYTHON.ipynb
+Format_Reaction_Latex_Table.ipynb
+Format_Reaction_Latex_Table_All_Reactions_Needed.ipynb
+Generate_Results.jl
+Inputs Sanity Check.ipynb
+Interpolate_Fox2021.ipynb
+MIKES_VERSION_SUPPOSEDLY_WORKS.zip
+MOLEC_NT_REACTION_NETWORK_test.xlsx
+Metaprogramming Sandbox.ipynb
+OldCode-CO2only.ipynb
+REACTION_NETWORK_minimal_ionosphere.xlsx
+Rate coefficient plots.ipynb
+ReactionTables/
+TEMP-FITTING-PYTHON.ipynb
+Temp MCD  - solar max.xlsx
+Temp MCD  - solar mean.xlsx
+Temp MCD  - solar min.xlsx
+Translate-Jacobian-Problems.ipynb
+Troubleshoot Transport Rates.ipynb
+Water Profile.ipynb
+Whole Code Profiling.ipynb
+Whole Code Test Notebook.ipynb
+cold_exobase.h5
+copy_files_to_aws.sh
+cycle_temp_high.h5
+cycle_temp_low.h5
+cycle_temp_mid.h5
+cycle_temp_start.h5
+cycle_water_everywhere_high.h5
+cycle_water_everywhere_low.h5
+cycle_water_everywhere_mid.h5
+cycle_water_everywhere_start.h5
+cycle_water_meso_end.h5
+cycle_water_meso_high.h5
+cycle_water_meso_high_xsects.h5
+cycle_water_meso_low.h5
+cycle_water_meso_low_xsects.h5
+cycle_water_meso_mid.h5
+cycle_water_meso_mid_xsects.h5
+cycle_water_meso_start.h5
+cycle_water_meso_start_xsects.h5
+deprecated/
+diff_E_M.ipynb
+fraction escaping from charge exchange.ipynb
+ions2-QNDF-new.h5
+ions_to_filter.jl
+marssolarphotonflux_orbit12807_dl1.dat
+reactions_i_removed_first.xlsx
+setup.sh
+temp_profiles_julia.ipynb
+troubleshooting stuff/
+uvxsect/HDO_Legacy.dat
+water loss vs F.ipynb
