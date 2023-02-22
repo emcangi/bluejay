@@ -148,6 +148,7 @@ plot_extinction,
 plot_Jrates, 
 plot_production_and_loss,
 plot_rxns,
+plot_species_on_demand,
 plot_temp_prof, 
 plot_water_profile, 
 top_mechanisms,    
@@ -167,6 +168,8 @@ T,
 # UnitConversions.jl
 GEL_to_molecule, 
 molec_to_GEL, 
+total_escape_to_GEL,
+total_escape_to_area_escape,
 DH_conversion, 
 
 # Water profile functions  

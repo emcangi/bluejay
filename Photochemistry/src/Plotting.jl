@@ -729,6 +729,92 @@ function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, result
     end
 end
 
+function plot_species_on_demand(atmdict, spclist, filename; savepath=nothing, showonly=false, 
+                                xlab=L"Number density (cm$^{-3}$)", xlims=(1e-12, 1e18), figsz=(16,6), ylims=(0,zmax/1e5), titl=nothing,
+                                overridestyle=false, posdict = Dict(), extratext=nothing, LL=(0.9,0.9),
+                                globvars...)
+    #=
+    Makes a "spaghetti plot" of the species in spclist, in concentrations by altitude in the
+    atmosphere. 
+
+    Inputs:
+        atmdict: dictionary of vertical profiles of a plottable quantity, keys are species names.
+        spclist: a list of species to plot.
+    
+    optional inputs:
+        savepath: path in which to save the file
+        filename: what to call the file
+        showonly: whether to just show() the plot (true) or save and show (false)
+        xlab: override for x axis label
+        xlims: override for x axis limits 
+        figsz: size of the figure
+        ylims: override for y axis limits
+        titl: figure title
+        overridestyle: if set to true, will plot every line as a standard solid line, rather than using dashed for D-bearing ions.
+        posdict: positions to place species labels in format :H => [x, y] in the axes transform coordinates (0-1)
+        extratext: Extra text you can add to an axis in the form Dict("text"=["Print Me", "Print Me 2"], "loc"=>[x1, y1; x2, y2...], "fs"=[fontsize1, fontsize2])
+                   where the new rows are for other axes. 
+        LL: legend location within the axes
+    =#
+
+    rcParams = PyDict(matplotlib."rcParams")
+    rcParams["font.sans-serif"] = ["Louis George Caf?"]
+    rcParams["font.monospace"] = ["FreeMono"]
+    rcParams["font.size"] = 18
+    rcParams["axes.labelsize"]= 20
+    rcParams["xtick.labelsize"] = 18
+    rcParams["ytick.labelsize"] = 18
+    
+    GV = values(globvars)
+    @assert all(x->x in keys(GV),  [:plot_grid, :speciescolor, :speciesstyle, :zmax])
+    
+    atm_fig, ax = subplots(figsize=figsz)
+    plot_bg(ax)
+    
+    for sp in spclist
+        col = GV.speciescolor[sp]
+        if overridestyle
+            ls = "-"
+        else
+            ls = get(GV.speciesstyle, sp, "-")
+        end
+        ax.plot(atmdict[sp], GV.plot_grid, color=col, linewidth=2, label=sp, linestyle=ls, zorder=10)
+        ax.set_xlim(xlims[1], xlims[2])
+        ax.set_ylabel("Altitude (km)")
+        
+        textloc = get(posdict, sp, nothing)
+        if textloc != nothing
+            ax.text(posdict[sp]..., L"$\mathrm{%$(string_to_latexstr(string(sp), dollarsigns=false))}$", transform=ax.transAxes, color=col, fontsize=15)
+        end
+    end
+    ax.tick_params(axis="x", which="both", labeltop=false, top=true)
+    ax.set_ylim(ylims[1], ylims[2])
+    ax.set_xscale("log")
+    
+    # L2D = PyPlot.matplotlib.lines.Line2D
+    # legend_elements = [L2D([0], [0], color="black", linewidth=1, label="Solar minimum"),
+    #                     L2D([0], [0], color="black", linewidth=3, label="Solar maximum")]
+    # ax.legend(handles=legend_elements, loc=LL, fontsize=16)
+    
+    if titl!=nothing
+        ax.set_title(titl)
+    end
+    
+    if extratext != nothing
+        for i in 1:length(ax)
+            ax.text(extratext["loc"][i, :]..., extratext["text"][i], color="#262626", fontsize=extratext["fs"], transform=ax[i].transAxes)
+        end
+    end
+
+    if showonly==false  
+        @assert savepath != nothing
+        atm_fig.savefig(savepath*"$(filename).png", bbox_inches="tight", dpi=300)
+        show()
+    else
+        show()
+    end
+end
+
 function plot_temp_prof(Tprof_1; opt="", lbls=["Neutrals", "Ions", "Electrons"], Tprof_2=nothing, Tprof_3=nothing, savepath=nothing, showonly=false, globvars...)
     #=
     Creates a .png image of the tepmeratures plotted by altitude in the atmosphere

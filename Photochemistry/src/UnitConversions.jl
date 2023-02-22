@@ -3,6 +3,8 @@
 #                            Unit conversions                                  #
 #                                                                              #
 # **************************************************************************** #
+
+
 function DH_conversion(; deltaD=0, VSMOW_multiplier=1, DH=1.56e-4)
     #=
     Convert between a D/H ratio, a multiplier of VSMOW (e.g. Mars atmosphere = 5.5 x VSMOW) 
@@ -36,27 +38,47 @@ function GEL_to_molecule(GEL, HorH2O)
     HorH2O: string, either "H" or "H2O" to specify which molecule to return
     =#
     
-    molec_H2O = (GEL * 999.89) / (1e4 * 18 * 1.67e-27)
+    molec_H2O_per_cm2 = (GEL * 100 * density_water_cgs) / (18 * mH)
     
     if HorH2O == "H"
-        return 2 * molec_H2O
+        return 2 * molec_H2O_per_cm2
     elseif HorH2O == "H2O"
-        return molec_H2O
+        return molec_H2O_per_cm2
     end
 end
 
-function molec_to_GEL(molecules, HorH2O)
+function molec_to_GEL(molec_per_cm2, HorH2O)
     #=
-    Converts molecules of H2O per cm^2 to a global equivalent layer in meters. 
-    molecules: number of molecules of species HorH2O
+    Converts molecules per cm^2 to a global equivalent layer in meters. 
+    molec_per_cm2: number of molec_per_cm2 of species HorH2O
     HorH2O: string, either "H" or "H2O" to specify which type the molecule is
     =#
     if HorH2O == "H"
-        molecules = molecules / 2
+        molec_per_cm2 = molec_per_cm2 / 2
     end
         
-    return molecules * 1e4 * 18 * 1.67e-27 / 999.89
+    return (molec_per_cm2 * 18 * mH) * (1 / density_water_cgs) * (1#=m=#/100 #=cm=#)
 end
+
+function total_escape_to_GEL(esc_per_s, t, HorH2O)
+    #=
+    esc_per_s: total escape of either H or H2O per second, for the whole planet
+    t: years over which the escape occurs
+    HorH2O: "H" or "H2O" to denote the escaping molecules
+    =#
+
+    esc_per_cm2 = esc_per_s * (t * s_per_yr) * (1/SA_Mars) 
+    return molec_to_GEL(esc_per_cm2, HorH2O)
+end
+
+function total_escape_to_area_escape(esc_per_s)
+    #=
+    esc_per_s: total escape of some molecule over the whole planet 
+    =#
+
+    return esc_per_s / SA_Mars
+end
+
 
 #                       Converting joules and eletron volts                     #
 #===============================================================================#
