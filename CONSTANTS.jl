@@ -16,7 +16,12 @@ const marsM = 0.1075*5.972e27;  # g
 const radiusM = 3396e5;         # cm
 const q = -4.8032e-10            # statcoulomb (cm^1.5 g^0.5 s^-1)
 const DH = 5.5 * 1.6e-4         # SMOW value, Yung 1988
+const density_water_cgs = 0.997408
+const SA_Mars = 4*pi*(radiusM)^2 # cm^2
+
+#time 
 const sol_in_sec = 88775.2438   # One Mars sol in seconds
+const s_per_yr = 3.154e7
 
 # Polarizability from NIST. Experimental values from: https://cccbdb.nist.gov/pollistx.asp
 # Calculations for species not available in experiment from: https://cccbdb.nist.gov/polcalc2x.asp
