@@ -86,24 +86,11 @@ function setup_water_profile!(atmdict; dust_storm_on=false, make_sat_curve=false
     # H2O Water Profile ================================================================================================================
     H2Oinitfrac = set_h2oinitfrac_bySVP(atmdict, hygropause_alt; globvars...)
 
-    # H2Osatfrac = GV.H2Osat ./ map(z->n_tot(atmdict, z; GV.all_species, GV.n_alt_index), GV.alt)  # get SVP as fraction of total atmo
-    # # set H2O SVP fraction to minimum for all alts above first time min is reached
-    # H2Oinitfrac = H2Osatfrac[1:something(findfirst(isequal(minimum(H2Osatfrac)), H2Osatfrac), 0)]
-    # H2Oinitfrac = [H2Oinitfrac;   # ensures no supersaturation
-    #                fill(minimum(H2Osatfrac), GV.num_layers-length(H2Oinitfrac))]
-
-    # # Set lower atmospheric water to be well-mixed (constant with altitude) below the hygropause
-    # H2Oinitfrac[findall(x->x<hygropause_alt, GV.alt)] .= GV.water_mixing_ratio
-
-    # for i in [1:length(H2Oinitfrac);]
-    #     H2Oinitfrac[i] = H2Oinitfrac[i] < H2Osatfrac[i+1] ? H2Oinitfrac[i] : H2Osatfrac[i+1]
-    # end
-
     # For doing high and low water cases ================================================================================================
     if (water_amt=="standard") | (excess_water_in=="loweratmo")
         println("Standard profile: water case = $(water_amt), loc = $(excess_water_in), MR = $(GV.water_mixing_ratio)")
         H2Oinitfrac=H2Oinitfrac
-    else # low or high in mesosphere and above
+    else # low or high in mesosphere and above - special code for paper 3
         if water_amt == "high"
             println("$(water_amt) in $(excess_water_in)")
             F = 500
@@ -154,8 +141,5 @@ function water_tanh_prof(z; f=10, z0=62, dz=11)
     #=
     Apply a tanh_prof to the water init fraction to add or subtract water from the atmosphere.
     =#
-
-    # subtract_me = f > 1 ? 1 : f/2
-
     return ((f .- 1)/2) * (tanh.((z .- z0) ./ dz) .+ 1) .+ 1
 end

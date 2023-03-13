@@ -784,7 +784,7 @@ function plot_species_on_demand(atmdict, spclist, filename; savepath=nothing, sh
         
         textloc = get(posdict, sp, nothing)
         if textloc != nothing
-            ax.text(posdict[sp]..., L"$\mathrm{%$(string_to_latexstr(string(sp), dollarsigns=false))}$", transform=ax.transAxes, color=col, fontsize=15)
+            ax.text(posdict[sp]..., L"$\mathrm{%$(string_to_latexstr(string(sp), dollarsigns=false))}$", transform=ax.transAxes, color=col, fontsize=17)
         end
     end
     ax.tick_params(axis="x", which="both", labeltop=false, top=true)
@@ -815,7 +815,7 @@ function plot_species_on_demand(atmdict, spclist, filename; savepath=nothing, sh
     end
 end
 
-function plot_temp_prof(Tprof_1; opt="", lbls=["Neutrals", "Ions", "Electrons"], Tprof_2=nothing, Tprof_3=nothing, savepath=nothing, showonly=false, globvars...)
+function plot_temp_prof(Tprof_1; opt="", cols=[medgray, "xkcd:bright orange", "cornflowerblue"], styles=["-", "-", "-"], lbls=["Neutrals", "Ions", "Electrons"], Tprof_2=nothing, Tprof_3=nothing, savepath=nothing, showonly=false, globvars...)
     #=
     Creates a .png image of the tepmeratures plotted by altitude in the atmosphere
 
@@ -842,15 +842,15 @@ function plot_temp_prof(Tprof_1; opt="", lbls=["Neutrals", "Ions", "Electrons"],
     fig, ax = subplots(figsize=(4,6))
     plot_bg(ax)
 
-    plot(Tprof_1, GV.alt./1e5, label="Neutrals", color=medgray)
+    plot(Tprof_1, GV.alt./1e5, label="Neutrals", color=cols[1], linestyle=styles[1])
 
     if Tprof_2 != nothing
-        ax.plot(Tprof_2, GV.alt./1e5, label="Ions", color="xkcd:bright orange")
+        ax.plot(Tprof_2, GV.alt./1e5, label="Ions", color=cols[2], linestyle=styles[2])
         ax.legend(fontsize=16)
         ax.set_xscale("log")
     end
     if Tprof_3 != nothing
-        ax.plot(Tprof_3, GV.alt./1e5, label="Electrons", color="cornflowerblue")
+        ax.plot(Tprof_3, GV.alt./1e5, label="Electrons", color=cols[3], linestyle=styles[3])
         ax.legend(fontsize=16, loc=(.45,.3))#"center right")
         ax.set_xscale("log")
     end

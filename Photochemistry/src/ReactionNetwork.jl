@@ -692,6 +692,7 @@ end
 #                                                                               #
 # ALERT: YOU *MUST* RUN modify_rxn_spreadsheet once the first time you try to   #
 # generate results for a new planet because it has a DIFFERENT ESCAPE V!        #
+# Also run if you add new reactions to the spreadsheet or change rate coefs!    #
 #===============================================================================#
 
 function escape_velocity()
@@ -761,15 +762,15 @@ function enthalpy_of_reaction(reactants, products, enthalpy_dict)
     # Calculate whether endothermic or exothermic
     endo_exo = excess_energy > 0 ? "exothermic" : "endothermic"
     
-    println("Reaction $(format_chemistry_string(reactants, products))")
+    # println("Reaction $(format_chemistry_string(reactants, products))")
     if flag > 1
         println("Flag! Reaction produces two hot atoms")
     end
-    println("Raw enthalpy is $(total_reaction_enthalpy_ev) eV")
-    println("Mass to escape $(m), so need a minimum of $(m*escape_energy(1)) eV")
-    println("excess energy $(excess_energy).")
-    println("Positive excess energy: $(excess_energy > 0), so reaction is $(endo_exo)")
-    println()
+    # println("Raw enthalpy is $(total_reaction_enthalpy_ev) eV")
+    # println("Mass to escape $(m), so need a minimum of $(m*escape_energy(1)) eV")
+    # println("excess energy $(excess_energy).")
+    # println("Positive excess energy: $(excess_energy > 0), so reaction is $(endo_exo)")
+    # println()
     
     return endo_exo, total_reaction_enthalpy_ev, energy_required_to_escape_all_hot, excess_energy
 end
@@ -796,9 +797,9 @@ function calculate_enthalpies(df; species=[:H, :D, :H2, :HD], new_cols=nothing, 
     #Enthalpy of formation 
     enthalpy_df = DataFrame(XLSX.readtable("../Resources/Enthalpies_of_Formation.xlsx", "enthalpy"))
     
-    enthalpy = Dict([Symbol(k)=>df_lookup(enthalpy_df, "Species", k, "Enthalpy")[1] for k in enthalpy_df."Species"])
+    enthalpy = Dict([Symbol(k)=>df_lookup(enthalpy_df, "Species", k, "Enthalpy of formation (kJ/mol)")[1] for k in enthalpy_df."Species"])
 
-    
+    # Add new columns
     if new_cols != nothing
         j = 0
         for name in new_cols
@@ -824,9 +825,9 @@ function calculate_enthalpies(df; species=[:H, :D, :H2, :HD], new_cols=nothing, 
 
         if any(x->x in products, species)
             exo_or_endo, total_enthalpy, loss_energy, excess_energy = enthalpy_of_reaction(reactants, products, enthalpy)
-            row.rxnEnthalpy = total_enthalpy
-            row.totalEscE = loss_energy
-            row.excessE = excess_energy
+            row.rxnEnthalpy = string(total_enthalpy)
+            row.totalEscE = string(loss_energy)
+            row.excessE = string(excess_energy)
             
             if exo_or_endo == "exothermic"
                 exo_count += 1
@@ -847,19 +848,47 @@ function calculate_enthalpies(df; species=[:H, :D, :H2, :HD], new_cols=nothing, 
                 end
             else 
                 endo_count += 1
-                row.NTEscape = "No"
-                if :D in products
-                    row.hotD = ""
-                end
-                if :HD in products
-                    row.hotHD = ""
-                end
+
+                # Handle special case where charge exchange should always be counted as producing hot atoms
+                println("reactants $(Set(reactants)), products $(Set(products))" )
+                println()
                 
-                if :H in products
-                    row.hotH = ""
-                end
-                if :H2 in products
-                    row.hotH2 = ""
+
+                if (Set(reactants)==Set([:Hpl, :H])) & (Set(products)==Set([:Hpl, :H])) # Resonant
+                    row.NTEscape = "Yes"
+                    row.hotH = "Yes"
+                    endo_count -= 1
+                    exo_count += 1
+                elseif (Set(reactants)==Set([:Dpl, :H])) & (Set(products)==Set([:Hpl, :D])) # deuterated
+                    row.NTEscape = "Yes"
+                    row.hotD = "Yes"
+                    endo_count -= 1
+                    exo_count += 1
+                elseif (Set(reactants)==Set([:Hpl, :O])) & (Set(products)==Set([:Opl, :H])) # with O
+                    row.NTEscape = "Yes"
+                    row.hotH = "Yes"
+                    endo_count -= 1
+                    exo_count += 1
+                elseif (Set(reactants)==Set([:Dpl, :O])) & (Set(products)==Set([:Opl, :D])) # D with O
+                    row.NTEscape = "Yes"
+                    row.hotD = "Yes"
+                    endo_count -= 1
+                    exo_count += 1
+                else
+                    row.NTEscape = "No"
+                    if :D in products
+                        row.hotD = ""
+                    end
+                    if :HD in products
+                        row.hotHD = ""
+                    end
+                    
+                    if :H in products
+                        row.hotH = ""
+                    end
+                    if :H2 in products
+                        row.hotH2 = ""
+                    end
                 end
             end
         end
@@ -869,19 +898,22 @@ function calculate_enthalpies(df; species=[:H, :D, :H2, :HD], new_cols=nothing, 
     return df
 end
 
-function modify_rxn_spreadsheet(spreadsheet; new_file="REACTION_NETWORK_NEW.xlsx", spc=[:H, :D, :H2, :HD], new_cols=nothing, insert_i=nothing)
+function modify_rxn_spreadsheet(spreadsheet; new_file="REACTION_NETWORK_NEW.xlsx", spc=[:H, :D, :H2, :HD], new_cols=nothing, insert_i=[0,7,8,8])
     #=
     Inputs:
         spreadsheet: A starting spreadsheet with reaction rate data.
         spc: spc for which we want to determine if hot ones are produced.
         new_cols: strings containing names for new columns to put into the df/spreadsheet.
         insert_i: a list of integers at which to insert columns. The order in this list corresponds to the order of sheets in the workbook.
+                  so, if you have 4 sheets, and you want to insert the new columns at col index 2, 4, 6, and then 8 in sheets 1, 2, 3, and 4, 
+                insert_i = [2, 4, 6, 8]. Note that it only works for sheets involving ions so you have to put in a zero to skip the neutral sheet, which 
+                is usually first. Typical usage is insert_i=[0, 7, 8, 8].
     =#
     xf = XLSX.readxlsx(spreadsheet)
     original_sheets = XLSX.sheetnames(xf)
     
     
-    if Set(spc) != (:H, :D, :H2, :HD)
+    if spc != [:H, :D, :H2, :HD]
         throw("Error: The code that calculates hot atom excess energies is not set up to handle extra species beyond H, D, H2, HD.")
     end
     
@@ -912,4 +944,3 @@ function modify_rxn_spreadsheet(spreadsheet; new_file="REACTION_NETWORK_NEW.xlsx
         log_reactions(df_to_write, sheet, new_file)
     end
 end
-

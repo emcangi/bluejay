@@ -27,6 +27,7 @@ export
     solve_sparse,
     subtract_difflength,
     unflatten_atm, 
+    TooManyIterationsException,
 
     ## Chemistry functions
     calculate_stiffness, 

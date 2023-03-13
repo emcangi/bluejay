@@ -79,6 +79,10 @@ function total_escape_to_area_escape(esc_per_s)
     return esc_per_s / SA_Mars
 end
 
+function by_to_sec(y)
+    return y*1e9*3.154e7
+end
+
 
 #                       Converting joules and eletron volts                     #
 #===============================================================================#

@@ -284,7 +284,7 @@ function populate_xsect_dict(pd_dataf; ion_xsects=true, globvars...)
     # Populating the dictionary ======================================================
     # CO2 photodissociation -------------------------------------------------------------
     # CO2+hv->CO+O
-    xsect_dict[get_Jrate_symb("CO2", ["CO", "O"])] =  map(xs->quantumyield(xs,((l->l>167, 1), (l->95>l, 0.5))), map(t->co2xsect(co2xdata, t), GV.Tn))
+    xsect_dict[get_Jrate_symb("CO2", ["CO", "O"])] = map(xs->quantumyield(xs,((l->l>167, 1), (l->95>l, 0.5))), map(t->co2xsect(co2xdata, t), GV.Tn))
 
     # CO2+hv->CO+O1D
     xsect_dict[get_Jrate_symb("CO2", ["CO", "O1D"])] = map(xs->quantumyield(xs,((l->95<l<167, 1), (l->l<95, 0.5))), map(t->co2xsect(co2xdata, t), GV.Tn))

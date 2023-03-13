@@ -25,36 +25,43 @@ using DataFrames
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
 
 # Basic simulation parameters
-const optional_logging_note = "TEST to make sure I didn't break the module" # Simulation goal
-const simset = "paper3" #"paper2" # # Fine to leave this as paper3
-const results_version = "v999"  # Helps keep track of attempts 
+const optional_logging_note = "New HDO+DR and H2Dpl DR" # Simulation goal
+const simset = "paper2"# "paper3" # # # Fine to leave this as paper3
+const seasonal_cycle = false # true #    whether testing how things change with seasonal cycles
+const results_version = "v18"  # Helps keep track of attempts 
+const paper3_exp = "temperature" # "water" # "insolation"#
+const solarcyc = "max" #  "mean" # "min"# 
 const initial_atm_file = "INITIAL_GUESS.h5" #
+const make_P_and_L_plots = true # Turn off to save several minutes of runtime if you're not doing runs aimed at producing published results
 
+# initial file options for seasonal cycling paper:
 # water changed in mesosphere, same xsects for HDO, H2O: # "cycle_water_meso_low_xsects.h5"#"cycle_water_meso_mid_xsects.h5"#"cycle_water_meso_high_xsects.h5"#"cycle_water_meso_start_xsects.h5"#
 # water changed in mesosphere: #  "cycle_water_meso_high.h5"#  "cycle_water_meso_start.h5"# "cycle_water_meso_low.h5"# "cycle_water_meso_mid.h5"#
 # water changed everywhere: # "cycle_water_low.h5"#"cycle_water_mid.h5"#"cycle_water_high.h5"#
 # Temp options: # "cycle_temp_low.h5"#"cycle_temp_mid.h5" # "cycle_temp_high.h5"# "cycle_temp_start.h5" #
 
-const make_P_and_L_plots = true # Turn off to save several minutes of runtime if you're not doing runs aimed at producing published results
-const seasonal_cycle = false #true #    whether testing how things change with seasonal cycles
-const timestep_type = seasonal_cycle==true ? "log-linear" : "dynamic-log" # basically never use this one: "static-log"# 
-
-# SET EXPERIMENT
-const paper3_exp = "water" #"temperature" #  "insolation"#
-const solarcyc = "mean" # "max" #  "min"# 
-const tempcyc = "mean" #"max" #"min"#   
+# seasonal cycling only:
+const tempcyc = "mean" #"min"#"max" #   
 
 #water
-const water_case = "low" #"standard" #"high" #   # You can use these to use various tanh profiles that Mike invented
+const water_case = "standard" #"low" #"high" #   # Always set to standard for paper 2!
+if (simset=="paper2") & (water_case != "standard")
+    println("Alert! Water case must be standard for paper 2! Changing it now.")
+    const water_case = "standard"
+end
+
 const water_loc = "mesosphere" # "everywhere" #  "loweratmo" # 
-const opt_halt = 45e5
+const opt_halt = simset=="paper2" ? 40e5 : 45e5 
 const water_MRs = Dict("loweratmo"=>Dict("standard"=>1.3e-4, "low"=>0.65e-4, "high"=>2.6e-4), 
-                 "mesosphere"=>Dict("standard"=>1.3e-4, "high"=>1.3e-4, "low"=>1.3e-4), 
-                 "everywhere"=>Dict("standard"=>1.3e-4, "high"=>1.3e-4, "low"=>1.3e-4))
+                       "mesosphere"=>Dict("standard"=>1.3e-4, "high"=>1.3e-4, "low"=>1.3e-4), 
+                       "everywhere"=>Dict("standard"=>1.3e-4, "high"=>1.3e-4, "low"=>1.3e-4))
 const water_mixing_ratio = water_MRs[water_loc][water_case]
 const reinitialize_water_profile = seasonal_cycle==true ? false : true # should be off if trying to run simulations that test seasonal cycling
 const update_water_profile = seasonal_cycle==true ? true : false # this is for modifying the profile during cycling, MAY be fixed?
 const modified_water_alts = "below fixed point"
+
+# Timestep:
+const timestep_type = seasonal_cycle==true ? "log-linear" : "dynamic-log" # basically never use this one: "static-log"# 
 
 # Add a bonus water parcel to simulate dust storm if you like
 const dust_storm_on = false

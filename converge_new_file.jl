@@ -21,11 +21,6 @@ using Dates
 t1 = time()
 println("$(Dates.format(now(), "(HH:MM:SS)")) Start")
 
-#logging witchcraft
-# using Logging: global_logger
-# using TerminalLoggers: TerminalLogger
-# global_logger(TerminalLogger())
-
 using Revise
 using PyPlot
 using PyCall
