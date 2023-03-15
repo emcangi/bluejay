@@ -99,7 +99,7 @@ If you do not use LaTeX, please use the above information and adapt it to your p
 
 ## Getting help and contributing
 
-This model was developed as part of Eryn's PhD, and I am not a professional software developer. If you require any help in using the model, encounter bugs, or would like to contribute, please open a Github issue.
+This model was developed as part of my (Eryn's) PhD, and I am not a professional software developer. If you require any help in using the model, encounter bugs, or would like to contribute, please open a Github issue.
 
 ## License
 
@@ -107,4 +107,4 @@ This software is distributed under the <a href="https://www.gnu.org/licenses/gpl
 
 ## Name
 
-Mike thought that a bird-themed naming scheme would be fun. He suggested "Sparrow" for this model, combining "[chemical] species" + "arrow" to signify the motion of species vertically through the atmosphere. Eryn pointed out that "Jay" would be a much punnier name (the reaction rates of photochemical processes are referred to as "J rates", also the model is written in Julia, which starts with J), and Mike pointed out that Jay is also a general name. THe blue jay is well recognized as a bird, and has a short and easy to remember name. Eryn hopes to make a pretty logo soon.
+Mike thought that a bird-themed naming scheme would be fun. He suggested "Sparrow" for this model, combining "[chemical] species" + "arrow" to signify the motion of species vertically through the atmosphere. I pointed out that "Jay" would be a much punnier name (the reaction rates of photochemical processes are referred to as "J rates", also the model is written in Julia, which starts with J), and Mike pointed out that Jay is also a general name so it may be confusing. THe blue jay is well recognized as a bird, and has a short and easy to remember name. I hope to make a pretty logo soon.
