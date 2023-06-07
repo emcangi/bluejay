@@ -2,7 +2,7 @@
 
 ## Installation 
 
-Jay is currently up-to-date with Julia 1.8.5. It will likely work with newer versions, but it has not yet been tested. 
+bluejay is currently up-to-date with Julia 1.8.5. It will likely work with newer versions, but it has not yet been tested. 
 
 At this time, there are no compiled binaries. The model is provided as a collection of modules (under the Photochemistry module) and related scripts. To install, simply ensure that Julia is installed in the location of your choice, and fork the repo. The root directory of the model must contain:
 
@@ -107,4 +107,4 @@ This software is distributed under the <a href="https://www.gnu.org/licenses/gpl
 
 ## Name
 
-Mike thought that a bird-themed naming scheme would be fun. He suggested "Sparrow" for this model, combining "[chemical] species" + "arrow" to signify the motion of species vertically through the atmosphere. I pointed out that "Jay" would be a much punnier name (the reaction rates of photochemical processes are referred to as "J rates", also the model is written in Julia, which starts with J), and Mike pointed out that Jay is also a general name so it may be confusing. THe blue jay is well recognized as a bird, and has a short and easy to remember name. I hope to make a pretty logo soon.
+Mike thought that a bird-themed naming scheme would be fun. He suggested "Sparrow" for this model, combining "[chemical] species" + "arrow" to signify the motion of species vertically through the atmosphere. I pointed out that "Jay" would be a much punnier name (the reaction rates of photochemical processes are referred to as "J rates", also the model is written in Julia, which starts with J), and Mike pointed out that Jay is also a general name so it may be confusing. The blue jay is well recognized as a bird, and has a short and easy to remember name. I hope to make a pretty logo soon.
