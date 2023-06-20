@@ -1137,22 +1137,35 @@ end
 if update_water_profile
     println("Seasonal modification of water profile")
     if water_case!="standard"
-        fdict = Dict("high"=>500, "low"=>0.005)
+        
+        if water_loc=="loweratmo"
 
-        # Create the new multipliers to change the profiles
-        multiplier = water_tanh_prof(non_bdy_layers./1e5; f=fdict[water_case], z0=excess_peak_alt)
-        if modified_water_alts == "below fixed point"
-            multiplier[upper_lower_bdy_i+1:end] .= 1
-        elseif modified_water_alts == "above fixed point"
-            multiplier[1:upper_lower_bdy_i] .= 1
+            # Recalculate the initialization fraction for H2O 
+            H2Oinitfrac = set_h2oinitfrac_bySVP(n_current, opt_halt; all_species, alt, num_layers, n_alt_index, H2Osat, water_mixing_ratio)
+
+            prevh2o = deepcopy(n_current[:H2O])
+            prevhdo = deepcopy(n_current[:HDO])
+
+            n_current[:H2O][1:upper_lower_bdy_i] = H2Oinitfrac[1:upper_lower_bdy_i] .* n_tot(n_current; n_alt_index, all_species)[1:upper_lower_bdy_i]
+            n_current[:HDO][1:upper_lower_bdy_i] = 2 * DH * n_current[:H2O][1:upper_lower_bdy_i]
+        else 
+            fdict = Dict("high"=>500, "low"=>0.005)
+
+            # Create the new multipliers to change the profiles
+            multiplier = water_tanh_prof(non_bdy_layers./1e5; f=fdict[water_case], z0=excess_peak_alt)
+            if modified_water_alts == "below fixed point"
+                multiplier[upper_lower_bdy_i+1:end] .= 1
+            elseif modified_water_alts == "above fixed point"
+                multiplier[1:upper_lower_bdy_i] .= 1
+            end
+
+            prevh2o = deepcopy(n_current[:H2O])
+            prevhdo = deepcopy(n_current[:HDO])
+
+            # Update densities, effectively only above the fixed point.
+            n_current[:H2O] = n_current[:H2O] .* multiplier
+            n_current[:HDO] = n_current[:HDO] .* multiplier
         end
-
-        prevh2o = deepcopy(n_current[:H2O])
-        prevhdo = deepcopy(n_current[:HDO])
-
-        # Update densities, effectively only above the fixed point.
-        n_current[:H2O] = n_current[:H2O] .* multiplier
-        n_current[:HDO] = n_current[:HDO] .* multiplier
 
         # Make the plot
         plot_water_profile(n_current, results_dir*sim_folder_name; prev_profs=[prevh2o, prevhdo], plot_grid, all_species, non_bdy_layers, speciescolor, speciesstyle) 
@@ -1710,8 +1723,13 @@ elseif problem_type == "Gear"
 
     # Collect the J rates
     Jratedict = Dict{Symbol, Vector{Float64}}([j=>external_storage[j] for j in keys(external_storage) if occursin("J", string(j))])
+
     # Write out the final state to a unique file for easy finding
     write_final_state(atm_soln, results_dir, sim_folder_name, final_atm_file; alt, num_layers, hrshortcode, Jratedict, rshortcode, external_storage)
+
+    # Write out the final column rates to the reaction log
+    calculate_and_write_column_rates("active_rxns.xlsx", atm_soln; all_species, dz, ion_species, num_layers, reaction_network, results_dir, sim_folder_name, 
+                                                              Tn=Tn_arr[2:end-1], Ti=Ti_arr[2:end-1], Te=Te_arr[2:end-1])
     
     write_to_log(logfile, "$(Dates.format(now(), "(HH:MM:SS)")) Making production/loss plots", mode="a")
     println("$(Dates.format(now(), "(HH:MM:SS)")) Making production/loss plots (this tends to take several minutes)")

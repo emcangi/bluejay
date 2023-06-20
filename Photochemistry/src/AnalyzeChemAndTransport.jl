@@ -83,7 +83,7 @@ function get_volume_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}};
         sp: Species name
         atmdict: Present atmospheric state dictionary
         Tn, Ti, Te: temperature arrays
-        species_role: whether to look for the species as a reactant, product, or both.  If it has a value, so must species.
+        species_role: whether to look for the species as a "reactant", "product", or "both".  If it has a value, so must species.
         which: "all", "Jrates", "krates". Whether to fill the dictionary with all reactions, only photochemistry/photoionization 
                (Jrates) or only chemistry (krates).
        remove_sp_density: if set to true, the density of sp will be removed from the calculation k[sp][B][C].... Useful for chemical lifetimes.
@@ -528,7 +528,7 @@ end
 #     return net_bulk_flow .* GV.dz # now it is a flux. hurrah.
 # end
 
-function limiting_flux(sp, atmdict, T_arr; globvars...)
+function limiting_flux(sp, atmdict, T_arr;  treat_H_as_rare=false,  globvars...)
     #=
     Calculate the limiting upward flux (Hunten, 1974; Zahnle, 2008). 
     Inputs:
@@ -542,15 +542,28 @@ function limiting_flux(sp, atmdict, T_arr; globvars...)
     @assert all(x->x in keys(GV), [:all_species, :alt, :non_bdy_layers, :molmass, :n_alt_index])
     
     # Calculate some common things: mixing ratio, scale height, binary diffusion coefficient AT^s
-    fi = atmdict[sp] ./ n_tot(atmdict; globvars...)
+    if treat_H_as_rare==true
+        if sp==:H
+            thedensity = atmdict[:D]
+        elseif sp==:H2 
+            thedensity = atmdict[:HD]
+        end
+    elseif treat_H_as_rare==false
+        thedensity = atmdict[sp]
+    end
+
+
+    fi = thedensity ./ n_tot(atmdict; globvars...)
     Ha = scaleH(atmdict, T_arr; globvars..., alt=GV.non_bdy_layers)
     bi = binary_dcoeff_inCO2(sp, T_arr)
 
     mass_ratio = GV.molmass[sp] / meanmass(atmdict; globvars...) 
 
-    if (all(m->m<0.1, mass_ratio)) & (all(f->f<0.0001, fi)) # Light minor species approximation
+    if (all(m->m<0.1, mass_ratio)) & (all(f->f<0.01, fi[1:75])) # Light minor species approximation
+        println("Calculating $(sp) as a light, minor species")
         return bi .* fi ./ Ha
     else # Any species
+        println("$(sp) is either not light or not minor")
         D = Dcoef_neutrals(non_bdy_layers, sp, bi, atmdict; globvars...)    
         return (D .* atmdict[sp] ./ Ha) .* (1 .- GV.molmass[sp] ./ meanmass(atmdict; globvars...))
     end

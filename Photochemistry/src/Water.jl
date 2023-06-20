@@ -27,6 +27,29 @@ function precip_microns(sp, sp_profile; globvars...)
     return pr_microns
 end
 
+function colabund_from_prum(sp, prum; globvars...)
+    #=
+    Calculates precipitable microns of a species in the atmosphere.
+    I guess you could use this for anything but it's only correct for H2O and HDO.
+
+    Inputs:
+        sp: Species name
+        sp_mixing_ratio: mixing ratio profile of species sp
+        atmdict: Present atmospheric state dictionary
+    Outputs:
+        Total precipitable micrometers of species sp
+    =#
+    GV = values(globvars)
+    @assert all(x->x in keys(GV),  [:molmass])
+
+    cc_per_g = GV.molmass[sp] / GV.molmass[:H2O] # Water is 1 g/cm^3. Scale appropriately.
+
+    #based on pr μm = (#/cm²) * (1 mol/molecules) * (g/1 mol) * (1 cm^3/g) * (10^4 μm/cm)
+    col_abundance = prum * (6.02e23) * (1/GV.molmass[sp]) * (1/cc_per_g) * (1/1e4) 
+    # NOTE: colabundance includes an implicit dz because when you calculate column abundance from prum you multiply by dz.
+    return col_abundance
+end
+
 # 1st term is a conversion factor to convert to (#/cm^3) from Pa. Source: Marti & Mauersberger 1993
 Psat(T) = (1e-6 ./ (kB_MKS .* T)) .* (10 .^ (-2663.5 ./ T .+ 12.537))
 
@@ -65,7 +88,7 @@ function set_h2oinitfrac_bySVP(atmdict, h_alt; globvars...)
 end
 
 function setup_water_profile!(atmdict; dust_storm_on=false, make_sat_curve=false, water_amt="standard", excess_water_in="mesosphere", 
-                                       fixed_bdy_i=n_alt_index[72e5], showonly=false, hygropause_alt=40e5, globvars...)
+                                       showonly=false, hygropause_alt=40e5, globvars...)
     #=
     Sets up the water profile as a fraction of the initial atmosphere. 
     Input:
@@ -81,7 +104,7 @@ function setup_water_profile!(atmdict; dust_storm_on=false, make_sat_curve=false
     GV = values(globvars)
     @assert all(x->x in keys(GV), [:all_species, :num_layers, :DH, :alt, :plot_grid, :n_alt_index,
                                    :non_bdy_layers, :H2Osat, :water_mixing_ratio,
-                                   :results_dir, :sim_folder_name, :speciescolor, :speciesstyle]) # not actually required: :H2O_excess, :HDO_excess, :ealt, 
+                                   :results_dir, :sim_folder_name, :speciescolor, :speciesstyle, :upper_lower_bdy_i]) 
 
     # H2O Water Profile ================================================================================================================
     H2Oinitfrac = set_h2oinitfrac_bySVP(atmdict, hygropause_alt; globvars...)
@@ -93,7 +116,7 @@ function setup_water_profile!(atmdict; dust_storm_on=false, make_sat_curve=false
     else # low or high in mesosphere and above - special code for paper 3
         if water_amt == "high"
             println("$(water_amt) in $(excess_water_in)")
-            F = 500
+            F = 100
             z0 = GV.ealt
         elseif water_amt=="low"
             println("$(water_amt) in $(excess_water_in)")
@@ -101,14 +124,14 @@ function setup_water_profile!(atmdict; dust_storm_on=false, make_sat_curve=false
             z0 = GV.ealt
         end
 
-        toplim_dict = Dict("mesosphere"=>fixed_bdy_i, "everywhere"=>GV.n_alt_index[GV.alt[end]])
+        toplim_dict = Dict("mesosphere"=>GV.upper_lower_bdy_i, "everywhere"=>GV.n_alt_index[GV.alt[end]])
         a = 1
         b = toplim_dict[excess_water_in]
         H2Oinitfrac[a:b] = H2Oinitfrac[a:b] .* water_tanh_prof(GV.non_bdy_layers./1e5; z0=z0, f=F)[a:b]
 
         # Set the upper atmo to be a constant mixing ratio, wherever the disturbance ends
         if excess_water_in=="everywhere"
-            H2Oinitfrac[fixed_bdy_i:end] .= H2Oinitfrac[fixed_bdy_i]
+            H2Oinitfrac[GV.upper_lower_bdy_i:end] .= H2Oinitfrac[GV.upper_lower_bdy_i]
         end
     end
 
@@ -123,8 +146,8 @@ function setup_water_profile!(atmdict; dust_storm_on=false, make_sat_curve=false
         sigma = 12.5
         H2Oppm = 1e-6*map(z->GV.H2O_excess .* exp(-((z-GV.ealt)/sigma)^2), GV.non_bdy_layers/1e5) + H2Oinitfrac 
         HDOppm = 1e-6*map(z->GV.HDO_excess .* exp(-((z-GV.ealt)/sigma)^2), GV.non_bdy_layers/1e5) + HDOinitfrac
-        atmdict[:H2O][1:fixed_bdy_i] = (H2Oppm .* n_tot(atmdict; GV.n_alt_index, GV.all_species))[1:fixed_bdy_i]
-        atmdict[:HDO][1:fixed_bdy_i] = (HDOppm .* n_tot(atmdict; GV.all_species))[1:fixed_bdy_i]
+        atmdict[:H2O][1:GV.upper_lower_bdy_i] = (H2Oppm .* n_tot(atmdict; GV.n_alt_index, GV.all_species))[1:GV.upper_lower_bdy_i]
+        atmdict[:HDO][1:GV.upper_lower_bdy_i] = (HDOppm .* n_tot(atmdict; GV.all_species))[1:GV.upper_lower_bdy_i]
     end
 
     # Plot the water profile ===========================================================================================================

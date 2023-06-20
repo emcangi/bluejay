@@ -83,6 +83,27 @@ function by_to_sec(y)
     return y*1e9*3.154e7
 end
 
+function prum_to_ppm(sp, prum, atmdict; globvars...)
+    #=
+    Converts pr μm to ppm, only works for water!
+    Inputs
+        sp: H2O or HDO
+        prum: water pr μm
+        atmdict: the atmosphere against which you will be comparing
+    Output:
+        water total in ppm. 
+    =#
+
+
+    GV = values(globvars)
+    @assert all(x->x in keys(GV),  [:molmass, :all_species])
+
+    colabund = colabund_from_prum(sp, prum; globvars...)
+    nt_sum = sum(n_tot(atmdict; GV.all_species) ) * dz # get total inventory of whole atmosphere, flat
+
+    return (colabund/nt_sum) / 1e-6 # return ppm
+end
+
 
 #                       Converting joules and eletron volts                     #
 #===============================================================================#

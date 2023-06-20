@@ -25,13 +25,11 @@ using DataFrames
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
 
 # Basic simulation parameters
-const optional_logging_note = "New HDO+DR and H2Dpl DR" # Simulation goal
-const simset = "paper2"# "paper3" # # # Fine to leave this as paper3
-const seasonal_cycle = false # true #    whether testing how things change with seasonal cycles
-const results_version = "v18"  # Helps keep track of attempts 
-const paper3_exp = "temperature" # "water" # "insolation"#
-const solarcyc = "max" #  "mean" # "min"# 
-const initial_atm_file = "INITIAL_GUESS.h5" #
+const optional_logging_note = "Water cycle redo - high water - more reasonable water abundance (300 ppm)" # Simulation goal
+const simset = "paper3"# "paper2" # Fine to leave this as paper3
+const seasonal_cycle = true # false #    whether testing how things change with seasonal cycles
+const results_version = "v5"  # Helps keep track of attempts 
+const initial_atm_file = "h5files_water_meso/cycle_water_meso_start.h5"#"INITIAL_GUESS.h5" #"cycle_temp_low_xsects.h5"#
 const make_P_and_L_plots = true # Turn off to save several minutes of runtime if you're not doing runs aimed at producing published results
 
 # initial file options for seasonal cycling paper:
@@ -40,17 +38,35 @@ const make_P_and_L_plots = true # Turn off to save several minutes of runtime if
 # water changed everywhere: # "cycle_water_low.h5"#"cycle_water_mid.h5"#"cycle_water_high.h5"#
 # Temp options: # "cycle_temp_low.h5"#"cycle_temp_mid.h5" # "cycle_temp_high.h5"# "cycle_temp_start.h5" #
 
-# seasonal cycling only:
-const tempcyc = "mean" #"min"#"max" #   
+# DEFINE THE EXPERIMENT CASE ------------------------------------
+const paper3_exp = "water" #  "temperature" # "insolation"#
 
-#water
-const water_case = "standard" #"low" #"high" #   # Always set to standard for paper 2!
+# SOLAR CASE ----------------------------------------------------
+const solarcyc = "equinox"
+# PAPER3 OPTIONS: "perihelion" # "aphelion" #  
+# PAPER2 OPTIONS: "mean" # "max" # "min" # 
+
+# TEMPERATURE CASES ---------------------------------------------
+const tempcyc = "mean" # "min"# "max" # 
+
+# WATER CASES ---------------------------------------------------
+const water_case = "high" #"low" #    "standard" #
+# PAPER2 REQUIREMENT: "standard" (always)
+const water_loc = "mesosphere" # "loweratmo" #  "everywhere" #   # Use mesosphere as default even if no water added.
+
 if (simset=="paper2") & (water_case != "standard")
     println("Alert! Water case must be standard for paper 2! Changing it now.")
     const water_case = "standard"
 end
 
-const water_loc = "mesosphere" # "everywhere" #  "loweratmo" # 
+
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
+# !!                                                                        !! #
+# !!                      !!!!!    END CHECK    !!!!!                       !! #
+# !!                                                                        !! #
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
+
+# Other water controls -------------------------------------------------------------------------
 const opt_halt = simset=="paper2" ? 40e5 : 45e5 
 const water_MRs = Dict("loweratmo"=>Dict("standard"=>1.3e-4, "low"=>0.65e-4, "high"=>2.6e-4), 
                        "mesosphere"=>Dict("standard"=>1.3e-4, "high"=>1.3e-4, "low"=>1.3e-4), 
@@ -59,9 +75,6 @@ const water_mixing_ratio = water_MRs[water_loc][water_case]
 const reinitialize_water_profile = seasonal_cycle==true ? false : true # should be off if trying to run simulations that test seasonal cycling
 const update_water_profile = seasonal_cycle==true ? true : false # this is for modifying the profile during cycling, MAY be fixed?
 const modified_water_alts = "below fixed point"
-
-# Timestep:
-const timestep_type = seasonal_cycle==true ? "log-linear" : "dynamic-log" # basically never use this one: "static-log"# 
 
 # Add a bonus water parcel to simulate dust storm if you like
 const dust_storm_on = false
@@ -81,19 +94,15 @@ else
     end
 end
 
-# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
-# !!                                                                        !! #
-# !!                      !!!!!    END CHECK    !!!!!                       !! #
-# !!                                                                        !! #
-# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
+# Timestep -------------------------------------------------------------------------------------------
+const timestep_type = seasonal_cycle==true ? "log-linear" : "dynamic-log" # basically never use this one: "static-log"# 
 
-# Set up temperature and folder tag name according to the type of simulation set
+# Other temperature controls -------------------------------------------------------------------------
 const paper3_Texo_opts = Dict("min"=>175., "mean"=>225., "max"=>275.) # Broader range of values that are evenly spaced
 const paper2_Texo_opts = Dict("min"=>190., "mean"=>210., "max"=>280.)
 if simset=="paper3"
     println("Running simulations for paper 3")
-    const solarfile = "marssolarphotonflux_solarmean_NEW.dat"
-    # const controltemps = [230., 130., paper3_Texo_opts[solarcyc]]
+    const solarfile = "marssolarphotonflux_equinox.dat"
     const meanexo = paper3_Texo_opts["mean"]
     extra_str = seasonal_cycle==true ? "cycle" : "eq"
     const controltemps = [230., 130., paper3_Texo_opts[tempcyc]]
@@ -104,8 +113,8 @@ if simset=="paper3"
         const controltemps = [230., 130., paper3_Texo_opts[tempcyc]]
     elseif paper3_exp=="insolation"
         println("Testing solar case = $(solarcyc)")
-        const solarfile = "marssolarphotonflux_solar$(solarcyc)_NEW.dat"
-        const tag = "paper3_solar$(solarcyc)_$(results_version)"
+        const solarfile = "marssolarphotonflux_$(solarcyc).dat"
+        const tag = "paper3_insolation_$(solarcyc)_$(results_version)"
         const controltemps[3] = paper3_Texo_opts["mean"]
     elseif paper3_exp=="water"
         println("Testing water case = $(water_case) $(water_loc)")

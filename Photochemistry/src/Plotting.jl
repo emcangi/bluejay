@@ -54,8 +54,8 @@ function get_grad_colors(L::Int64, cmap; strt=0, stp=1)
     return c
 end
 
-function plot_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, savepath::String, atol, E_prof; print_shortcodes=true, 
-                  t="", showonly=false, xlab=L"Species concentration (cm$^{-3}$)", xlim_1=(1e-12, 1e18), xlim_2=(1e-5, 1e5), 
+function plot_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, savepath::String, atol, E_prof; imgfmt="png", print_shortcodes=true, mixing_ratio=false,
+                  t="", showonly=false, xlab=L"Species concentration (cm$^{-3}$)", xlim_1=(1e-12, 1e18), xlim_2=(1e-5, 2.5e5), 
                   legloc=[0.8,1], globvars...)
     #=
     Makes a "spaghetti plot" of the species concentrations by altitude in the
@@ -91,6 +91,24 @@ function plot_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, savepath::String, a
     rcParams["axes.labelsize"]= 20
     rcParams["xtick.labelsize"] = 18
     rcParams["ytick.labelsize"] = 18
+
+    # Convert to mixing ratio if requested ====================================================
+    if mixing_ratio==true 
+        if haskey(GV, :ion_species)
+            allsp = union(GV.neutral_species, GV.ion_species)
+        else
+            allsp = GV.neutral_species
+        end
+        ntot = n_tot(atmdict; all_species=allsp) # get the total atmosphere
+        atmdict_MR = Dict([s=>(atmdict[s]./ntot) for s in allsp])
+
+        xlim_1 = [xlim_1[1]/ntot[1], 1]
+        xlim_2 = [xlim_2[1]/ntot[1], 1]
+
+        E_prof = E_prof ./ ntot
+
+        atmdict = atmdict_MR
+    end
     
     # Establish logical groups for axes =======================================================
 
@@ -187,8 +205,16 @@ function plot_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, savepath::String, a
                 handles, labels = atm_ax[r,c].get_legend_handles_labels()
                 if isempty(handles) == false
                     x, y = legloc
-                    if (r==1) && (c==2)
-                        x, y = 1.01, 1
+                    if mixing_ratio == true 
+                        if c==1 
+                            x, y = 0, 1
+                        else 
+                            x, y = 0.81, 1
+                        end
+                    else
+                        if (r==1) && (c==2)
+                            x, y = 1.01, 1
+                        end
                     end
                     atm_ax[r,c].legend(handles, labels, fontsize=12, bbox_to_anchor=[x,y], loc=2, borderaxespad=0)
                 end
@@ -222,7 +248,7 @@ function plot_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, savepath::String, a
     end
 
     if showonly==false  
-        atm_fig.savefig(savepath, format="pdf", bbox_inches="tight", dpi=300)
+        atm_fig.savefig(savepath, format=imgfmt, bbox_inches="tight", dpi=300)
         close(atm_fig)
     else
         show()
@@ -923,7 +949,7 @@ function plot_water_profile(atmdict, savepath::String; showonly=false, watersat=
 
     prevcol = "#666"
     
-    # mixing ratio axis
+    # mixing ratio axis ----------------------
     # to get in ppmv, divide the mixing ratio by 1e-6. 
     if prev_profs != nothing
         ax[1].semilogx(prev_profs[1] ./ n_tot(atmdict; globvars...), GV.plot_grid, color=prevcol)
@@ -945,7 +971,7 @@ function plot_water_profile(atmdict, savepath::String; showonly=false, watersat=
     ax[2].set_xlabel(L"Number density (cm$^{-3}$)")
     ax[2].set_xticks(collect(logrange(1e-4, 1e16, 6)))
 
-    # ppm
+    # ppm ----------------------------
     if prev_profs != nothing
         ax[3].semilogx((prev_profs[1] ./ n_tot(atmdict; globvars...)) ./ 1e-6, GV.plot_grid, color=prevcol)
         ax[3].semilogx((prev_profs[2] ./ n_tot(atmdict; globvars...)) ./ 1e-6, GV.plot_grid, color=prevcol, linestyle=GV.speciesstyle[:HDO])
@@ -953,6 +979,8 @@ function plot_water_profile(atmdict, savepath::String; showonly=false, watersat=
     ax[3].semilogx((atmdict[:H2O] ./ n_tot(atmdict; globvars...)) ./ 1e-6, GV.plot_grid, color=GV.speciescolor[:H2O], linewidth=2)
     ax[3].semilogx((atmdict[:HDO] ./ n_tot(atmdict; globvars...)) ./ 1e-6, GV.plot_grid, color=GV.speciescolor[:HDO], linestyle=GV.speciesstyle[:HDO], linewidth=2)
     ax[3].set_xlabel("ppmv")
+    ax[3].set_xticks([1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1e0, 1e1, 1e2, 1e3])
+    ax[3].set_xlim(1e-5, 1e3)
 
     # Title and legend
     suptitle(L"Initial H$_2$O and HDO vertical profiles", y=1.05)

@@ -85,6 +85,13 @@ function generate_code(ii, TS, TM, TE, water, scyc;
     return hrcode, randstring()
 end
 
+function get_counts(array)
+    #=
+    Given some array, gets a count of each element in the array. 
+    =#
+    return [(i, count(==(i), array)) for i in unique(array)]
+end
+
 function get_deuterated(sp_list; exclude=[:O1D, :Nup2D])
     #=
     Just returns the same list but containing only deuterated species.
@@ -267,10 +274,6 @@ function string_to_latexstr(a; dollarsigns=true)
     this will format it as a latex string for easy plotting.
     =#
     if dollarsigns==true
-        # OLd version that doesn't mathrm the plain species without any special latex stuff:
-        # returnme = latexstring(replace(a, "Nup2D"=>"N(\$^2\$D)", "2pl"=>"\$_2^+\$", "3pl"=>"\$_3^+\$", "2"=>"\$_2\$", "3"=>"\$_3\$", "E"=>"e\$^-\$", 
-        #                               "J"=>"", "plp"=>latexstring("\$^+ +\$"), "pl"=>latexstring("\$^+\$"),  "p"=>"\$+\$", 
-        #                               "-->"=>latexstring("\$\\rightarrow\$"), "to"=>latexstring("\$\\rightarrow\$")) ) 
         replaced = replace(a, "Nup2D"=>"N(^2D)", "2pl"=>"_2^+", "3pl"=>"_3^+", "2"=>"_2", "3"=>"_3", "E"=>"e^-", 
                                       "J"=>"", "plp"=>"^+ +", "pl"=>"^+",  "p"=>"+", 
                                       "-->"=>"\\rightarrow", "to"=>" \\rightarrow ")
