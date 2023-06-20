@@ -1,8 +1,4 @@
-! Quick flux.ipynb
-! RESULTS - Paper3.ipynb
-! RESULTS - solar cycle v16.ipynb
-! RESULTS - test Tenewitz2018.ipynb
-! Useful Plots.ipynb
+*.ipynb
 .idea/
 .ipynb_checkpoints/
 Chemical reaction rates.ipynb
@@ -64,3 +60,14 @@ temp_profiles_julia.ipynb
 troubleshooting stuff/
 uvxsect/HDO_Legacy.dat
 water loss vs F.ipynb
+DR_comparison.xlsx
+REACTION_NETWORK_backup2.xlsx
+REACTION_NETWORK_backup_20230311.xlsx
+Solar spectra/final_spectrum_marssolarphotonflux_aphelion.png
+Solar spectra/final_spectrum_marssolarphotonflux_equinox.png
+Solar spectra/final_spectrum_marssolarphotonflux_perihelion.png
+h5files_insolation/
+h5files_same_xsects/
+h5files_water_loweratm/
+scale_solar_spectrum.py
+test.xlsx

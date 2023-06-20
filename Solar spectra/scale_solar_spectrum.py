@@ -7,7 +7,7 @@ from scipy.optimize import curve_fit
 
 # for converting to photons
 h = 6.626e-34
-c = 3e8
+c = 3e8 # m/s
 
 def convert_W_m2_to_photons_per_s_cm2(Wm2, wavelength):
     return Wm2 * ((wavelength * 10**(-9))/(h*c)) * (1/10000)
@@ -19,7 +19,7 @@ def find_nearest(array, value):
     array = np.asarray(array)
     idx = (np.abs(array - value)).argmin()
     return idx
-
+   
 def interpolate_solar_spectrum(spec, AU, show_plots=True, extrap_tail=False, scale_above=0, interp_start=0.5, interp_end=2399.51, dl=1, desctag=""):
     """
     Input: 
@@ -37,7 +37,7 @@ def interpolate_solar_spectrum(spec, AU, show_plots=True, extrap_tail=False, sca
         dl: interpolation spacing in nm.
         desctag: to append to the plot
     Output:
-        A Pandas dataframe whole_spectrum from 0.5-2399.5 nm, properly binned every half nm.
+        A Pandas dataframe whole_spectrum from 0.5-2399.5 nm, properly binned every half nm, and a CSV.
     """
 
     col = [spec.columns[0], spec.columns[1]]
@@ -45,7 +45,6 @@ def interpolate_solar_spectrum(spec, AU, show_plots=True, extrap_tail=False, sca
     f_irr = interp.interp1d(spec[col[0]], spec[col[1]])
 
     newx = np.arange(interp_start, interp_end, dl)
-    print(newx)
     new_irr = f_irr(newx)
 
     # check to make sure it looks right
@@ -106,18 +105,26 @@ def interpolate_solar_spectrum(spec, AU, show_plots=True, extrap_tail=False, sca
     #make the FINAL dataframe with ALL data for solar max;
     # First convert from W/m^2/nm to the units below, and yes, I have checkd it multiple times lol including on 11/3/22. 
     # multiply the irradiance by λ/hc to get photons; by 1/10000 to convert to cm^2; and 1/AU^2 to convert to Mars orbit.
-    # whole_spectrum["photon flux (γ/s/cm^2/nm)"] = whole_spectrum[col[1]] * ((whole_spectrum[col[0]] * 10**(-9))/(h*c)) * 1/(AU**2) * (1/10000)
+    # whole_spectrum["photon flux (phot/s/cm^2/nm)"] = whole_spectrum[col[1]] * ((whole_spectrum[col[0]] * 10**(-9))/(h*c)) * 1/(AU**2) * (1/10000)
     
-    whole_spectrum["photon flux (γ/s/cm^2/nm)"] = np.asarray(list(map(convert_W_m2_to_photons_per_s_cm2, whole_spectrum[col[1]], whole_spectrum[col[0]])))
+    whole_spectrum["photon flux (phot/s/cm^2/nm)"] = np.asarray(list(map(convert_W_m2_to_photons_per_s_cm2, whole_spectrum[col[1]], whole_spectrum[col[0]])))
 
     # Now scale to the right AU.
-    i = find_nearest(whole_spectrum[col[0]], scale_above) 
-    whole_spectrum["photon flux (γ/s/cm^2/nm)"][i:] = whole_spectrum["photon flux (γ/s/cm^2/nm)"][i:] * 1/(AU**2) 
+    # You can select whether to only scale above a certain wavelength if you 
+    # are using MAVEN EUVM data for the short wavelengths!
+    if scale_above==0:
+        i = 0
+    else:
+        i = find_nearest(whole_spectrum[col[0]], scale_above)
+
+    # print(f"Scaling to {AU} AU above {whole_spectrum[i]} nm")
+    
+    whole_spectrum["photon flux (phot/s/cm^2/nm)"][i:] = whole_spectrum["photon flux (phot/s/cm^2/nm)"][i:] * (1**2)/(AU**2) 
 
     if show_plots:
         plt.figure(figsize=(10,5))
         plt.title("Finalized spectrum, in photon flux, with interpolation and extrapolation")
-        plt.plot(whole_spectrum[col[0]], whole_spectrum["photon flux (γ/s/cm^2/nm)"])
+        plt.plot(whole_spectrum[col[0]], whole_spectrum["photon flux (phot/s/cm^2/nm)"])
         plt.xlabel("Wavelength (nm)")
         plt.ylabel("Photons (ph cm^-2 s^-1)")
         plt.savefig(f"final_spectrum_{desctag}.png", bbox_inches="tight")
@@ -126,18 +133,28 @@ def interpolate_solar_spectrum(spec, AU, show_plots=True, extrap_tail=False, sca
     
     return whole_spectrum
 
+
 # Get user input
-print("Enter the file with solar spectrum data in W/m^2/nm: ")
-solarfile = input()
+print("Enter the file with solar spectrum data in W/m^2/nm or press enter to use default (composite_SSI_20221122.dat, EUVM up to 189.5 and TSIS above): ")
+solarfile = input() if input()!="" else "composite_SSI_20221122.dat"
 print("Enter number of header rows: ")
 numheader = int(input())
 print("Enter AU at which you'd like the output: ")
 theAU = float(input())
-print("Enter a filename for the output (please use underscores): ")
+print("Enter a descriptive tag for this spectrum (please use underscores): ")
 descriptive_tag = input()
+
+longest_euvm_wavelength = 189.51
+print(f"Scaling to {theAU} above wavelength={longest_euvm_wavelength} nm. Shortwards of that, EUVM data are used.")
 
 solarspec = np.loadtxt(solarfile, skiprows=numheader)
 
-solarspec_df = pd.DataFrame(solarspec, columns=["λ (nm)", "irradiance (W/m^2/nm)"])
-solarspec_df_tidy = interpolate_solar_spectrum(solarspec_df, theAU, show_plots=True, scale_above=189.51, desctag=descriptive_tag)
-solarspec_df_tidy.to_csv(f"{descriptive_tag}.dat", sep='\t', float_format="%.2f", columns=["λ (nm)", "photon flux (γ/s/cm^2/nm)"], index=False)
+solarspec_df = pd.DataFrame(solarspec, columns=["wavelength (nm)", "irradiance (W/m^2/nm)"])
+solarspec_df_tidy = interpolate_solar_spectrum(solarspec_df, theAU, show_plots=True, scale_above=longest_euvm_wavelength, desctag=descriptive_tag)
+
+with open(f"marssolarphotonflux_{descriptive_tag}.dat", "a") as f:
+    f.write('# wavelength (nm)\tphoton flux (phot/s/cm^2/nm)\n')
+    f.write('# Original input has been scaled to {} above wavelength={} nm\n'.format(theAU, longest_euvm_wavelength))
+    solarspec_df_tidy.to_csv(f, sep='\t', float_format="%.2f", index=False)
+
+solarspec_df_tidy.to_csv(f"marssolarphotonflux_{descriptive_tag}.dat", sep='\t', float_format="%.2f", columns=["wavelength (nm)", "photon flux (phot/s/cm^2/nm)"], index=False)
