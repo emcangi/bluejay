@@ -116,35 +116,49 @@ function meanmass(atmdict::Dict{Symbol, Vector{ftype_ncur}}, z; globvars...)
     GV = values(globvars)
     @assert all(x->x in keys(GV),  [:all_species, :molmass, :n_alt_index])
 
+    counted_species = setdiff(GV.all_species, ignore)
+
     thisaltindex = GV.n_alt_index[z]
-    c = [atmdict[sp][thisaltindex] for sp in GV.all_species]
-    m = [GV.molmass[sp] for sp in GV.all_species]
+    c = [atmdict[sp][thisaltindex] for sp in counted_species]
+    m = [GV.molmass[sp] for sp in counted_species]
     return sum(c.*m)/sum(c)
 end
 
-function meanmass(atmdict::Dict{Symbol, Vector{ftype_ncur}}; globvars...)
+function meanmass(atmdict::Dict{Symbol, Vector{ftype_ncur}}; ignore=[], globvars...)
     #= 
     Override for vector form. Calculates mean molecular mass at all atmospheric layers.
 
-    atmdict: Array; species number density by altitude
-    returns: mean molecular mass in amu for all atmospheric layers.
+    Inputs:
+        atmdict: Array; species number density by altitude
+        ignore: Set; contains symbols representing species to ignore in the calculation
+
+    Outputs:
+        returns: mean molecular mass in amu for all atmospheric layers.
     =#
 
     GV = values(globvars)
     @assert all(x->x in keys(GV),  [:all_species, :molmass, :n_alt_index])
 
+    counted_species = setdiff(GV.all_species, ignore)
+
+    # Delete ignored species from the dictionary since we have to transform it
+    trimmed_atmdict = deepcopy(atmdict)
+    for isp in ignore
+        delete!(trimmed_atmdict, isp)
+    end
+
     # Gets the atmosphere as a matrix with rows = altitudes and cols = species
     # so we can do matrix multiplication.
-    n_mat = transpose(atm_dict_to_matrix(atmdict, GV.all_species))
+    n_mat = transpose(atm_dict_to_matrix(trimmed_atmdict, counted_species))
 
-    m = [GV.molmass[sp] for sp in GV.all_species] # this will always be 1D
+    m = [GV.molmass[sp] for sp in counted_species] # this will always be 1D
 
     weighted_mm = zeros(size(n_mat)[1]) # This will store the result
 
     # Multiply densities of each species by appropriate molecular mass 
     mul!(weighted_mm, n_mat, m)
 
-    return weighted_mm ./ n_tot(atmdict; GV.all_species, GV.n_alt_index)
+    return weighted_mm ./ n_tot(trimmed_atmdict; all_species=counted_species, GV.n_alt_index)
 end
 
 function ncur_with_boundary_layers(atmdict_no_bdys::Dict{Symbol, Vector{ftype_ncur}}; globvars...)
@@ -183,29 +197,33 @@ function ncur_with_boundary_layers(atmdict_no_bdys::Dict{Symbol, Vector{ftype_nc
     return atmdict_with_bdy_layers
 end
 
-function n_tot(atmdict::Dict{Symbol, Vector{ftype_ncur}}, z; globvars...)
+function n_tot(atmdict::Dict{Symbol, Vector{ftype_ncur}}, z; ignore=[], globvars...)
     #= 
     Calculates total atmospheric density at altitude z.
 
     Input: 
         atmdict: dictionary of atmospheric density profiles by altitude
         z: altitude, in cm
+        ignore: Set; contains symbols representing species to ignore in the calculation
     Output: 
         Density of the atmosphere at altitude z
     =#
     GV = values(globvars)
     @assert all(x->x in keys(GV), [:n_alt_index, :all_species])
 
+    counted_species = setdiff(GV.all_species, ignore)
+
     thisaltindex = GV.n_alt_index[z]
-    return sum( [atmdict[s][thisaltindex] for s in GV.all_species] )
+    return sum( [atmdict[s][thisaltindex] for s in counted_species] )
 end
 
-function n_tot(atmdict::Dict{Symbol, Vector{ftype_ncur}}; globvars...)
+function n_tot(atmdict::Dict{Symbol, Vector{ftype_ncur}}; ignore=[], globvars...)
     #= 
     Override to calculate total atmospheric density at all altitudes.
 
     Input: 
         atmdict: dictionary of atmospheric density profiles by altitude
+        ignore: Set; contains symbols representing species to ignore in the calculation
     Output: 
         Density of the atmosphere at all non-boundary layer altitudes.
 
@@ -214,9 +232,11 @@ function n_tot(atmdict::Dict{Symbol, Vector{ftype_ncur}}; globvars...)
     GV = values(globvars)
     @assert all(x->x in keys(GV),  [:all_species])
 
-    ndensities = zeros(length(GV.all_species), length(atmdict[collect(keys(atmdict))[1]]))
-    for i in 1:length(GV.all_species)
-        ndensities[i, :] = atmdict[GV.all_species[i]]
+    counted_species = setdiff(GV.all_species, ignore)
+    ndensities = zeros(length(counted_species), length(atmdict[collect(keys(atmdict))[1]]))
+
+    for i in 1:length(counted_species)
+        ndensities[i, :] = atmdict[counted_species[i]]
     end
 
     # returns the sum over all species at each altitude as a vector.
@@ -293,6 +313,7 @@ function scaleH(z, sp::Symbol, T; globvars...)
         z: Altitudes in cm
         sp: Speciecs to calculate for
         T: temperature array for this species
+        ignore: Set; contains symbols representing species to ignore in the calculation
     Output: 
         species-specific scale height at all altitudes (in cm)
     =#  
@@ -302,11 +323,12 @@ function scaleH(z, sp::Symbol, T; globvars...)
     return @. kB*T/(GV.molmass[sp]*mH*marsM*bigG)*(((z+radiusM))^2)
 end
 
-function scaleH(atmdict::Dict{Symbol, Vector{ftype_ncur}}, T::Vector; globvars...)
+function scaleH(atmdict::Dict{Symbol, Vector{ftype_ncur}}, T::Vector; ignore=[], globvars...)
     #= 
     Input:
         atmdict: Present atmospheric state dictionary
         T: temperature array for the neutral atmosphere
+        ignore: Set; contains symbols representing species to ignore in the calculation
     Output:
         Mean atmospheric scale height at all altitudes (in cm)
     =#
@@ -314,7 +336,9 @@ function scaleH(atmdict::Dict{Symbol, Vector{ftype_ncur}}, T::Vector; globvars..
     GV = values(globvars)
     @assert all(x->x in keys(GV), [:all_species, :alt, :molmass, :n_alt_index])
 
-    mm_vec = meanmass(atmdict; globvars...)#, all_species, mmass) # vector version.
+    counted_species = setdiff(GV.all_species, ignore)
+
+    mm_vec = meanmass(atmdict; ignore=ignore, globvars...)#, all_species, mmass) # vector version.
     return @. kB*T/(mm_vec*mH*marsM*bigG)*(((GV.alt+radiusM))^2)
 end
 
