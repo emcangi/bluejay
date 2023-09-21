@@ -755,7 +755,7 @@ function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, result
     end
 end
 
-function plot_species_on_demand(atmdict, spclist, filename; savepath=nothing, showonly=false, 
+function plot_species_on_demand(atmdict, spclist, filename; savepath=nothing, showonly=false, mixing_ratio=false, 
                                 xlab=L"Number density (cm$^{-3}$)", xlims=(1e-12, 1e18), figsz=(16,6), ylims=(0,zmax/1e5), titl=nothing,
                                 overridestyle=false, posdict = Dict(), extratext=nothing, LL=(0.9,0.9),
                                 globvars...)
@@ -766,10 +766,10 @@ function plot_species_on_demand(atmdict, spclist, filename; savepath=nothing, sh
     Inputs:
         atmdict: dictionary of vertical profiles of a plottable quantity, keys are species names.
         spclist: a list of species to plot.
+        filename: what to call the file
     
     optional inputs:
         savepath: path in which to save the file
-        filename: what to call the file
         showonly: whether to just show() the plot (true) or save and show (false)
         xlab: override for x axis label
         xlims: override for x axis limits 
@@ -804,9 +804,15 @@ function plot_species_on_demand(atmdict, spclist, filename; savepath=nothing, sh
         else
             ls = get(GV.speciesstyle, sp, "-")
         end
-        ax.plot(atmdict[sp], GV.plot_grid, color=col, linewidth=2, label=sp, linestyle=ls, zorder=10)
-        ax.set_xlim(xlims[1], xlims[2])
-        ax.set_ylabel("Altitude (km)")
+
+        plot_me = atmdict[sp]
+        if mixing_ratio
+            @assert all(x->x in keys(GV),  [:all_species])
+            plot_me = plot_me ./ n_tot(atmdict; GV.all_species)
+        end
+        ax.plot(plot_me, GV.plot_grid, color=col, linewidth=2, label=sp, linestyle=ls, zorder=10)
+        
+        
         
         textloc = get(posdict, sp, nothing)
         if textloc != nothing
@@ -816,6 +822,9 @@ function plot_species_on_demand(atmdict, spclist, filename; savepath=nothing, sh
     ax.tick_params(axis="x", which="both", labeltop=false, top=true)
     ax.set_ylim(ylims[1], ylims[2])
     ax.set_xscale("log")
+    ax.set_xlabel(xlab)
+    ax.set_xlim(xlims[1], xlims[2])
+    ax.set_ylabel("Altitude (km)")
     
     # L2D = PyPlot.matplotlib.lines.Line2D
     # legend_elements = [L2D([0], [0], color="black", linewidth=1, label="Solar minimum"),
