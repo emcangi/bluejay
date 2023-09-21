@@ -15,7 +15,7 @@ using DoubleFloats
 
 const code_dir = "$(@__DIR__)/"
 # const extra_plots_dir = code_dir*"../Auxiliary plots/"
-const results_dir = code_dir*"../Results/"#-Paper3/"
+const results_dir = code_dir*"../Results-Paper3/"
 const xsecfolder = code_dir*"uvxsect/";
 
 # Float types for calculations =================================================
@@ -88,12 +88,10 @@ const medgray = "#444444"
 
 # Crosssection filenames ======================================================
 
-# for i in 1:10
-#     println("WARNING!!! WARNING!!! HDO CROSS SECTIONS = H2O CROSS SECTIONS! EXPERIENCING WEIRD RESULTS?? CHANGE THIS YOU DUMMY")
-# end
+
 const photochem_data_files = Dict(:CO2=>Dict("main"=>"CO2.dat"), 
                                    :H2O=>Dict("main"=>"h2oavgtbl.dat"), 
-                                   :HDO=>Dict("main"=>"HDO.dat"),# 
+                                   :HDO=>Dict("main"=>"HDO.dat"), #"h2oavgtbl.dat"),
                                    :H2O2=>Dict("main"=>"H2O2.dat"), 
                                    :HDO2=>Dict("main"=>"H2O2.dat"), 
                                    :O3=>Dict("main"=>"O3.dat", "chapman"=>"O3Chap.dat"), 
@@ -102,3 +100,9 @@ const photochem_data_files = Dict(:CO2=>Dict("main"=>"CO2.dat"),
                                    :HD=>Dict("main"=>"binnedH2.csv"), 
                                    :OH=>Dict("main"=>"binnedOH.csv", "O1D+H"=>"binnedOHo1D.csv"), 
                                    :OD=>Dict("main"=>"OD.csv"))
+
+if photochem_data_files[:HDO]["main"] == "h2oavgtbl.dat" 
+    for i in 1:10
+        println("WARNING!!! WARNING!!! HDO CROSS SECTIONS = H2O CROSS SECTIONS! DON'T FORGET TO CHANGE THIS BACK AFTER FINISHING THE RUN!")
+    end
+end
