@@ -5,8 +5,8 @@
 # 
 # Eryn Cangi
 # Created December 2019
-# Last edited: October 2022
-# Currently tested for Julia: 1.7.1
+# Last edited: 2023
+# Currently tested for Julia: 1.85
 ################################################################################
 
 using DataFrames
@@ -25,32 +25,35 @@ using DataFrames
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
 
 # Basic simulation parameters
-const optional_logging_note = "Water cycle redo - high water - more reasonable water abundance (300 ppm)" # Simulation goal
-const simset = "paper3"# "paper2" # Fine to leave this as paper3
-const seasonal_cycle = true # false #    whether testing how things change with seasonal cycles
-const results_version = "v5"  # Helps keep track of attempts 
-const initial_atm_file = "h5files_water_meso/cycle_water_meso_start.h5"#"INITIAL_GUESS.h5" #"cycle_temp_low_xsects.h5"#
-const make_P_and_L_plots = true # Turn off to save several minutes of runtime if you're not doing runs aimed at producing published results
+const optional_logging_note = "" # Brief summary of simulation goal
+const simset = "paper2" # "paper3" # This just allows configuration of several options for temperature, solar cycle etc. further down.
+const seasonal_cycle = true # for paper 3
+const results_version = "v2"  # Helps keep track of attempts if you need to keep changing things
+const initial_atm_file = "INITIAL_GUESS.h5" 
+const make_P_and_L_plots = true # Turn off to save several minutes of runtime if you don't need to check for equilibrium.
+const adding_new_species = false # true#  set to true if introducing a new species.
 
-# initial file options for seasonal cycling paper:
+# INITIAL FILE OPTIONS FOR SEASONAL CYCLE PAPER:
 # water changed in mesosphere, same xsects for HDO, H2O: # "cycle_water_meso_low_xsects.h5"#"cycle_water_meso_mid_xsects.h5"#"cycle_water_meso_high_xsects.h5"#"cycle_water_meso_start_xsects.h5"#
 # water changed in mesosphere: #  "cycle_water_meso_high.h5"#  "cycle_water_meso_start.h5"# "cycle_water_meso_low.h5"# "cycle_water_meso_mid.h5"#
-# water changed everywhere: # "cycle_water_low.h5"#"cycle_water_mid.h5"#"cycle_water_high.h5"#
 # Temp options: # "cycle_temp_low.h5"#"cycle_temp_mid.h5" # "cycle_temp_high.h5"# "cycle_temp_start.h5" #
 
-# DEFINE THE EXPERIMENT CASE ------------------------------------
-const paper3_exp = "water" #  "temperature" # "insolation"#
+# DEFINE THE EXPERIMENT CASE ------------------------------------ #
+const paper3_exp = "temperature" # "water" #  "insolation"#
 
-# SOLAR CASE ----------------------------------------------------
+# SOLAR CASE ---------------------------------------------------- #
 const solarcyc = "equinox"
-# PAPER3 OPTIONS: "perihelion" # "aphelion" #  
-# PAPER2 OPTIONS: "mean" # "max" # "min" # 
+# PAPER3 OPTIONS: "perihelion" # "aphelion" #  "equinox" (AU of Mars is what varies) TODO: Program the solar spectrum scaling in Julia and set AU as a parameter
+# PAPER2 OPTIONS: "mean" # "max" # "min" # (solar spectra varies; hand collected by Eryn)
 
-# TEMPERATURE CASES ---------------------------------------------
-const tempcyc = "mean" # "min"# "max" # 
+# TEMPERATURE CASES --------------------------------------------- #
+const tempcyc = "mean" # "max" # "min"#  
+# Also an option which will set all temperatures to the same value: "isothermal" 
 
-# WATER CASES ---------------------------------------------------
-const water_case = "high" #"low" #    "standard" #
+# WATER CASES --------------------------------------------------- #
+# Amount of water in the atmosphere
+const water_case = "standard" #"low" #"high" #  
+
 # PAPER2 REQUIREMENT: "standard" (always)
 const water_loc = "mesosphere" # "loweratmo" #  "everywhere" #   # Use mesosphere as default even if no water added.
 
@@ -66,13 +69,14 @@ end
 # !!                                                                        !! #
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
 
-# Other water controls -------------------------------------------------------------------------
-const opt_halt = simset=="paper2" ? 40e5 : 45e5 
+# Other water controls ------------------------------------------------------------------------- #
+const opt_halt = simset=="paper2" ? 40e5 : 45e5 # optional change to hygropause altitude
+# Water mixing ratios to use for paper3 runs.
 const water_MRs = Dict("loweratmo"=>Dict("standard"=>1.3e-4, "low"=>0.65e-4, "high"=>2.6e-4), 
                        "mesosphere"=>Dict("standard"=>1.3e-4, "high"=>1.3e-4, "low"=>1.3e-4), 
                        "everywhere"=>Dict("standard"=>1.3e-4, "high"=>1.3e-4, "low"=>1.3e-4))
 const water_mixing_ratio = water_MRs[water_loc][water_case]
-const reinitialize_water_profile = seasonal_cycle==true ? false : true # should be off if trying to run simulations that test seasonal cycling
+const reinitialize_water_profile = seasonal_cycle==true ? false : true # should be off if trying to run simulations for Mars seasons
 const update_water_profile = seasonal_cycle==true ? true : false # this is for modifying the profile during cycling, MAY be fixed?
 const modified_water_alts = "below fixed point"
 
@@ -82,23 +86,28 @@ const H2O_excess = 250 # excess H2O in ppm
 const HDO_excess = 0.350 # excess HDO in ppm (divide by 1000 to get ppb)
 
 # altitude at which to add the extra water -- applies to both dust storm parcels and the tanh profile
-if dust_storm_on==true
-    const excess_peak_alt = 60
-else
-    if water_case=="high"
-        const excess_peak_alt = 65
-    elseif water_case=="low"
-        const excess_peak_alt = 45 
-    elseif water_case=="standard"
-        const excess_peak_alt = 60
-    end
-end
+const add_water_alt_opts = Dict("low"=>45, "standard"=>60, "high"=>65)
+const f_fac_opts = Dict("low"=>0.005, "standard"=>10, "high"=>100)
+# if dust_storm_on==true
+#     const excess_peak_alt = 60
+# else
+#     if water_case=="high"
+#         const excess_peak_alt = 65
+#         const f_fac = 100
+#     elseif water_case=="low"
+#         const excess_peak_alt = 45 
+#         const f_fac = 0.005
+#     elseif water_case=="standard"
+#         const excess_peak_alt = 60
+#     end
+# end
 
-# Timestep -------------------------------------------------------------------------------------------
-const timestep_type = seasonal_cycle==true ? "log-linear" : "dynamic-log" # basically never use this one: "static-log"# 
+# Timestep ------------------------------------------------------------------------------------------- #
+# Static-log should basically never be used, but can be used for testing.
+const timestep_type = seasonal_cycle==true ? "log-linear" : "dynamic-log" # "static-log" 
 
-# Other temperature controls -------------------------------------------------------------------------
-const paper3_Texo_opts = Dict("min"=>175., "mean"=>225., "max"=>275.) # Broader range of values that are evenly spaced
+# Other temperature controls ------------------------------------------------------------------------- #
+const paper3_Texo_opts = Dict("min"=>175., "mean"=>225., "max"=>275.) 
 const paper2_Texo_opts = Dict("min"=>190., "mean"=>210., "max"=>280.)
 if simset=="paper3"
     println("Running simulations for paper 3")
@@ -110,7 +119,6 @@ if simset=="paper3"
     if paper3_exp=="temperature"
         println("Testing T_exo = $(controltemps[3])")
         const tag = "paper3_temp$(extra_str)_Texo=$(Int64(controltemps[3]))_$(results_version)"
-        const controltemps = [230., 130., paper3_Texo_opts[tempcyc]]
     elseif paper3_exp=="insolation"
         println("Testing solar case = $(solarcyc)")
         const solarfile = "marssolarphotonflux_$(solarcyc).dat"
@@ -127,10 +135,17 @@ elseif simset == "paper2"
     const solarfile = "marssolarphotonflux_solar$(solarcyc)_NEW.dat"
     const tag = "s$(solarcyc)_$(results_version)"
     meanexo = paper2_Texo_opts["mean"]
-    
-    const controltemps = [230., 130., paper2_Texo_opts[solarcyc]]
+    if tempcyc=="isothermal"
+        const controltemps = [225., 225., 225.]
+    else
+        const controltemps = [230., 130., paper2_Texo_opts[solarcyc]]
+    end
 end
-const meantemps = [230., 130., meanexo] # Used for saturation vapor pressure. DON'T CHANGE!
+if tempcyc=="isothermal"
+    const meantemps = [230., 130., meanexo] # Used for saturation vapor pressure. DON'T CHANGE!
+else
+    const meantemps = [225., 225., 225.] # Used for saturation vapor pressure. DON'T CHANGE!
+end
 
 # Tolerance and timespans 
 const season_length_in_sec = seasonal_cycle==true ? 1.4838759e7 : 1e16
@@ -141,10 +156,11 @@ const abs_tol = 1e-12
 
 # More basics that don't frequently change
 const ions_included = true
-const SZA = 60 # SZA in degrees 
+const SZA = 60  
 const fixed_species = [:Ar] # here you may enter any species that you want to be completely fixed (no updates to densities from chemistry or transport)
 
 # Tags, shortcodes, and filenames
+# The shortcodes provide unique identifiers for a simulation. Necessary because you end up running the model many times...
 const hrshortcode, rshortcode = generate_code(ions_included, controltemps[1], controltemps[2], controltemps[3], water_case, solarcyc)
 const sim_folder_name = "$(hrshortcode)_$(rshortcode)_$(tag)"
 const final_atm_file = "final_atmosphere.h5"
@@ -155,7 +171,6 @@ const nontherm = ions_included==true ? true : false
 const converge_which = "both"
 const e_profile_type = ions_included==true ? "quasineutral" : "none" #"O2+" # "constant"# 
 const remove_unimportant = true # Whether to use a slightly smaller list of species and reactions (removing minor species that Roger had in his model)
-const adding_new_species = false # set to true if introducing a new species.
 
 
 # **************************************************************************** #
@@ -172,8 +187,11 @@ const n_steps = 800 # for static case
 const dt_incr_factor = 1.5
 const dt_decr_factor = 10
 # other solver details:
-const ediff = false # true # whether to include differentiation terms in Jacobian with respect to electron density
-const mdiff = false # true # whether to include differentiation terms in Jacobian with respect to density of the generic thirdbody "M"
+
+# whether to include differentiation terms in Jacobian with respect to electron density or generic thirdbody M. 
+# After much testing, these were determined to not be necessary.
+const ediff = false # true 
+const mdiff = false # true 
 const error_checking_scheme = "new" #"old" 
 
 # Sets whether photochemical equilibrium is assumed. Aids in converging ions and neutrals
@@ -181,7 +199,7 @@ const error_checking_scheme = "new" #"old"
 # if need be
 if problem_type == "Gear"
     const assume_photochem_eq = false
-else
+else # In using the Julia-provided solvers, it was necessary to assume photochemical equilibrium for short-lived species.
     const assume_photochem_eq = converge_which == "both" ? true : false
 end
 
@@ -201,7 +219,7 @@ end
 const do_chem = true 
 const do_trans = true 
 const make_new_alt_grid = false
-const use_nonzero_initial_profiles = true
+const use_nonzero_initial_profiles = true  
 
 # **************************************************************************** #
 #                                                                              #
@@ -249,7 +267,7 @@ const speciesbclist=Dict(:CO2=>Dict("n"=>[2.1e17, NaN], "f"=>[NaN, 0.]),
 #                                                                              #
 # **************************************************************************** #
 
-unimportant = [:CNpl,:HCNpl,:HCNHpl,:HN2Opl,:NH2pl,:NH3pl,:N2Opl,:NO2pl,:CH,:CN,:HCN,:HNO,:NH,:NH2,:N2O,:NO2,:HD2pl]
+unimportant = [:CNpl,:HCNpl,:HCNHpl,:HN2Opl,:NH2pl,:NH3pl,:N2Opl,:NO2pl,:CH,:CN,:HCN,:HNO,:NH,:NH2,:HD2pl]#:N2O,:NO2
 
 # Neutrals --------------------------------------------------------------------
 const orig_neutrals = [:Ar, :CO, :CO2, :H, :H2, :H2O, :H2O2, 
@@ -258,10 +276,10 @@ const orig_neutrals = [:Ar, :CO, :CO2, :H, :H2, :H2O, :H2O2,
                        :D, :DO2, :DOCO, :HD, :HDO, :HDO2, :OD,
 
                        # Turn these off for minimal ionosphere:
-                       :C, :DCO, :HCN, :HCO, :N, :NO, :Nup2D, # :CH, :CN,  :HNO, :NH, :NH2, :N2O, :NO2,
+                       :C, :DCO, :HCN, :HCO, :N, :NO, :Nup2D, # :CH, :CN,   :NH, :NH2, 
                        ]; 
 const conv_neutrals = remove_unimportant==true ? setdiff(orig_neutrals, unimportant) : orig_neutrals
-const new_neutrals = [];
+const new_neutrals = [];#:N2O, :NO2, :HNO,];
 const neutral_species = [conv_neutrals..., new_neutrals...];
 
 # Ions -------------------------------------------------------------------------
@@ -273,9 +291,8 @@ const orig_ions = [:CO2pl, :HCO2pl, :Opl, :O2pl, # Nair minimal ionosphere
                    :HO2pl, :HCOpl, :DCOpl, :HOCpl, :DOCpl, :DCO2pl, 
                    :HNOpl,   
                    :Npl, :NHpl, :N2pl, :N2Hpl, :N2Dpl, :NOpl,
-                   :OHpl, :ODpl]; # :HCNHpl,:NH2pl, :NH3pl,:CNpl,:HCNpl, :HN2Opl,:N2Opl, :NO2pl,
-const new_ions = []; 
-# const ion_species = [conv_ions..., new_ions...];
+                   :OHpl, :ODpl]; # :HCNHpl,:NH2pl, :NH3pl,:CNpl,:HN2Opl,
+const new_ions = [];#:N2Opl, :NO2pl,:HCNpl, ]; 
 const ion_species = remove_unimportant==true ? setdiff([orig_ions..., new_ions...], unimportant) : [orig_ions..., new_ions...]
 
 # Full species list -------------------------------------------------------------
