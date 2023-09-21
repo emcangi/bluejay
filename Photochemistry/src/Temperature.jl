@@ -19,7 +19,7 @@ function T(Tsurf, Tmeso, Texo; lapserate=-1.4e-5, z_meso_top=108e5, weird_Tn_par
     =#
     GV = values(globvars)
     @assert all(x->x in keys(GV), [:alt])
- 
+
     # Altitudes at which various transitions occur -------------------------------
     z_meso_bottom = GV.alt[searchsortednearest(alt, (Tmeso-Tsurf)/(lapserate))]
     
@@ -44,9 +44,13 @@ function T(Tsurf, Tmeso, Texo; lapserate=-1.4e-5, z_meso_top=108e5, weird_Tn_par
         end
         Tn = zeros(size(GV.alt))
 
-        Tn[i_lower] .= Tsurf .+ lapserate*GV.alt[i_lower]
-        Tn[i_meso] .= Tmeso
-        Tn[i_upper] .= upper_atmo_neutrals(GV.alt[i_upper])
+        if Tsurf==Tmeso==Texo # isothermal case
+            Tn .= Tsurf
+        else
+            Tn[i_lower] .= Tsurf .+ lapserate*GV.alt[i_lower]
+            Tn[i_meso] .= Tmeso
+            Tn[i_upper] .= upper_atmo_neutrals(GV.alt[i_upper])
+        end
 
         return Tn 
     end 
@@ -62,18 +66,22 @@ function T(Tsurf, Tmeso, Texo; lapserate=-1.4e-5, z_meso_top=108e5, weird_Tn_par
         end
         Te = zeros(size(GV.alt))
 
-        Te[i_lower] .= Tsurf .+ lapserate*GV.alt[i_lower]
-        Te[i_meso] .= Tmeso
+        if Tsurf==Tmeso==Texo # isothermal case
+            Te .= Tsurf
+        else
+            Te[i_lower] .= Tsurf .+ lapserate*GV.alt[i_lower]
+            Te[i_meso] .= Tmeso
 
-        # This region connects the upper atmosphere with the isothermal mesosphere
-        Te[i_meso_top+1:i_stitch_elec] .= upper_atmo_electrons(GV.alt[i_meso_top+1:i_stitch_elec], -1289.05806755, 469.31681082, 72.24740123, -50.84113252)
+            # This region connects the upper atmosphere with the isothermal mesosphere
+            Te[i_meso_top+1:i_stitch_elec] .= upper_atmo_electrons(GV.alt[i_meso_top+1:i_stitch_elec], -1289.05806755, 469.31681082, 72.24740123, -50.84113252)
 
-        # Don't let profile get lower than specified meso temperature
-        Te[findall(t->t < Tmeso, Te)] .= Tmeso
+            # Don't let profile get lower than specified meso temperature
+            Te[findall(t->t < Tmeso, Te)] .= Tmeso
 
-        # This next region is a fit of the tanh electron temperature expression in Ergun+2015 and 2021 
-        # to the electron profile in Hanley+2021, DD8
-        Te[i_stitch_elec:end] .= upper_atmo_electrons(GV.alt[i_stitch_elec:end], 1409.23363494, 292.20319103, 191.39012079, 36.64138724)
+            # This next region is a fit of the tanh electron temperature expression in Ergun+2015 and 2021 
+            # to the electron profile in Hanley+2021, DD8
+            Te[i_stitch_elec:end] .= upper_atmo_electrons(GV.alt[i_stitch_elec:end], 1409.23363494, 292.20319103, 191.39012079, 36.64138724)
+        end 
 
         return Te
     end
@@ -100,18 +108,23 @@ function T(Tsurf, Tmeso, Texo; lapserate=-1.4e-5, z_meso_top=108e5, weird_Tn_par
 
         Ti = zeros(size(GV.alt))
 
-        Ti[i_lower] .= Tsurf .+ lapserate*GV.alt[i_lower]
-        Ti[i_meso] .= Tmeso
+        if Tsurf==Tmeso==Texo # isothermal case
+            Ti .= Tsurf
+        else
+            Ti[i_lower] .= Tsurf .+ lapserate*GV.alt[i_lower]
+            Ti[i_meso] .= Tmeso
 
-        # try as an average of neutrals and electrons. There is no real physical reason for this.
-        Ti[i_meso_top:i_stitch_ions] = meso_ions_byeye(alt[i_meso_top:i_stitch_ions])
+            # try as an average of neutrals and electrons. There is no real physical reason for this.
+            Ti[i_meso_top:i_stitch_ions] = meso_ions_byeye(alt[i_meso_top:i_stitch_ions])
 
-        # Don't let profile get lower than specified meso temperature
-        Ti[findall(t->t < Tmeso, Ti)] .= Tmeso
+            # Don't let profile get lower than specified meso temperature
+            Ti[findall(t->t < Tmeso, Ti)] .= Tmeso
 
-        # This next region is a fit of the tanh electron temperature expression in Ergun+2015 and 2021 
-        # to the electron profile in Hanley+2021, DD8
-        Ti[i_stitch_ions:end] .= upper_atmo_ions(GV.alt[i_stitch_ions:end])
+            # This next region is a fit of the tanh electron temperature expression in Ergun+2015 and 2021 
+            # to the electron profile in Hanley+2021, DD8
+            Ti[i_stitch_ions:end] .= upper_atmo_ions(GV.alt[i_stitch_ions:end])
+        end 
+        
         return Ti
     end 
 
