@@ -14,6 +14,7 @@ const bigG = 6.67e-8;           # dyne-cm^2/g^2
 const mH = 1.67e-24;            # g 
 const marsM = 0.1075*5.972e27;  # g 
 const radiusM = 3396e5;         # cm
+const g = bigG * marsM / (radiusM^2);
 const q = -4.8032e-10            # statcoulomb (cm^1.5 g^0.5 s^-1)
 const DH = 5.5 * 1.6e-4         # SMOW value, Yung 1988
 const density_water_cgs = 0.997408
