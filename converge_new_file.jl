@@ -1110,6 +1110,12 @@ if adding_new_species==true
     for nj in newJrates
         n_current[nj] = zeros(num_layers)
     end
+else # Allows zeroing out the atmosphere even if not adding new species. Can be helpful if you want to test different temperature profiles
+    if use_nonzero_initial_profiles==false
+        for a in setdiff(all_species, [:CO2, :Ar])
+            n_current[a] .= 0
+        end
+    end
 end
 
 
@@ -1125,8 +1131,8 @@ if reinitialize_water_profile
     println("Initializing the water profile anew (reinitialize_water_profile=true)")
     # hygropause_alt is an optional argument. If using, must be a unit of length in cm i.e. 40e5 = 40 km.
     println("$(Dates.format(now(), "(HH:MM:SS)")) Setting up the water profile...")
-    setup_water_profile!(n_current; dust_storm_on=dust_storm_on, water_amt=water_case, ealt=excess_peak_alt, hygropause_alt=opt_halt,
-                                    excess_water_in=water_loc, 
+    setup_water_profile!(n_current; dust_storm_on=dust_storm_on, water_amt=water_case, ffac=f_fac_opts[water_case], ealt=add_water_alt_opts[water_case], 
+                                    hygropause_alt=opt_halt, excess_water_in=water_loc, 
                                     all_species, alt, DH, num_layers, non_bdy_layers, n_alt_index, plot_grid,
                                     H2O_excess, HDO_excess,  H2Osat, water_mixing_ratio,  results_dir, 
                                     sim_folder_name, speciescolor, speciesstyle, upper_lower_bdy_i)
@@ -1149,10 +1155,10 @@ if update_water_profile
             n_current[:H2O][1:upper_lower_bdy_i] = H2Oinitfrac[1:upper_lower_bdy_i] .* n_tot(n_current; n_alt_index, all_species)[1:upper_lower_bdy_i]
             n_current[:HDO][1:upper_lower_bdy_i] = 2 * DH * n_current[:H2O][1:upper_lower_bdy_i]
         else 
-            fdict = Dict("high"=>500, "low"=>0.005)
+            # fdict = Dict("high"=>500, "low"=>0.005)
 
             # Create the new multipliers to change the profiles
-            multiplier = water_tanh_prof(non_bdy_layers./1e5; f=fdict[water_case], z0=excess_peak_alt)
+            multiplier = water_tanh_prof(non_bdy_layers./1e5; f=f_fac_opts[water_case], z0=add_water_alt_opts[water_case])
             if modified_water_alts == "below fixed point"
                 multiplier[upper_lower_bdy_i+1:end] .= 1
             elseif modified_water_alts == "above fixed point"

@@ -112,22 +112,22 @@ function setup_water_profile!(atmdict; dust_storm_on=false, make_sat_curve=false
     # For doing high and low water cases ================================================================================================
     if (water_amt=="standard") | (excess_water_in=="loweratmo")
         println("Standard profile: water case = $(water_amt), loc = $(excess_water_in), MR = $(GV.water_mixing_ratio)")
-        H2Oinitfrac=H2Oinitfrac
+        # H2Oinitfrac=H2Oinitfrac
     else # low or high in mesosphere and above - special code for paper 3
         if water_amt == "high"
             println("$(water_amt) in $(excess_water_in)")
-            F = 100
-            z0 = GV.ealt
+            # F = 100
+            # z0 = GV.ealt
         elseif water_amt=="low"
             println("$(water_amt) in $(excess_water_in)")
-            F=0.005
-            z0 = GV.ealt
+            # F = 0.005
+            # z0 = GV.ealt
         end
 
         toplim_dict = Dict("mesosphere"=>GV.upper_lower_bdy_i, "everywhere"=>GV.n_alt_index[GV.alt[end]])
         a = 1
         b = toplim_dict[excess_water_in]
-        H2Oinitfrac[a:b] = H2Oinitfrac[a:b] .* water_tanh_prof(GV.non_bdy_layers./1e5; z0=z0, f=F)[a:b]
+        H2Oinitfrac[a:b] = H2Oinitfrac[a:b] .* water_tanh_prof(GV.non_bdy_layers./1e5; z0=GV.ealt, f=GV.ffac)[a:b]
 
         # Set the upper atmo to be a constant mixing ratio, wherever the disturbance ends
         if excess_water_in=="everywhere"
