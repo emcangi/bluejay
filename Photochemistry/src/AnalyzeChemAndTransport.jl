@@ -313,7 +313,12 @@ function final_escape(thefolder, thefile; globvars...)
     =#
     
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:alt, :all_species, :dz, :hHnet, :hDnet, :hH2net, :hHDnet, :hHrc, :hDrc, :hH2rc, :hHDrc])
+    @assert all(x->x in keys(GV), [ # Things from CONSTANTS.jl
+                                   :q, :molmass, :polarizability, :collision_xsect,
+                                   # From CUSTOMIZATIONS.jl
+                                   :alt, :dz, :num_layers, :n_alt_index, :non_bdy_layers, 
+                                   # Simulation-unique stuff 
+                                    :all_species, :hHnet, :hDnet, :hH2net, :hHDnet, :hHrc, :hDrc, :hH2rc, :hHDrc])
     
     # First load the atmosphere and associated variables.
     atmdict = get_ncurrent(thefolder*thefile);
@@ -330,16 +335,16 @@ function final_escape(thefolder, thefile; globvars...)
 
     # Now collect non-thermal and thermal fluxes for each species. 
     for s in ["H", "D", "H2", "HD"]
-        nonthermal_esc, thermal_esc = get_transport_PandL_rate(Symbol(s), atmdict; returnfluxes=true, all_species=vardict["all_species"], alt=GV.alt, 
-                                                               collision_xsect, GV.dz,
+        nonthermal_esc, thermal_esc = get_transport_PandL_rate(Symbol(s), atmdict; returnfluxes=true, Jratedict, zmax=GV.alt[end],
                                                                hot_H_network=GV.hHnet, hot_D_network=GV.hDnet, hot_H2_network=GV.hH2net, hot_HD_network=GV.hHDnet,
                                                                hot_H_rc_funcs=GV.hHrc, hot_D_rc_funcs=GV.hDrc, hot_H2_rc_funcs=GV.hH2rc, hot_HD_rc_funcs=GV.hHDrc, 
-                                                               Hs_dict=vardict["Hs_dict"], ion_species=vardict["ion_species"], Jratedict, molmass, 
-                                                               neutral_species=vardict["neutral_species"], non_bdy_layers, num_layers, n_all_layers, n_alt_index, 
-                                                               polarizability, q, speciesbclist=vardict["speciesbclist"],
+                                                               Hs_dict=vardict["Hs_dict"], ion_species=vardict["ion_species"], neutral_species=vardict["neutral_species"],
+                                                               speciesbclist=vardict["speciesbclist"],
                                                                Tprof_for_Hs=vardict["Tprof_for_Hs"], Tprof_for_diffusion=vardict["Tprof_for_diffusion"], 
                                                                transport_species=vardict["transport_species"], 
-                                                               Tn=vardict["Tn_arr"], Ti=vardict["Ti_arr"], Te=vardict["Te_arr"], Tp=vardict["Tplasma_arr"], zmax=GV.alt[end])
+                                                               Tn=vardict["Tn_arr"], Ti=vardict["Ti_arr"], Te=vardict["Te_arr"], Tp=vardict["Tplasma_arr"],
+                                                               globvars...)
+
         escdf.:($s) = [thermal_esc, nonthermal_esc, thermal_esc+nonthermal_esc]
     end
     
@@ -380,8 +385,8 @@ function get_transport_PandL_rate(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype
     Input:
         sp: species for which to return the transport production and loss
         atmdict: species number density by altitude
-        Tn, Ti, Te, Tp: Temperature arrays
-        bcdict: Boundary conditions dictionary specified in parameters file
+        returnfluxes: whether to return fluxes (thermal and nonthermal) instead of production/loss
+        nonthermal: whether to consider nonthermal escape 
     Output
         Array of production and loss (#/cm³/s) at each atmospheric layer boundary.
         i = 1 in the net_bulk_flow array corresponds to the boundary at 1 km,
@@ -389,9 +394,14 @@ function get_transport_PandL_rate(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype
     =#
 
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:all_species, :alt, :dz, :Hs_dict, :molmass, :n_all_layers, :n_alt_index, 
+    @assert all(x->x in keys(GV), [:all_species, :alt, :dz, :Hs_dict, :molmass,  :n_alt_index,
                                    :neutral_species, :num_layers, :polarizability, :q, :speciesbclist, :Te, :Ti, :Tn, :Tp, 
                                    :Tprof_for_Hs, :Tprof_for_diffusion, :transport_species])
+
+    if nonthermal
+        @assert all(x->x in keys(GV), [:hot_H_network, :hot_D_network, :hot_H_rc_funcs, :hot_D_rc_funcs, 
+                                       :hot_H2_network, :hot_H2_rc_funcs, :hot_HD_network, :hot_HD_rc_funcs, :Jratedict])
+    end
 
     # Generate the fluxcoefs dictionary and boundary conditions dictionary
     D_arr = zeros(size(GV.Tn))
@@ -448,6 +458,83 @@ function get_transport_PandL_rate(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype
     else 
         return transport_PL
     end
+end
+
+function get_directional_fluxes(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}; nonthermal=true, globvars...)
+    #=
+    Returns the flux up and down from each atmospheric cell. 
+
+    Input:
+        sp: species for which to return the transport production and loss
+        atmdict: species number density by altitude
+        returnfluxes: whether to return fluxes (thermal and nonthermal) instead of production/loss
+        nonthermal: whether to consider nonthermal escape 
+    Output
+        Array of production and loss (#/cm³/s) at each atmospheric layer boundary.
+        i = 1 in the net_bulk_flow array corresponds to the boundary at 1 km,
+        and the end of the array is the boundary at 249 km.
+    =#
+
+    GV = values(globvars)
+    @assert all(x->x in keys(GV), [:all_species, :alt, :dz, :Hs_dict, :molmass,  :n_alt_index,
+                                   :neutral_species, :num_layers, :polarizability, :q, :speciesbclist, :Te, :Ti, :Tn, :Tp, 
+                                   :Tprof_for_Hs, :Tprof_for_diffusion, :transport_species])
+
+    if nonthermal
+        @assert all(x->x in keys(GV), [:hot_H_network, :hot_D_network, :hot_H_rc_funcs, :hot_D_rc_funcs, 
+                                       :hot_H2_network, :hot_H2_rc_funcs, :hot_HD_network, :hot_HD_rc_funcs, :Jratedict])
+    end
+
+    # Generate the fluxcoefs dictionary and boundary conditions dictionary
+    D_arr = zeros(size(GV.Tn))
+    Keddy_arr, H0_dict, Dcoef_dict = update_diffusion_and_scaleH(GV.all_species, atmdict, D_arr; globvars...) 
+    fluxcoefs_all = fluxcoefs(GV.all_species, Keddy_arr, Dcoef_dict, H0_dict; globvars...)
+
+    # For the bulk layers only to make the loops below more comprehendable: 
+    fluxcoefs_bulk_layers = Dict([s=>fluxcoefs_all[s][2:end-1, :] for s in keys(fluxcoefs_all)])
+
+    bc_dict = boundaryconditions(fluxcoefs_all, atmdict, sum([atmdict[sp] for sp in GV.all_species]); nonthermal=nonthermal, globvars...)
+
+    # each element in thesebcs has the format [downward, upward]
+    thesebcs = bc_dict[sp]
+
+    # Fill array 
+    flux = fill(convert(ftype_ncur, NaN), (length(GV.alt), 1)) # will store positive and negative values at each alt, with + meaning up, - meaning down.
+    flux[1] = NaN # 0 alt
+
+    # Lower boundary 
+    up2 = thesebcs[1, 2] # in from the boundary layer (upwards)
+    down2 = atmdict[sp][1]*thesebcs[1, 1] # out to boundary layer (downwards)
+    flux[2] = up2 - down2
+
+    # println("Alt $(alt[2]): up $(up2*dz), down $(down2*dz), net $(up2*dz-down2*dz)")
+
+    for ialt in 3:length(flux) - 2
+        up = atmdict[sp][ialt-1]*fluxcoefs_bulk_layers[sp][ialt-1, 2] # in from layer below (upwards)
+        down = atmdict[sp][ialt]*fluxcoefs_bulk_layers[sp][ialt, 1]     # out to the layer below [downwards]
+        # println("Alt $(GV.alt[ialt]): up $(up*dz), down $(down*dz), net $(up*dz-down*dz)")
+        flux[ialt] = up - down
+    end
+
+    up_penult = atmdict[sp][end]*thesebcs[2, 1] # (#/cm³) * (#/s) out to space from upper bdy (thermal loss from velocity bc) (upwards)
+    down_penult = thesebcs[2, 2] # in from upper boundary layer (non-thermal loss from flux bc) (downwards) (has to be negative to come out positive)
+    flux[end-1] = up_penult - down_penult
+    # println("Alt $(alt[end-1]): up $(up_penult*dz), down $(down_penult*dz), net $(up_penult*dz-down_penult*dz)")
+
+    flux[end] = NaN
+
+    # mult by dz so the array is truly a flux
+    flux = flux .* GV.dz
+
+    # Use these for a sanity check if you like. 
+    # println("Activity in the top layer for sp $(sp) AS FLUX:")
+    # println("Flux calculated from flux bc. for H and D, this should be the nonthermal flux: $(thesebcs[2, 2]*GV.dz)")
+    # println("Calculated flux from velocity bc. For H and D this should be thermal escape: $(atmdict[sp][end]*thesebcs[2, 1]*GV.dz)")
+    # println("Down to layer below: $(-atmdict[sp][end]*fluxcoefs_all[sp][end, 1]*GV.dz)")
+    # println("In from layer below: $(atmdict[sp][end-1]*fluxcoefs_all[sp][end-1, 2]*GV.dz)")
+    # println("net in the second to last layer $(atmdict[sp][end-1]*fluxcoefs_all[sp][end-1, 2]*GV.dz -atmdict[sp][end]*fluxcoefs_all[sp][end, 1]*GV.dz)")
+
+    return flux
 end
 
 function flux_pos_and_neg(fluxarr) 
@@ -528,9 +615,9 @@ end
 #     return net_bulk_flow .* GV.dz # now it is a flux. hurrah.
 # end
 
-function limiting_flux(sp, atmdict, T_arr;  treat_H_as_rare=false,  globvars...)
+function limiting_flux(sp, atmdict, T_arr; treat_H_as_rare=false, full_equation=true, globvars...)
     #=
-    Calculate the limiting upward flux (Hunten, 1974; Zahnle, 2008). 
+    Calculate the limiting upward flux (Hunten, 1973; Zahnle, 2008). 
     Inputs:
         sp: A species that is traveling upwards
         atmdict: present atmospheric state
@@ -539,7 +626,7 @@ function limiting_flux(sp, atmdict, T_arr;  treat_H_as_rare=false,  globvars...)
         Φ, limiting flux for a hydrostatic atmosphere
     =#
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:all_species, :alt, :non_bdy_layers, :molmass, :n_alt_index])
+    @assert all(x->x in keys(GV), [:all_species, :alt, :dz, :non_bdy_layers, :molmass, :n_alt_index, :n_all_layers])
     
     # Calculate some common things: mixing ratio, scale height, binary diffusion coefficient AT^s
     if treat_H_as_rare==true
@@ -552,21 +639,48 @@ function limiting_flux(sp, atmdict, T_arr;  treat_H_as_rare=false,  globvars...)
         thedensity = atmdict[sp]
     end
 
-
-    fi = thedensity ./ n_tot(atmdict; globvars...)
-    Ha = scaleH(atmdict, T_arr; globvars..., alt=GV.non_bdy_layers)
-    bi = binary_dcoeff_inCO2(sp, T_arr)
-
-    mass_ratio = GV.molmass[sp] / meanmass(atmdict; globvars...) 
-
-    if (all(m->m<0.1, mass_ratio)) & (all(f->f<0.01, fi[1:75])) # Light minor species approximation
-        println("Calculating $(sp) as a light, minor species")
-        return bi .* fi ./ Ha
-    else # Any species
-        println("$(sp) is either not light or not minor")
-        D = Dcoef_neutrals(non_bdy_layers, sp, bi, atmdict; globvars...)    
-        return (D .* atmdict[sp] ./ Ha) .* (1 .- GV.molmass[sp] ./ meanmass(atmdict; globvars...))
+    if length(T_arr)==length(GV.alt)
+        T_arr = T_arr[2:end-1]
     end
+
+    Ha = scaleH(atmdict, T_arr; ignore=[sp], globvars..., alt=GV.non_bdy_layers)
+    bi = binary_dcoeff_inCO2(sp, T_arr) # AT^s
+
+    if full_equation
+        dTdz = zeros(GV.n_all_layers)
+        dTdz = dTdz[2:end] = @. (T_arr[2:end] - T_arr[1:end-1]) / GV.dz # make the temp gradient
+        print(dTdz)
+        fi = thedensity ./ n_tot(atmdict; ignore=[sp], globvars...)
+        ma = meanmass(atmdict; ignore=[sp], globvars...) 
+
+        return @. ((bi*fi)/(1+fi)) * ( mH*(ma - GV.molmass[sp]) * (g/(kB*T_arr)) - (thermaldiff(sp)/T_arr) * dTdz[1:end-1])
+    else
+        D = Dcoef_neutrals(non_bdy_layers, sp, bi, atmdict; globvars...)    
+        return (D .* atmdict[sp] ./ Ha) .* (1 .- GV.molmass[sp] ./ meanmass(atmdict; ignore=[sp], globvars...))
+    end
+end
+
+
+function limiting_flow_velocity(sp, atmdict, T_arr; globvars...)
+    #=
+    Calculate the limiting upward flux (Hunten, 1973; Zahnle, 2008). 
+    Inputs:
+        sp: A species that is traveling upwards
+        atmdict: present atmospheric state
+        T_arr: Array of neutral temperatures
+    Output:
+        Φ, limiting flux for a hydrostatic atmosphere
+    =#
+    GV = values(globvars)
+    @assert all(x->x in keys(GV), [:all_species, :alt, :n_alt_index, :non_bdy_layers, :molmass])
+    
+    # Calculate some common things: mixing ratio, scale height, binary diffusion coefficient AT^s
+    Ha = scaleH(atmdict, T_arr[2:end-1]; ignore=[sp], globvars..., alt=GV.non_bdy_layers)
+    Hi = scaleH(GV.non_bdy_layers, sp, T_arr[2:end-1]; GV.molmass)
+    bi = binary_dcoeff_inCO2(sp, T_arr[2:end-1]) # AT^s
+    na = n_tot(atmdict; ignore=[sp], GV.all_species)
+
+    return @. (bi / na) * (1/Ha - 1/Hi)
 end
 
 function limiting_flux_molef(sp, atmdict, T_arr; globvars...)

@@ -118,9 +118,11 @@ diffusion_timescale,
 final_escape,
 fractionation_factor,
 get_transport_PandL_rate, 
+get_directional_fluxes,
 flux_pos_and_neg,
 limiting_flux, 
 limiting_flux_molef, 
+limiting_flow_velocity,
 
 # Crosssections.jl
 padtosolar, 
