@@ -671,9 +671,9 @@ function escaping_hot_atom_production(sp, source_rxns, source_rxn_rc_funcs, atmd
     
     GV = values(globvars)
     @assert all(x->x in keys(GV), [:all_species, :alt, :collision_xsect, :ion_species, :Jratedict, :molmass, :non_bdy_layers, :num_layers,  
-                                   :n_alt_index, :Tn, :Ti, :Te, :dz, :zmax])
+                                    :n_alt_index, :Tn, :Ti, :Te, :dz])
 
-    produced_hot = volume_rate_wrapper(sp, source_rxns, source_rxn_rc_funcs, atmdict, Mtot; returntype="array", globvars...) 
+    produced_hot = volume_rate_wrapper(sp, source_rxns, source_rxn_rc_funcs, atmdict, Mtot; returntype="array", zmax=GV.alt[end], globvars...) 
 
     # Returns an array where rows represent altitudes and columns are reactions. Multiplies each vertical profile (each column) by escape_probability. 
     if returntype=="array" # Used within the code to easily calculate the total flux later on. 
@@ -1104,7 +1104,7 @@ and bottom of the atmosphere.
 
 function binary_dcoeff_inCO2(sp, T)
     #=
-    Calculate the bindary diffusion coefficient for species sp.
+    Calculate the bindary diffusion coefficient for species sp, AT^s.
 
     Currently, this is set up to only work for diffusion through CO2 since that's the Mars atm.
     Could be extended to be for any gas, but that will require some work.
@@ -1371,16 +1371,16 @@ s, the power of T, is not calculated because there is no instruction on how to
 do so and is assumed the same as for the hydrogenated species.
 =#  
 diffparams(s) = get(Dict(:H=>[8.4, 0.597], :H2=>[2.23, 0.75],
-                             :D=>[5.98, 0.597], :HD=>[1.84, 0.75],
-                             :Hpl=>[8.4, 0.597], :H2pl=>[2.23, 0.75],
-                             :Dpl=>[5.98, 0.597], :HDpl=>[1.84, 0.75]),
+                         :D=>[5.98, 0.597], :HD=>[1.84, 0.75],
+                         :Hpl=>[8.4, 0.597], :H2pl=>[2.23, 0.75],
+                         :Dpl=>[5.98, 0.597], :HDpl=>[1.84, 0.75]),
                         s,[1.0, 0.75])
 
 function fluxcoefs(sp::Symbol, Kv, Dv, H0v; globvars...)
     #= 
     base function to generate flux coefficients of the transport network. 
     
-    For all the arrays, length = num_layers 
+    For all the arrays, length = num_layers. "n" typically refers to "neutrals", and "p" to plasma.
 
     Inputs:
         sp: species symbol 
