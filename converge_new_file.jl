@@ -1132,7 +1132,7 @@ if reinitialize_water_profile
     # hygropause_alt is an optional argument. If using, must be a unit of length in cm i.e. 40e5 = 40 km.
     println("$(Dates.format(now(), "(HH:MM:SS)")) Setting up the water profile...")
     setup_water_profile!(n_current; dust_storm_on=dust_storm_on, water_amt=water_case, ffac=f_fac_opts[water_case], ealt=add_water_alt_opts[water_case], 
-                                    hygropause_alt=opt_halt, excess_water_in=water_loc, 
+                                    hygropause_alt=hygropause_alt, excess_water_in=water_loc, 
                                     all_species, alt, DH, num_layers, non_bdy_layers, n_alt_index, plot_grid,
                                     H2O_excess, HDO_excess,  H2Osat, water_mixing_ratio,  results_dir, 
                                     sim_folder_name, speciescolor, speciesstyle, upper_lower_bdy_i)
@@ -1147,7 +1147,7 @@ if update_water_profile
         if water_loc=="loweratmo"
 
             # Recalculate the initialization fraction for H2O 
-            H2Oinitfrac = set_h2oinitfrac_bySVP(n_current, opt_halt; all_species, alt, num_layers, n_alt_index, H2Osat, water_mixing_ratio)
+            H2Oinitfrac = set_h2oinitfrac_bySVP(n_current, hygropause_alt; all_species, alt, num_layers, n_alt_index, H2Osat, water_mixing_ratio)
 
             prevh2o = deepcopy(n_current[:H2O])
             prevhdo = deepcopy(n_current[:HDO])
@@ -1177,7 +1177,7 @@ if update_water_profile
         plot_water_profile(n_current, results_dir*sim_folder_name; prev_profs=[prevh2o, prevhdo], plot_grid, all_species, non_bdy_layers, speciescolor, speciesstyle) 
     else
         # Recalculate the initialization fraction for H2O 
-        H2Oinitfrac = set_h2oinitfrac_bySVP(n_current, opt_halt; all_species, alt, num_layers, n_alt_index, H2Osat, water_mixing_ratio)
+        H2Oinitfrac = set_h2oinitfrac_bySVP(n_current, hygropause_alt; all_species, alt, num_layers, n_alt_index, H2Osat, water_mixing_ratio)
 
         prevh2o = deepcopy(n_current[:H2O])
         prevhdo = deepcopy(n_current[:HDO])

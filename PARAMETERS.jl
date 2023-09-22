@@ -24,27 +24,28 @@ using DataFrames
 # !!                                                                        !! #
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
 
-# Basic simulation parameters
-const optional_logging_note = "" # Brief summary of simulation goal
-const simset = "paper2" # "paper3" # This just allows configuration of several options for temperature, solar cycle etc. further down.
-const seasonal_cycle = true # for paper 3
-const results_version = "v2"  # Helps keep track of attempts if you need to keep changing things
+# Basic model parameters
+const optional_logging_note = "test" # Brief summary of simulation goal
+const seasonal_cycle = false # for paper 3
+const results_version = "v0"  # Helps keep track of attempts if you need to keep changing things
 const initial_atm_file = "INITIAL_GUESS.h5" 
 const make_P_and_L_plots = true # Turn off to save several minutes of runtime if you don't need to check for equilibrium.
 const adding_new_species = false # true#  set to true if introducing a new species.
+const fixed_species = [:Ar] # here you may enter any species that you want to be completely fixed (no updates to densities from chemistry or transport)
 
-# INITIAL FILE OPTIONS FOR SEASONAL CYCLE PAPER:
-# water changed in mesosphere, same xsects for HDO, H2O: # "cycle_water_meso_low_xsects.h5"#"cycle_water_meso_mid_xsects.h5"#"cycle_water_meso_high_xsects.h5"#"cycle_water_meso_start_xsects.h5"#
-# water changed in mesosphere: #  "cycle_water_meso_high.h5"#  "cycle_water_meso_start.h5"# "cycle_water_meso_low.h5"# "cycle_water_meso_mid.h5"#
-# Temp options: # "cycle_temp_low.h5"#"cycle_temp_mid.h5" # "cycle_temp_high.h5"# "cycle_temp_start.h5" #
+# DEFINE THE VARIABLE PARAMETER --------------------------------- #
+# This is the one you'd like to change and see how the atmosphere responds.
+# If you just want to run the model and get some basic output, 
+# just select "temperature".
+const season_exp = "temperature" # "water" #  "insolation"#
 
-# DEFINE THE EXPERIMENT CASE ------------------------------------ #
-const paper3_exp = "temperature" # "water" #  "insolation"#
+# ATMSOSPHERIC PARAMETERS --------------------------------------- #
 
 # SOLAR CASE ---------------------------------------------------- #
+const SZA = 60  # Puts the model at dayside mean
 const solarcyc = "equinox"
-# PAPER3 OPTIONS: "perihelion" # "aphelion" #  "equinox" (AU of Mars is what varies) TODO: Program the solar spectrum scaling in Julia and set AU as a parameter
-# PAPER2 OPTIONS: "mean" # "max" # "min" # (solar spectra varies; hand collected by Eryn)
+# AU OPTIONS: "perihelion" # "aphelion" #  "equinox" # Defined for solar mean. TODO: Program the solar spectrum scaling in Julia and set AU as a parameter
+# SOLAR CYCLE OPTIONS: "mean" # "max" # "min" # Defined for mean AU. (solar spectra varies; hand collected by Eryn)
 
 # TEMPERATURE CASES --------------------------------------------- #
 const tempcyc = "mean" # "max" # "min"#  
@@ -53,14 +54,7 @@ const tempcyc = "mean" # "max" # "min"#
 # WATER CASES --------------------------------------------------- #
 # Amount of water in the atmosphere
 const water_case = "standard" #"low" #"high" #  
-
-# PAPER2 REQUIREMENT: "standard" (always)
-const water_loc = "mesosphere" # "loweratmo" #  "everywhere" #   # Use mesosphere as default even if no water added.
-
-if (simset=="paper2") & (water_case != "standard")
-    println("Alert! Water case must be standard for paper 2! Changing it now.")
-    const water_case = "standard"
-end
+const water_loc = "mesosphere" # Location to alter water if selecting "low" or "high" water case "loweratmo" #  "everywhere" #   
 
 
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
@@ -70,7 +64,7 @@ end
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
 
 # Other water controls ------------------------------------------------------------------------- #
-const hygropause_alt = simset=="paper2" ? 40e5 : 45e5 # optional change to hygropause altitude
+const hygropause_alt = 40e5 
 # Water mixing ratios to use for paper3 runs.
 const water_MRs = Dict("loweratmo"=>Dict("standard"=>1.3e-4, "low"=>0.65e-4, "high"=>2.6e-4), 
                        "mesosphere"=>Dict("standard"=>1.3e-4, "high"=>1.3e-4, "low"=>1.3e-4), 
@@ -84,63 +78,60 @@ const modified_water_alts = "below fixed point"
 const dust_storm_on = false
 const H2O_excess = 250 # excess H2O in ppm
 const HDO_excess = 0.350 # excess HDO in ppm (divide by 1000 to get ppb)
+if dust_storm_on==true
+    const excess_peak_alt = 60
+end
 
 # altitude at which to add the extra water -- applies to both dust storm parcels and the tanh profile
 const add_water_alt_opts = Dict("low"=>45, "standard"=>60, "high"=>65)
-const f_fac_opts = Dict("low"=>0.005, "standard"=>10, "high"=>100)
-# if dust_storm_on==true
-#     const excess_peak_alt = 60
-# else
-#     if water_case=="high"
-#         const excess_peak_alt = 65
-#         const f_fac = 100
-#     elseif water_case=="low"
-#         const excess_peak_alt = 45 
-#         const f_fac = 0.005
-#     elseif water_case=="standard"
-#         const excess_peak_alt = 60
-#     end
-# end
+const f_fac_opts = Dict("low"=>0.005, "standard"=>10, "high"=>100) # a parameter named f which helps manipulate the water profile. Not related to any other f.
+
 
 # Timestep ------------------------------------------------------------------------------------------- #
 # Static-log should basically never be used, but can be used for testing.
 const timestep_type = seasonal_cycle==true ? "log-linear" : "dynamic-log" # "static-log" 
 
-# Other temperature controls ------------------------------------------------------------------------- #
-const paper3_Texo_opts = Dict("min"=>175., "mean"=>225., "max"=>275.) 
-const paper2_Texo_opts = Dict("min"=>190., "mean"=>210., "max"=>280.)
-if simset=="paper3"
-    println("Running simulations for paper 3")
-    const solarfile = "marssolarphotonflux_equinox.dat"
-    const meanexo = paper3_Texo_opts["mean"]
-    extra_str = seasonal_cycle==true ? "cycle" : "eq"
-    const controltemps = [230., 130., paper3_Texo_opts[tempcyc]]
+# Other simulation controls ------------------------------------------------------------------------- #
+const Texo_opts = Dict("min"=>175., "mean"=>225., "max"=>275., 
+                       "equinox"=>225., "aphelion"=>225., "peihelion"=>225.) # Since these solar inputs are defined for solar mean conditions, use solar mean temp for all.
 
-    if paper3_exp=="temperature"
+if seasonal_cycle == true
+    println("Simulating an annual cycle")
+    const solarfile = "marssolarphotonflux_$(solarcyc).dat"
+    const meanexo = Texo_opts["mean"]
+    extra_str = seasonal_cycle==true ? "cycle" : "eq"
+    const controltemps = [230., 130., Texo_opts[tempcyc]]
+
+    if season_exp=="temperature"
         println("Testing T_exo = $(controltemps[3])")
         const tag = "paper3_temp$(extra_str)_Texo=$(Int64(controltemps[3]))_$(results_version)"
-    elseif paper3_exp=="insolation"
+    elseif season_exp=="insolation"
         println("Testing solar case = $(solarcyc)")
         const solarfile = "marssolarphotonflux_$(solarcyc).dat"
         const tag = "paper3_insolation_$(solarcyc)_$(results_version)"
-        const controltemps[3] = paper3_Texo_opts["mean"]
-    elseif paper3_exp=="water"
+        const controltemps[3] = Texo_opts["mean"]
+    elseif season_exp=="water"
         println("Testing water case = $(water_case) $(water_loc)")
         const tag = "paper3_water$(extra_str)_$(water_case)_$(water_loc)_$(results_version)"
-        const controltemps[3] = paper3_Texo_opts["mean"]
+        const controltemps[3] = Texo_opts["mean"]
     else
-        throw("Simulation type is paper3 but no testing parameter specified")
+        throw("Simulation type is seasonal cycle but no valid testing parameter specified")
     end
-elseif simset == "paper2"
-    const solarfile = "marssolarphotonflux_solar$(solarcyc)_NEW.dat"
+else
+    if solarcyc in ["equinox", "aphelion", "perihelion"]
+        const solarfile = "marssolarphotonflux_$(solarcyc).dat"
+    else 
+        const solarfile = "marssolarphotonflux_solar$(solarcyc).dat"
+    end
     const tag = "s$(solarcyc)_$(results_version)"
-    meanexo = paper2_Texo_opts["mean"]
+    meanexo = Texo_opts["mean"]
     if tempcyc=="isothermal"
         const controltemps = [225., 225., 225.]
     else
-        const controltemps = [230., 130., paper2_Texo_opts[solarcyc]]
+        const controltemps = [230., 130., Texo_opts[solarcyc]]
     end
 end
+
 if tempcyc=="isothermal"
     const meantemps = [230., 130., meanexo] # Used for saturation vapor pressure. DON'T CHANGE!
 else
@@ -149,15 +140,13 @@ end
 
 # Tolerance and timespans 
 const season_length_in_sec = seasonal_cycle==true ? 1.4838759e7 : 1e16
-const maxlogdt = seasonal_cycle==true ? 5 : 16
+const maxlogdt = seasonal_cycle==true ? 5 : 16 # simulation will run until dt = 10^maxlogdt seconds
 const dt_min_and_max = Dict("neutrals"=>[-3, 14], "ions"=>[-4, 6], "both"=>[-3, maxlogdt])
 const rel_tol = 1e-6
 const abs_tol = 1e-12 
 
 # More basics that don't frequently change
 const ions_included = true
-const SZA = 60  
-const fixed_species = [:Ar] # here you may enter any species that you want to be completely fixed (no updates to densities from chemistry or transport)
 
 # Tags, shortcodes, and filenames
 # The shortcodes provide unique identifiers for a simulation. Necessary because you end up running the model many times...
@@ -167,9 +156,9 @@ const final_atm_file = "final_atmosphere.h5"
 const reaction_network_spreadsheet = code_dir*"REACTION_NETWORK.xlsx" # "REACTION_NETWORK_MIN_IONOSPHERE.xlsx" #
 
 # Ionospheric chemistry and non-thermal escape
-const nontherm = ions_included==true ? true : false  
-const converge_which = "both"
-const e_profile_type = ions_included==true ? "quasineutral" : "none" #"O2+" # "constant"# 
+const nontherm = ions_included==true ? true : false   # whether to do non-thermal escape
+const converge_which = "both" # "ions" "neutrals"
+const e_profile_type = ions_included==true ? "quasineutral" : "none" # "O2+" # "constant"# Electrons calculated as sum of ions (quasineutral), sum of O2+, constant, or none
 const remove_unimportant = true # Whether to use a slightly smaller list of species and reactions (removing minor species that Roger had in his model)
 
 
@@ -279,7 +268,7 @@ const orig_neutrals = [:Ar, :CO, :CO2, :H, :H2, :H2O, :H2O2,
                        :C, :DCO, :HCN, :HCO, :N, :NO, :Nup2D, # :CH, :CN,   :NH, :NH2, 
                        ]; 
 const conv_neutrals = remove_unimportant==true ? setdiff(orig_neutrals, unimportant) : orig_neutrals
-const new_neutrals = [];#:N2O, :NO2, :HNO,];
+const new_neutrals = [];
 const neutral_species = [conv_neutrals..., new_neutrals...];
 
 # Ions -------------------------------------------------------------------------
@@ -291,19 +280,19 @@ const orig_ions = [:CO2pl, :HCO2pl, :Opl, :O2pl, # Nair minimal ionosphere
                    :HO2pl, :HCOpl, :DCOpl, :HOCpl, :DOCpl, :DCO2pl, 
                    :HNOpl,   
                    :Npl, :NHpl, :N2pl, :N2Hpl, :N2Dpl, :NOpl,
-                   :OHpl, :ODpl]; # :HCNHpl,:NH2pl, :NH3pl,:CNpl,:HN2Opl,
-const new_ions = [];#:N2Opl, :NO2pl,:HCNpl, ]; 
+                   :OHpl, :ODpl];
+const new_ions = [];
 const ion_species = remove_unimportant==true ? setdiff([orig_ions..., new_ions...], unimportant) : [orig_ions..., new_ions...]
 
-# Full species list -------------------------------------------------------------
+# Full species list ------------------------------------------------------------- #
 const all_species = [neutral_species..., ion_species...];
 
-# Sort name lists created here -------------------------------------------------
+# Sorted name lists created here ------------------------------------------------- #
 sort!(all_species)
 sort!(neutral_species)
 sort!(ion_species)
 
-# Photolysis and Photoionization rate symbol lists ----------------------------
+# Photolysis and Photoionization rate symbol lists ----------------------------#
 
 const conv_Jrates, newJrates = format_Jrates(reaction_network_spreadsheet, all_species, "Jratelist"; ions_on=ions_included, hot_atoms=nontherm)
 const Jratelist = [conv_Jrates..., newJrates...];
@@ -322,7 +311,7 @@ const D_bearing_species = get_deuterated(all_species)
 const D_ions = get_deuterated(ion_species) #[s for s in ion_species if occursin('D', string(s))];
 const N_neutrals = [s for s in neutral_species if occursin('N', string(s))];
 
-# Sort name lists created here -------------------------------------------------
+# Sort name lists created here ------------------------------------------------- #
 sort!(D_bearing_species)
 sort!(D_ions)
 sort!(N_neutrals)
@@ -333,17 +322,17 @@ sort!(N_neutrals)
 #                                                                              #
 # **************************************************************************** #
 
-# Short lived species, whose chemical lifetime is << diffusion timescale -------
+# Short lived species, whose chemical lifetime is << diffusion timescale ------- #
 const short_lived_species = [];# technically shortlived but count as longlived: :CH, :HCO, :HO2, :O3, :OH, :O1D, :DO2, :OD...
 if assume_photochem_eq
     append!(short_lived_species, [:NO2, :CN, :HNO, :NH, :NH2, :C, :CH])
     append!(short_lived_species, ion_species)
 end
 
-# Long lived species ------------------------------------------------------------
+# Long lived species ------------------------------------------------------------ #
 const long_lived_species = setdiff(all_species, short_lived_species)
 
-# Sort name lists created here -------------------------------------------------
+# Sort name lists created here ------------------------------------------------- #
 sort!(short_lived_species)
 sort!(long_lived_species)
 
@@ -353,7 +342,7 @@ sort!(long_lived_species)
 #                                                                              #
 # **************************************************************************** #
 
-# Non-participants -------------------------------------------------------------
+# Non-participants ------------------------------------------------------------- # 
 const no_chem_species = []; 
 const no_transport_species = [];
 
@@ -373,17 +362,17 @@ elseif converge_which == "both"
     append!(no_transport_species, short_lived_species)
 end
 
-# Participants ------------------------------------------------------------------
+# Participants ------------------------------------------------------------------ #
 const chem_species = setdiff(all_species, no_chem_species);
 const transport_species = setdiff(all_species, no_transport_species);
 
-# Active and inactive species ---------------------------------------------------
+# Active and inactive species --------------------------------------------------- #
 const active_species = union(chem_species, transport_species)
 const inactive_species = intersect(no_chem_species, no_transport_species)
 const active_longlived = intersect(active_species, long_lived_species)
 const active_shortlived = intersect(active_species, short_lived_species)
 
-# Sort name lists created here -------------------------------------------------
+# Sort name lists created here ------------------------------------------------- #
 sort!(active_species)
 sort!(inactive_species)
 sort!(active_longlived)
@@ -407,7 +396,7 @@ const speciesstyle = Dict(vcat([s=>"--" for s in setdiff(D_bearing_species, [:HD
 const Hs_dict = Dict{Symbol, Vector{Float64}}([sp=>scaleH(alt, sp, Tprof_for_Hs[charge_type(sp)]; molmass) for sp in all_species])
 
 # To allow water to be active in the upper atmosphere but not the lower atmosphere, we need 
-# its position with the active species vector 
+# its position within the active species vector 
 const H2Oi = findfirst(x->x==:H2O, active_longlived)
 const HDOi = findfirst(x->x==:HDO, active_longlived)
 
