@@ -29,7 +29,7 @@ const optional_logging_note = "test" # Brief summary of simulation goal
 const seasonal_cycle = false # for paper 3
 const results_version = "v0"  # Helps keep track of attempts if you need to keep changing things
 const initial_atm_file = "INITIAL_GUESS.h5" 
-const make_P_and_L_plots = true # Turn off to save several minutes of runtime if you don't need to check for equilibrium.
+const make_P_and_L_plots = false # Turn off to save several minutes of runtime if you don't need to check for equilibrium.
 const adding_new_species = false # true#  set to true if introducing a new species.
 const fixed_species = [:Ar] # here you may enter any species that you want to be completely fixed (no updates to densities from chemistry or transport)
 
@@ -43,7 +43,7 @@ const season_exp = "temperature" # "water" #  "insolation"#
 
 # SOLAR CASE ---------------------------------------------------- #
 const SZA = 60  # Puts the model at dayside mean
-const solarcyc = "equinox"
+const solarcyc = "mean"# "equinox"
 # AU OPTIONS: "perihelion" # "aphelion" #  "equinox" # Defined for solar mean. TODO: Program the solar spectrum scaling in Julia and set AU as a parameter
 # SOLAR CYCLE OPTIONS: "mean" # "max" # "min" # Defined for mean AU. (solar spectra varies; hand collected by Eryn)
 
@@ -133,9 +133,9 @@ else
 end
 
 if tempcyc=="isothermal"
-    const meantemps = [230., 130., meanexo] # Used for saturation vapor pressure. DON'T CHANGE!
-else
     const meantemps = [225., 225., 225.] # Used for saturation vapor pressure. DON'T CHANGE!
+else
+    const meantemps = [230., 130., meanexo] # Used for saturation vapor pressure. DON'T CHANGE!
 end
 
 # Tolerance and timespans 
