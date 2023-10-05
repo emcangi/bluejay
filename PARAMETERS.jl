@@ -18,28 +18,24 @@ using DataFrames
 # **************************************************************************** #
 
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
-# !!                                                                        !! #
 # !!                      !!!!! SUPER IMPORTANT !!!!!                       !! #
 # !!     !!! Modify the following items each time you run the model !!!     !! #
-# !!                                                                        !! #
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
 
 # Basic model parameters
 const optional_logging_note = "test" # Brief summary of simulation goal
 const seasonal_cycle = false # for paper 3
 const results_version = "v0"  # Helps keep track of attempts if you need to keep changing things
-const initial_atm_file = "INITIAL_GUESS.h5" 
-const make_P_and_L_plots = false # Turn off to save several minutes of runtime if you don't need to check for equilibrium.
-const adding_new_species = false # true#  set to true if introducing a new species.
-const fixed_species = [:Ar] # here you may enter any species that you want to be completely fixed (no updates to densities from chemistry or transport)
 
-# DEFINE THE VARIABLE PARAMETER --------------------------------- #
+# Input files ---------------------------------------------------- #
+const initial_atm_file = "INITIAL_GUESS.h5" 
+const reaction_network_spreadsheet = code_dir*"REACTION_NETWORK.xlsx" # "REACTION_NETWORK_MIN_IONOSPHERE.xlsx" #
+
+# DEFINE THE MAIN INDEPENDENT VARIABLE  ---------------------------- #
 # This is the one you'd like to change and see how the atmosphere responds.
 # If you just want to run the model and get some basic output, 
 # just select "temperature".
 const season_exp = "temperature" # "water" #  "insolation"#
-
-# ATMSOSPHERIC PARAMETERS --------------------------------------- #
 
 # SOLAR CASE ---------------------------------------------------- #
 const SZA = 60  # Puts the model at dayside mean
@@ -56,25 +52,7 @@ const tempcyc = "mean" # "max" # "min"#
 const water_case = "standard" #"low" #"high" #  
 const water_loc = "mesosphere" # Location to alter water if selecting "low" or "high" water case "loweratmo" #  "everywhere" #   
 
-
-# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
-# !!                                                                        !! #
-# !!                      !!!!!    END CHECK    !!!!!                       !! #
-# !!                                                                        !! #
-# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
-
-# Other water controls ------------------------------------------------------------------------- #
-const hygropause_alt = 40e5 
-# Water mixing ratios to use for paper3 runs.
-const water_MRs = Dict("loweratmo"=>Dict("standard"=>1.3e-4, "low"=>0.65e-4, "high"=>2.6e-4), 
-                       "mesosphere"=>Dict("standard"=>1.3e-4, "high"=>1.3e-4, "low"=>1.3e-4), 
-                       "everywhere"=>Dict("standard"=>1.3e-4, "high"=>1.3e-4, "low"=>1.3e-4))
-const water_mixing_ratio = water_MRs[water_loc][water_case]
-const reinitialize_water_profile = seasonal_cycle==true ? false : true # should be off if trying to run simulations for Mars seasons
-const update_water_profile = seasonal_cycle==true ? true : false # this is for modifying the profile during cycling, MAY be fixed?
-const modified_water_alts = "below fixed point"
-
-# Add a bonus water parcel to simulate dust storm if you like
+# OPTIONAL: Extra parcel of water to simulate effect of dust storms
 const dust_storm_on = false
 const H2O_excess = 250 # excess H2O in ppm
 const HDO_excess = 0.350 # excess HDO in ppm (divide by 1000 to get ppb)
@@ -82,173 +60,26 @@ if dust_storm_on==true
     const excess_peak_alt = 60
 end
 
-# altitude at which to add the extra water -- applies to both dust storm parcels and the tanh profile
-const add_water_alt_opts = Dict("low"=>45, "standard"=>60, "high"=>65)
-const f_fac_opts = Dict("low"=>0.005, "standard"=>10, "high"=>100) # a parameter named f which helps manipulate the water profile. Not related to any other f.
-
-
-# Timestep ------------------------------------------------------------------------------------------- #
-# Static-log should basically never be used, but can be used for testing.
-const timestep_type = seasonal_cycle==true ? "log-linear" : "dynamic-log" # "static-log" 
-
-# Other simulation controls ------------------------------------------------------------------------- #
-const Texo_opts = Dict("min"=>175., "mean"=>225., "max"=>275., 
-                       "equinox"=>225., "aphelion"=>225., "peihelion"=>225.) # Since these solar inputs are defined for solar mean conditions, use solar mean temp for all.
-
-if seasonal_cycle == true
-    println("Simulating an annual cycle")
-    const solarfile = "marssolarphotonflux_$(solarcyc).dat"
-    const meanexo = Texo_opts["mean"]
-    extra_str = seasonal_cycle==true ? "cycle" : "eq"
-    const controltemps = [230., 130., Texo_opts[tempcyc]]
-
-    if season_exp=="temperature"
-        println("Testing T_exo = $(controltemps[3])")
-        const tag = "paper3_temp$(extra_str)_Texo=$(Int64(controltemps[3]))_$(results_version)"
-    elseif season_exp=="insolation"
-        println("Testing solar case = $(solarcyc)")
-        const solarfile = "marssolarphotonflux_$(solarcyc).dat"
-        const tag = "paper3_insolation_$(solarcyc)_$(results_version)"
-        const controltemps[3] = Texo_opts["mean"]
-    elseif season_exp=="water"
-        println("Testing water case = $(water_case) $(water_loc)")
-        const tag = "paper3_water$(extra_str)_$(water_case)_$(water_loc)_$(results_version)"
-        const controltemps[3] = Texo_opts["mean"]
-    else
-        throw("Simulation type is seasonal cycle but no valid testing parameter specified")
-    end
-else
-    if solarcyc in ["equinox", "aphelion", "perihelion"]
-        const solarfile = "marssolarphotonflux_$(solarcyc).dat"
-    else 
-        const solarfile = "marssolarphotonflux_solar$(solarcyc).dat"
-    end
-    const tag = "s$(solarcyc)_$(results_version)"
-    meanexo = Texo_opts["mean"]
-    if tempcyc=="isothermal"
-        const controltemps = [225., 225., 225.]
-    else
-        const controltemps = [230., 130., Texo_opts[solarcyc]]
-    end
-end
-
-if tempcyc=="isothermal"
-    const meantemps = [225., 225., 225.] # Used for saturation vapor pressure. DON'T CHANGE!
-else
-    const meantemps = [230., 130., meanexo] # Used for saturation vapor pressure. DON'T CHANGE!
-end
-
-# Tolerance and timespans 
-const season_length_in_sec = seasonal_cycle==true ? 1.4838759e7 : 1e16
-const maxlogdt = seasonal_cycle==true ? 5 : 16 # simulation will run until dt = 10^maxlogdt seconds
-const dt_min_and_max = Dict("neutrals"=>[-3, 14], "ions"=>[-4, 6], "both"=>[-3, maxlogdt])
-const rel_tol = 1e-6
-const abs_tol = 1e-12 
-
-# More basics that don't frequently change
+# Ion chemistry and non-thermal escape ---------------------------- #
 const ions_included = true
-
-# Tags, shortcodes, and filenames
-# The shortcodes provide unique identifiers for a simulation. Necessary because you end up running the model many times...
-const hrshortcode, rshortcode = generate_code(ions_included, controltemps[1], controltemps[2], controltemps[3], water_case, solarcyc)
-const sim_folder_name = "$(hrshortcode)_$(rshortcode)_$(tag)"
-const final_atm_file = "final_atmosphere.h5"
-const reaction_network_spreadsheet = code_dir*"REACTION_NETWORK.xlsx" # "REACTION_NETWORK_MIN_IONOSPHERE.xlsx" #
-
-# Ionospheric chemistry and non-thermal escape
 const nontherm = ions_included==true ? true : false   # whether to do non-thermal escape
 const converge_which = "both" # "ions" "neutrals"
 const e_profile_type = ions_included==true ? "quasineutral" : "none" # "O2+" # "constant"# Electrons calculated as sum of ions (quasineutral), sum of O2+, constant, or none
-const remove_unimportant = true # Whether to use a slightly smaller list of species and reactions (removing minor species that Roger had in his model)
 
+# Plotting option ------------------------------------------------- #
+const make_P_and_L_plots = false # Turn off to save several minutes of runtime if you don't need to check for equilibrium.
 
-# **************************************************************************** #
-#                                                                              #
-#                             Algorithm settings                               #
-#                                                                              #
-# **************************************************************************** #
-
-# Algorithm and timestepping scheme
-const problem_type = "Gear" #"SS" #"ODE" #  
-# for static timesteps:
-const n_steps = 800 # for static case
-# for dynamic timesteps:
-const dt_incr_factor = 1.5
-const dt_decr_factor = 10
-# other solver details:
-
-# whether to include differentiation terms in Jacobian with respect to electron density or generic thirdbody M. 
-# After much testing, these were determined to not be necessary.
-const ediff = false # true 
-const mdiff = false # true 
-const error_checking_scheme = "new" #"old" 
-
-# Sets whether photochemical equilibrium is assumed. Aids in converging ions and neutrals
-# together. Generally leave it as is so the code determines it, but you can change it
-# if need be
-if problem_type == "Gear"
-    const assume_photochem_eq = false
-else # In using the Julia-provided solvers, it was necessary to assume photochemical equilibrium for short-lived species.
-    const assume_photochem_eq = converge_which == "both" ? true : false
-end
-
-# Check that float type is properly set
-# if problem_type == "Gear" && (ftype_ncur == Float64 || ftype_chem == Float64)
-#     throw("If problem_type = 'Gear' in PARAMETERS, both ftype_ncur and ftype_chem must = Double64 in CUSTOMIZATIONS.jl")
-# elseif problem_type != "Gear" && (ftype_ncur == Double64 || ftype_chem == Double64)
-#     println("problem_type != Gear but using Double64 in CUSTOMIZATIONS.jl")
-# end
-
-
-# **************************************************************************** #
-#                                                                              #
-#      Misc. things used when adding new species or changing altitude grid     #
-#                                                                              #
-# **************************************************************************** #
-const do_chem = true 
-const do_trans = true 
+# Lesser-used options --------------------------------------------- #
+const do_chem = true   # Turning this or next one of will toggle chemistry or transport.
+const do_trans = true  # Often useful for troubleshooting or converging new atmospheres.
+const adding_new_species = false # true#  set to true if introducing a new species.
 const make_new_alt_grid = false
-const use_nonzero_initial_profiles = true  
+const use_nonzero_initial_profiles = true   # Can be turned off to initialize species from zero. 
 
-# **************************************************************************** #
-#                                                                              #
-#               Temperature profile construction from controls                 #
-#                                                                              #
-# **************************************************************************** #
 
-const T_surf = controltemps[1]
-const T_meso = controltemps[2]
-const T_exo = controltemps[3]
-
-T_array_dict = T(T_surf, T_meso, T_exo; alt);
-const Tn_arr = T_array_dict["neutrals"]
-const Ti_arr = T_array_dict["ions"]
-const Te_arr = T_array_dict["electrons"]
-
-const Tplasma_arr = Ti_arr .+ Te_arr;
-const Tprof_for_diffusion = Dict("neutral"=>Tn_arr, "ion"=>Tplasma_arr)
-const Tprof_for_Hs = Dict("neutral"=>Tn_arr, "ion"=>Ti_arr)
-const Tn_meanSVP = T(meantemps...; alt)["neutrals"]; # Needed for boundary conditions.
-
-# **************************************************************************** #
-#                                                                              #
-#                             Boundary conditions                              #
-#                                                                              #
-# **************************************************************************** #
-const H2Osat = map(x->Psat(x), Tn_meanSVP) # Using this function keeps SVP fixed 
-const HDOsat = map(x->Psat_HDO(x), Tn_meanSVP)
-
-const speciesbclist=Dict(:CO2=>Dict("n"=>[2.1e17, NaN], "f"=>[NaN, 0.]),
-                        :Ar=>Dict("n"=>[2.0e-2*2.1e17, NaN], "f"=>[NaN, 0.]),
-                        :N2=>Dict("n"=>[1.9e-2*2.1e17, NaN], "f"=>[NaN, 0.]),
-                        :H2O=>Dict("n"=>[H2Osat[1], NaN], "f"=>[NaN, 0.]), # bc doesnt matter if H2O fixed
-                        :HDO=>Dict("n"=>[HDOsat[1], NaN], "f"=>[NaN, 0.]),
-                        :O=> Dict("f"=>[0., 1.2e8]),
-                        :H2=>Dict("f"=>[0., NaN], "v"=>[NaN, effusion_velocity(Tn_arr[end], 2.0; zmax)], "ntf"=>[NaN, "see boundaryconditions()"]),  # velocities are in cm/s
-                        :HD=>Dict("f"=>[0., NaN], "v"=>[NaN, effusion_velocity(Tn_arr[end], 3.0; zmax)], "ntf"=>[NaN, "see boundaryconditions()"]),
-                        :H=> Dict("f"=>[0., NaN], "v"=>[NaN, effusion_velocity(Tn_arr[end], 1.0; zmax)], "ntf"=>[NaN, "see boundaryconditions()"]),
-                        :D=> Dict("f"=>[0., NaN], "v"=>[NaN, effusion_velocity(Tn_arr[end], 2.0; zmax)], "ntf"=>[NaN, "see boundaryconditions()"]),
-                       );
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
+# !!                      !!!!!    END CHECK    !!!!!                       !! #
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
 
 # **************************************************************************** #
 #                                                                              #
@@ -256,6 +87,9 @@ const speciesbclist=Dict(:CO2=>Dict("n"=>[2.1e17, NaN], "f"=>[NaN, 0.]),
 #                                                                              #
 # **************************************************************************** #
 
+const fixed_species = [:Ar] # here you may enter any species that you want to be completely fixed (no updates to densities from chemistry or transport)
+
+remove_unimportant = true # Whether to use a slightly smaller list of species and reactions (removing minor species that Roger had in his model)
 unimportant = [:CNpl,:HCNpl,:HCNHpl,:HN2Opl,:NH2pl,:NH3pl,:N2Opl,:NO2pl,:CH,:CN,:HCN,:HNO,:NH,:NH2,:HD2pl]#:N2O,:NO2
 
 # Neutrals --------------------------------------------------------------------
@@ -265,13 +99,13 @@ const orig_neutrals = [:Ar, :CO, :CO2, :H, :H2, :H2O, :H2O2,
                        :D, :DO2, :DOCO, :HD, :HDO, :HDO2, :OD,
 
                        # Turn these off for minimal ionosphere:
-                       :C, :DCO, :HCN, :HCO, :N, :NO, :Nup2D, # :CH, :CN,   :NH, :NH2, 
+                       :C, :DCO, :HCN, :HCO, :N, :NO, :Nup2D, 
                        ]; 
 const conv_neutrals = remove_unimportant==true ? setdiff(orig_neutrals, unimportant) : orig_neutrals
 const new_neutrals = [];
 const neutral_species = [conv_neutrals..., new_neutrals...];
 
-# Ions -------------------------------------------------------------------------
+# Ions ------------------------------------------------------------------------- #
 const orig_ions = [:CO2pl, :HCO2pl, :Opl, :O2pl, # Nair minimal ionosphere 
                    :Arpl, :ArHpl, :ArDpl, 
                    :Cpl, :CHpl,  :COpl, 
@@ -299,6 +133,173 @@ const Jratelist = [conv_Jrates..., newJrates...];
 
 # These dictionaries specify the species absorbing a photon for each J rate, and the products of the reaction.
 const absorber = Dict([x=>Symbol(match(r"(?<=J).+(?=to)", string(x)).match) for x in Jratelist])
+
+# **************************************************************************** #
+#                                                                              #
+#                             Water settings                                   #
+#                                                                              #
+# **************************************************************************** #
+
+# Water mixing ratios to use for paper3 runs.
+const water_MRs = Dict("loweratmo"=>Dict("standard"=>1.3e-4, "low"=>0.65e-4, "high"=>2.6e-4), 
+                       "mesosphere"=>Dict("standard"=>1.3e-4, "high"=>1.3e-4, "low"=>1.3e-4), 
+                       "everywhere"=>Dict("standard"=>1.3e-4, "high"=>1.3e-4, "low"=>1.3e-4))
+const water_mixing_ratio = water_MRs[water_loc][water_case]
+const reinitialize_water_profile = seasonal_cycle==true ? false : true # should be off if trying to run simulations for Mars seasons
+const update_water_profile = seasonal_cycle==true ? true : false # this is for modifying the profile during cycling, MAY be fixed?
+const modified_water_alts = "below fixed point"
+
+# altitude at which to add the extra water -- applies to both dust storm parcels and the tanh profile
+const add_water_alt_opts = Dict("low"=>45, "standard"=>60, "high"=>65)
+const f_fac_opts = Dict("low"=>0.005, "standard"=>10, "high"=>100) # a parameter named f which helps manipulate the water profile. Not related to any other f.
+
+
+# **************************************************************************** #
+#                                                                              #
+#                        Temperature profile construction                      #
+#                                                                              #
+# **************************************************************************** #
+
+# Other simulation controls ------------------------------------------------------------------------- #
+const Texo_opts = Dict("min"=>175., "mean"=>225., "max"=>275., 
+                       "equinox"=>225., "aphelion"=>225., "peihelion"=>225.) # Since these solar inputs are defined for solar mean conditions, use solar mean temp for all.
+
+if seasonal_cycle == true
+    println("Simulating an annual cycle")
+    const controltemps = [230., 130., Texo_opts[mean]]
+
+    if season_exp=="temperature"
+        const controltemps[3] =  Texo_opts[tempcyc]
+    end
+else
+    const controltemps = [230., 130., Texo_opts[solarcyc]]
+end
+
+if tempcyc=="isothermal"
+    const controltemps = [225., 225., 225.]
+    const meantemps = [225., 225., 225.] # Used for saturation vapor pressure. DON'T CHANGE!
+else
+    const meantemps = [230., 130., Texo_opts["mean"]] # Used for saturation vapor pressure. DON'T CHANGE!
+end
+
+const T_surf = controltemps[1]
+const T_meso = controltemps[2]
+const T_exo = controltemps[3]
+
+T_array_dict = T(T_surf, T_meso, T_exo; alt);
+const Tn_arr = T_array_dict["neutrals"]
+const Ti_arr = T_array_dict["ions"]
+const Te_arr = T_array_dict["electrons"]
+
+const Tplasma_arr = Ti_arr .+ Te_arr;
+const Tprof_for_diffusion = Dict("neutral"=>Tn_arr, "ion"=>Tplasma_arr)
+const Tprof_for_Hs = Dict("neutral"=>Tn_arr, "ion"=>Ti_arr)
+const Tn_meanSVP = T(meantemps...; alt)["neutrals"]; # Needed for boundary conditions.
+
+
+# **************************************************************************** #
+#                                                                              #
+#                             Boundary conditions                              #
+#                                                                              #
+# **************************************************************************** #
+const H2Osat = map(x->Psat(x), Tn_meanSVP) # Using this function keeps SVP fixed 
+const HDOsat = map(x->Psat_HDO(x), Tn_meanSVP)
+
+const speciesbclist=Dict(:CO2=>Dict("n"=>[2.1e17, NaN], "f"=>[NaN, 0.]),
+                        :Ar=>Dict("n"=>[2.0e-2*2.1e17, NaN], "f"=>[NaN, 0.]),
+                        :N2=>Dict("n"=>[1.9e-2*2.1e17, NaN], "f"=>[NaN, 0.]),
+                        :H2O=>Dict("n"=>[H2Osat[1], NaN], "f"=>[NaN, 0.]), # bc doesnt matter if H2O fixed
+                        :HDO=>Dict("n"=>[HDOsat[1], NaN], "f"=>[NaN, 0.]),
+                        :O=> Dict("f"=>[0., 1.2e8]),
+                        :H2=>Dict("f"=>[0., NaN], "v"=>[NaN, effusion_velocity(Tn_arr[end], 2.0; zmax)], "ntf"=>[NaN, "see boundaryconditions()"]),  # velocities are in cm/s
+                        :HD=>Dict("f"=>[0., NaN], "v"=>[NaN, effusion_velocity(Tn_arr[end], 3.0; zmax)], "ntf"=>[NaN, "see boundaryconditions()"]),
+                        :H=> Dict("f"=>[0., NaN], "v"=>[NaN, effusion_velocity(Tn_arr[end], 1.0; zmax)], "ntf"=>[NaN, "see boundaryconditions()"]),
+                        :D=> Dict("f"=>[0., NaN], "v"=>[NaN, effusion_velocity(Tn_arr[end], 2.0; zmax)], "ntf"=>[NaN, "see boundaryconditions()"]),
+                       );
+
+# **************************************************************************** #
+#                                                                              #
+#              Set up simulation filenames and define input files              #
+#                                                                              #
+# **************************************************************************** #
+
+if seasonal_cycle == true
+    const solarfile = "marssolarphotonflux_$(solarcyc).dat"
+    extra_str = seasonal_cycle==true ? "cycle" : "eq"
+
+    if season_exp=="temperature"
+        const tag = "paper3_temp$(extra_str)_Texo=$(Int64(controltemps[3]))_$(results_version)"
+
+    elseif season_exp=="insolation"
+        # const solarfile = "marssolarphotonflux_$(solarcyc).dat"
+        const tag = "paper3_insolation_$(solarcyc)_$(results_version)"
+
+    elseif season_exp=="water"
+        const tag = "paper3_water$(extra_str)_$(water_case)_$(water_loc)_$(results_version)"
+
+    else
+        throw("Simulation type is seasonal cycle but no valid testing parameter specified")
+    end
+else
+    if solarcyc in ["equinox", "aphelion", "perihelion"]
+        const solarfile = "marssolarphotonflux_$(solarcyc).dat"
+    else 
+        const solarfile = "marssolarphotonflux_solar$(solarcyc).dat"
+    end
+    const tag = "s$(solarcyc)_$(results_version)"
+end
+
+# Tags, shortcodes, and filenames
+# The shortcodes provide unique identifiers for a simulation. Necessary because you end up running the model many times...
+const hrshortcode, rshortcode = generate_code(ions_included, controltemps[1], controltemps[2], controltemps[3], water_case, solarcyc)
+const sim_folder_name = "$(hrshortcode)_$(rshortcode)_$(tag)"
+const final_atm_file = "final_atmosphere.h5"
+
+# **************************************************************************** #
+#                                                                              #
+#                             Algorithm settings                               #
+#                                                                              #
+# **************************************************************************** #
+
+# Tolerances
+const rel_tol = 1e-6
+const abs_tol = 1e-12 
+
+# Simulation run time and timestep size  
+const season_length_in_sec = seasonal_cycle==true ? 1.4838759e7 : 1e16
+const maxlogdt = seasonal_cycle==true ? 5 : 16 # simulation will run until dt = 10^maxlogdt seconds
+const dt_min_and_max = Dict("neutrals"=>[-3, 14], "ions"=>[-4, 6], "both"=>[-3, maxlogdt])
+const timestep_type = seasonal_cycle==true ? "log-linear" : "dynamic-log" # "static-log"  # Static-log should basically never be used, but can be used for testing.
+
+# Solver algorithm type 
+const problem_type = "Gear" #"SS" #"ODE" #  
+# for static timesteps:
+const n_steps = 800 # for static case
+# for dynamic timesteps:
+const dt_incr_factor = 1.5
+const dt_decr_factor = 10
+
+# whether to include differentiation terms in Jacobian with respect to electron density or generic thirdbody M. 
+# After much testing, these were determined to not be necessary.
+const ediff = false # true 
+const mdiff = false # true 
+const error_checking_scheme = "new" #"old" 
+
+# Sets whether photochemical equilibrium is assumed. Aids in converging ions and neutrals
+# together. Generally leave it as is so the code determines it, but you can change it
+# if need be
+if problem_type == "Gear"
+    const assume_photochem_eq = false
+else # In using the Julia-provided solvers, it was necessary to assume photochemical equilibrium for short-lived species.
+    const assume_photochem_eq = converge_which == "both" ? true : false
+end
+
+# Check that float type is properly set
+# if problem_type == "Gear" && (ftype_ncur == Float64 || ftype_chem == Float64)
+#     throw("If problem_type = 'Gear' in PARAMETERS, both ftype_ncur and ftype_chem must = Double64 in CUSTOMIZATIONS.jl")
+# elseif problem_type != "Gear" && (ftype_ncur == Double64 || ftype_chem == Double64)
+#     println("problem_type != Gear but using Double64 in CUSTOMIZATIONS.jl")
+# end
 
 # **************************************************************************** #
 #                                                                              #

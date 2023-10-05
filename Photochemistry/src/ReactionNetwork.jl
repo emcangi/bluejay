@@ -10,7 +10,8 @@ function calculate_and_write_column_rates(rxn_filename, atm_state; globvars...)
     =#
     
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:all_species, :dz, :ion_species, :num_layers, :reaction_network, :results_dir, :sim_folder_name, :Tn, :Ti, :Te])
+    required = [:all_species, :dz, :ion_species, :num_layers, :reaction_network, :results_dir, :sim_folder_name, :Tn, :Ti, :Te]
+    check_requirements(keys(GV), required)
     
     flush(stdout)
     println("Writing out column rates to the reaction log...")
@@ -96,7 +97,8 @@ function filter_network(sp::Symbol, rate_type::String, species_role::String; glo
     =#
 
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:reaction_network])
+    required = [:reaction_network]
+    check_requirements(keys(GV), required)
 
     # Select either photodissociation or bi-/tri-molecular reactions
     if rate_type=="Jrates"
@@ -571,13 +573,20 @@ end
 
 function load_network_and_make_functions(rxn_sheet; globvars...)
     #=
-    Useful when analyzing results.
+    Using the reaction spreadsheet, generates symbolic chemistry network and sub networks for hot atoms.
 
-    Inputs: 
-        rxn_sheet: reaction spreadsheet
+    Input: 
+        rxn_sheet: path to a spreasheet containing chemical reactions.
+
+    Outputs: 
+        reaction_network: array of the symbolic network of reactions in the format [[reactants...], [products...], :(rate)]
+        hHnet, hDnet, hH2net, hHDnet: smaller arrays containing the reactions which produce hot atoms of the specified type
+        hot_H_rc_funcs, etc: special functions for each chemical reaction which can be evaluated on the fly in a fast manner.
+                             critical for enabling the calculation of non-thermal escape of hot atoms.
     =#
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:all_species])
+    required = [:all_species]
+    check_requirements(keys(GV), required)
 
     reaction_network, hHnet, hDnet, hH2net, hHDnet = load_reaction_network(rxn_sheet; get_hot_rxns=true, GV.all_species);
     hot_H_rc_funcs = Dict([rxn => mk_function(:((Tn, Ti, Te, M) -> $(rxn[3]))) for rxn in hHnet]);
@@ -598,7 +607,8 @@ function load_reaction_network(spreadsheet; saveloc=nothing, write_rxns=false, t
         [Symbol[reactants...], Symbol[products...], :(rate coefficient expression)
     =#
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:all_species])
+    required = [:all_species]
+    check_requirements(keys(GV), required)
 
     if get_hot_rxns
         try 
@@ -775,6 +785,8 @@ end
 
 function rxns_where_species_is_observer(sp, chemnet)
     #=
+    Finds reactions where a given chemical species is a non-reacting third body ("observer")
+    
     Input:
         sp: Species which may be an observer
         chemnet: chemistry reaction network

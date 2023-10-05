@@ -17,7 +17,8 @@ function precip_microns(sp, sp_profile; globvars...)
         Total precipitable micrometers of species sp
     =#
     GV = values(globvars)
-    @assert all(x->x in keys(GV),  [:molmass])
+    required =  [:molmass]
+    check_requirements(keys(GV), required)
 
     col_abundance = column_density(sp_profile)
     cc_per_g = GV.molmass[sp] / GV.molmass[:H2O] # Water is 1 g/cm^3. Scale appropriately.
@@ -40,7 +41,8 @@ function colabund_from_prum(sp, prum; globvars...)
         Total precipitable micrometers of species sp
     =#
     GV = values(globvars)
-    @assert all(x->x in keys(GV),  [:molmass])
+    required =  [:molmass]
+    check_requirements(keys(GV), required)
 
     cc_per_g = GV.molmass[sp] / GV.molmass[:H2O] # Water is 1 g/cm^3. Scale appropriately.
 
@@ -69,10 +71,11 @@ function set_h2oinitfrac_bySVP(atmdict, h_alt; globvars...)
     =#
 
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:all_species, :alt,  :num_layers, :n_alt_index,
-                                   :H2Osat, :water_mixing_ratio])
+    required = [:all_species, :alt,  :num_layers, :n_alt_index,
+               :H2Osat, :water_mixing_ratio]
+    check_requirements(keys(GV), required)
 
-     H2Osatfrac = GV.H2Osat ./ map(z->n_tot(atmdict, z; GV.all_species, GV.n_alt_index), GV.alt)  # get SVP as fraction of total atmo
+    H2Osatfrac = GV.H2Osat ./ map(z->n_tot(atmdict, z; GV.all_species, GV.n_alt_index), GV.alt)  # get SVP as fraction of total atmo
     # set H2O SVP fraction to minimum for all alts above first time min is reached
     H2Oinitfrac = H2Osatfrac[1:something(findfirst(isequal(minimum(H2Osatfrac)), H2Osatfrac), 0)]
     H2Oinitfrac = [H2Oinitfrac;   # ensures no supersaturation
@@ -102,9 +105,10 @@ function setup_water_profile!(atmdict; dust_storm_on=false, make_sat_curve=false
     =#
 
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:all_species, :num_layers, :DH, :alt, :plot_grid, :n_alt_index,
-                                   :non_bdy_layers, :H2Osat, :water_mixing_ratio,
-                                   :results_dir, :sim_folder_name, :speciescolor, :speciesstyle, :upper_lower_bdy_i]) 
+    required = [:all_species, :num_layers, :DH, :alt, :plot_grid, :n_alt_index,
+                :non_bdy_layers, :H2Osat, :water_mixing_ratio,
+                :results_dir, :sim_folder_name, :speciescolor, :speciesstyle, :upper_lower_bdy_i]
+    check_requirements(keys(GV), required)
 
     # H2O Water Profile ================================================================================================================
     H2Oinitfrac = set_h2oinitfrac_bySVP(atmdict, hygropause_alt; globvars...)
@@ -112,17 +116,8 @@ function setup_water_profile!(atmdict; dust_storm_on=false, make_sat_curve=false
     # For doing high and low water cases ================================================================================================
     if (water_amt=="standard") | (excess_water_in=="loweratmo")
         println("Standard profile: water case = $(water_amt), loc = $(excess_water_in), MR = $(GV.water_mixing_ratio)")
-        # H2Oinitfrac=H2Oinitfrac
     else # low or high in mesosphere and above - special code for paper 3
-        if water_amt == "high"
-            println("$(water_amt) in $(excess_water_in)")
-            # F = 100
-            # z0 = GV.ealt
-        elseif water_amt=="low"
-            println("$(water_amt) in $(excess_water_in)")
-            # F = 0.005
-            # z0 = GV.ealt
-        end
+        println("$(water_amt) in $(excess_water_in)")
 
         toplim_dict = Dict("mesosphere"=>GV.upper_lower_bdy_i, "everywhere"=>GV.n_alt_index[GV.alt[end]])
         a = 1
@@ -140,7 +135,6 @@ function setup_water_profile!(atmdict; dust_storm_on=false, make_sat_curve=false
     atmdict[:HDO] = 2 * GV.DH * atmdict[:H2O] 
     HDOinitfrac = atmdict[:HDO] ./ n_tot(atmdict; GV.n_alt_index, GV.all_species)  # Needed to make water plots.
 
-    
     # ADD EXCESS WATER AS FOR DUST STORMS.
     if dust_storm_on
         sigma = 12.5

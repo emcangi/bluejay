@@ -15,7 +15,8 @@ function chemical_lifetime(s::Symbol, atmdict; globvars...)
     Good for comparing with the results of diffusion_timescale.
     =#
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:all_species, :Jratelist, :n_alt_index, :reaction_network, :Tn, :Ti, :Te])
+    required = [:all_species, :Jratelist, :n_alt_index, :reaction_network, :Tn, :Ti, :Te]
+    check_requirements(keys(GV), required)
 
     loss_all_rxns, ratecoefs = get_volume_rates(s, atmdict; species_role="reactant", which="all", remove_sp_density=true, 
                                                GV.all_species, GV.ion_species, GV.num_layers, GV.reaction_network, 
@@ -47,7 +48,8 @@ function get_column_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}};
                 sorted[1] is the top production mechanism, e.g.
     =#
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:Tn, :Ti, :Te, :all_species, :ion_species, :reaction_network, :num_layers, :dz])
+    required = [:Tn, :Ti, :Te, :all_species, :ion_species, :reaction_network, :num_layers, :dz]
+    check_requirements(keys(GV), required)
     
     rxd, coefs = get_volume_rates(sp, atmdict; species_role=role, which=which, globvars...)
                                    
@@ -93,7 +95,8 @@ function get_volume_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}};
     =#
 
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:all_species, :ion_species, :num_layers, :reaction_network, :Tn, :Ti, :Te])
+    required = [:all_species, :ion_species, :num_layers, :reaction_network, :Tn, :Ti, :Te]
+    check_requirements(keys(GV), required)
 
     # Make sure temperatures are correct format
     @assert length(GV.Tn)==GV.num_layers 
@@ -148,7 +151,8 @@ function get_volume_rates(sp::Symbol, source_rxn::Vector{Any}, source_rxn_rc_fun
     =#
 
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:all_species, :ion_species, :Jratedict, :num_layers, :Tn, :Ti, :Te])
+    required = [:all_species, :ion_species, :Jratedict, :num_layers, :Tn, :Ti, :Te]
+    check_requirements(keys(GV), required)
 
     # Make sure temperatures are correct format
     @assert length(GV.Tn)==GV.num_layers 
@@ -211,7 +215,8 @@ function reactant_density_product(atmdict::Dict{Symbol, Vector{ftype_ncur}}, rea
     =#
 
     GV = values(globvars)
-    @assert all(x->x in keys(GV),  [:all_species, :ion_species, :num_layers])
+    required =  [:all_species, :ion_species, :num_layers]
+    check_requirements(keys(GV), required)
 
     if removed_sp != nothing # remove reactant if requested - useful for calculating chemical lifetimes
         deleteat!(reactants, findfirst(x->x==removed_sp, reactants))
@@ -251,8 +256,9 @@ function volume_rate_wrapper(sp, source_rxns, source_rxn_rc_funcs, atmdict, Mtot
     =#
     
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:all_species, :alt, :collision_xsect, :ion_species, :Jratedict, :molmass, :non_bdy_layers, :num_layers,  
-                                   :n_alt_index, :Tn, :Ti, :Te, :dz, :zmax])
+    required = [:all_species, :alt, :collision_xsect, :ion_species, :Jratedict, :molmass, :non_bdy_layers, :num_layers,  
+                                   :n_alt_index, :Tn, :Ti, :Te, :dz, :zmax]
+    check_requirements(keys(GV), required)
 
     rates = Array{ftype_ncur}(undef, GV.num_layers, length(source_rxns))
     
@@ -291,7 +297,8 @@ function diffusion_timescale(s::Symbol, T_arr::Array, atmdict, Dcoef_template::A
     =#
     
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:all_species, :alt, :molmass, :n_alt_index, :neutral_species, :polarizability, :q, :speciesbclist])
+    required = [:all_species, :alt, :molmass, :n_alt_index, :neutral_species, :polarizability, :q, :speciesbclist]
+    check_requirements(keys(GV), required)
 
     Hs = scaleH(GV.alt, s, T_arr; GV.molmass)
     
@@ -313,12 +320,13 @@ function final_escape(thefolder, thefile; globvars...)
     =#
     
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [ # Things from CONSTANTS.jl
+    required = [ # Things from CONSTANTS.jl
                                    :q, :molmass, :polarizability, :collision_xsect,
                                    # From CUSTOMIZATIONS.jl
                                    :alt, :dz, :num_layers, :n_alt_index, :non_bdy_layers, 
                                    # Simulation-unique stuff 
-                                    :all_species, :hHnet, :hDnet, :hH2net, :hHDnet, :hHrc, :hDrc, :hH2rc, :hHDrc])
+                                    :all_species, :hHnet, :hDnet, :hH2net, :hHDnet, :hHrc, :hDrc, :hH2rc, :hHDrc]
+    check_requirements(keys(GV), required)
     
     # First load the atmosphere and associated variables.
     atmdict = get_ncurrent(thefolder*thefile);
@@ -394,13 +402,15 @@ function get_transport_PandL_rate(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype
     =#
 
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:all_species, :alt, :dz, :Hs_dict, :molmass,  :n_alt_index,
+    required = [:all_species, :alt, :dz, :Hs_dict, :molmass,  :n_alt_index,
                                    :neutral_species, :num_layers, :polarizability, :q, :speciesbclist, :Te, :Ti, :Tn, :Tp, 
-                                   :Tprof_for_Hs, :Tprof_for_diffusion, :transport_species])
+                                   :Tprof_for_Hs, :Tprof_for_diffusion, :transport_species]
+    check_requirements(keys(GV), required)
 
     if nonthermal
-        @assert all(x->x in keys(GV), [:hot_H_network, :hot_D_network, :hot_H_rc_funcs, :hot_D_rc_funcs, 
-                                       :hot_H2_network, :hot_H2_rc_funcs, :hot_HD_network, :hot_HD_rc_funcs, :Jratedict])
+        required = [:hot_H_network, :hot_D_network, :hot_H_rc_funcs, :hot_D_rc_funcs, 
+                                       :hot_H2_network, :hot_H2_rc_funcs, :hot_HD_network, :hot_HD_rc_funcs, :Jratedict]
+        check_requirements(keys(GV), required)
     end
 
     # Generate the fluxcoefs dictionary and boundary conditions dictionary
@@ -476,13 +486,15 @@ function get_directional_fluxes(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_n
     =#
 
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:all_species, :alt, :dz, :Hs_dict, :molmass,  :n_alt_index,
+    required = [:all_species, :alt, :dz, :Hs_dict, :molmass,  :n_alt_index,
                                    :neutral_species, :num_layers, :polarizability, :q, :speciesbclist, :Te, :Ti, :Tn, :Tp, 
-                                   :Tprof_for_Hs, :Tprof_for_diffusion, :transport_species])
+                                   :Tprof_for_Hs, :Tprof_for_diffusion, :transport_species]
+    check_requirements(keys(GV), required)
 
     if nonthermal
-        @assert all(x->x in keys(GV), [:hot_H_network, :hot_D_network, :hot_H_rc_funcs, :hot_D_rc_funcs, 
-                                       :hot_H2_network, :hot_H2_rc_funcs, :hot_HD_network, :hot_HD_rc_funcs, :Jratedict])
+        required = [:hot_H_network, :hot_D_network, :hot_H_rc_funcs, :hot_D_rc_funcs, 
+                    :hot_H2_network, :hot_H2_rc_funcs, :hot_HD_network, :hot_HD_rc_funcs, :Jratedict]
+        check_requirements(keys(GV), required)
     end
 
     # Generate the fluxcoefs dictionary and boundary conditions dictionary
@@ -579,7 +591,7 @@ end
 #     =#
 
 #     GV = values(globvars)
-#     @assert all(x->x in keys(GV), [:all_species, :alt, :speciesbclist, :dz, :Hs_dict, :molmass, :neutral_species, :num_layers, :n_all_layers, :n_alt_index, 
+#     required = [:all_species, :alt, :speciesbclist, :dz, :Hs_dict, :molmass, :neutral_species, :num_layers, :n_all_layers, :n_alt_index, 
 #                                     :polarizability, :q, :Tn, :Ti, :Te, :Tp, :Tprof_for_Hs, :Tprof_for_diffusion, :transport_species])
     
 #     # Generate the fluxcoefs dictionary and boundary conditions dictionary
@@ -626,7 +638,8 @@ function limiting_flux(sp, atmdict, T_arr; treat_H_as_rare=false, full_equation=
         Φ, limiting flux for a hydrostatic atmosphere
     =#
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:all_species, :alt, :dz, :non_bdy_layers, :molmass, :n_alt_index, :n_all_layers])
+    required = [:all_species, :alt, :dz, :non_bdy_layers, :molmass, :n_alt_index, :n_all_layers]
+    check_requirements(keys(GV), required)
     
     # Calculate some common things: mixing ratio, scale height, binary diffusion coefficient AT^s
     if treat_H_as_rare==true
@@ -660,7 +673,6 @@ function limiting_flux(sp, atmdict, T_arr; treat_H_as_rare=false, full_equation=
     end
 end
 
-
 function limiting_flow_velocity(sp, atmdict, T_arr; globvars...)
     #=
     Calculate the limiting upward flux (Hunten, 1973; Zahnle, 2008). 
@@ -672,7 +684,8 @@ function limiting_flow_velocity(sp, atmdict, T_arr; globvars...)
         Φ, limiting flux for a hydrostatic atmosphere
     =#
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:all_species, :alt, :n_alt_index, :non_bdy_layers, :molmass])
+    required = [:all_species, :alt, :n_alt_index, :non_bdy_layers, :molmass]
+    check_requirements(keys(GV), required)
     
     # Calculate some common things: mixing ratio, scale height, binary diffusion coefficient AT^s
     Ha = scaleH(atmdict, T_arr[2:end-1]; ignore=[sp], globvars..., alt=GV.non_bdy_layers)
@@ -688,7 +701,8 @@ function limiting_flux_molef(sp, atmdict, T_arr; globvars...)
     Roger requested the limiting flux in in mole fraction. This is actually the same result as above. But this way we're sure
     =#
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:all_species, :alt, :non_bdy_layers, :molmass, :n_alt_index])
+    required = [:all_species, :alt, :non_bdy_layers, :molmass, :n_alt_index]
+    check_requirements(keys(GV), required)
 
     avogadro = 6.022e23
 

@@ -7,12 +7,13 @@ function make_equilibrium_plots_temp(case_folders; savepath=nothing, extrafn="",
     =#
     
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [ # Things from CONSTANTS.jl
-                                   :q, :molmass, :polarizability, :collision_xsect,
-                                   # From CUSTOMIZATIONS.jl
-                                   :alt, :dz, :num_layers, :n_alt_index, :non_bdy_layers, :speciesstyle, 
-                                   # Simulation-unique stuff 
-                                    :all_species, :hHnet, :hDnet, :hH2net, :hHDnet, :hHrc, :hDrc, :hH2rc, :hHDrc])
+    required = [ # Things from CONSTANTS.jl
+               :q, :molmass, :polarizability, :collision_xsect,
+               # From CUSTOMIZATIONS.jl
+               :alt, :dz, :num_layers, :n_alt_index, :non_bdy_layers, :speciesstyle, 
+               # Simulation-unique stuff 
+                :all_species, :hHnet, :hDnet, :hH2net, :hHDnet, :hHrc, :hDrc, :hH2rc, :hHDrc]
+    check_requirements(keys(GV), required)
     
     Tn_all = Array{Float64}(undef, length(GV.alt), 3)
     Ti_all = Array{Float64}(undef, length(GV.alt), 3)
@@ -48,7 +49,7 @@ function make_equilibrium_plots_temp(case_folders; savepath=nothing, extrafn="",
                    fn="DH_profiles_vs_Texo$(extrafn)", lines_mean = [L"\mathrm{T_{exo}=175}"*" K", L"\mathrm{T_{exo}=225}"*" K", L"\mathrm{T_{exo}=400}"*" K"], tempcols=tempcols_3)
 end
 
-function make_seasonal_cycle_plots_temp(season_folders; mainalt=250, savepath=nothing, resolution="high", owres=false, extrafn="", 
+function make_seasonal_cycle_plots_temp(season_folders; mainalt=250, savepath=nothing, resolution="high", extrafn="", 
                                                         make_main_cycle_plot=true, make_frac_plot=false, make_flux_plot=false, make_3panel=false,
                                                         make_6panel=false, make_reincorp_cycle_plot=false, make_flux_and_pct_plot=false, plot_pct=false, 
                                                         flux_colormap="plasma", show_all_flux=false,
@@ -63,7 +64,8 @@ function make_seasonal_cycle_plots_temp(season_folders; mainalt=250, savepath=no
     =#
     
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:alt, :all_species, :dz, :hHnet, :hDnet, :hH2net, :hHDnet, :hHrc, :hDrc, :hH2rc, :hHDrc, :speciesstyle])
+    required = [:alt, :all_species, :dz, :hHnet, :hDnet, :hH2net, :hHDnet, :hHrc, :hDrc, :hH2rc, :hHDrc, :speciesstyle]
+    check_requirements(keys(GV), required)
     
     # Get necessary input for plots
     atm_states, state_files, Tn_all, Ti_all, Te_all = collect_atmospheres_and_temperatures(season_folders, resolution, "temp"; globvars...)
@@ -78,7 +80,7 @@ function make_seasonal_cycle_plots_temp(season_folders; mainalt=250, savepath=no
         println("Making 3 panel")
 
         make_3panel_figure([atm_states["lowT"], atm_states["midT2"], atm_states["highT"]], tempcols_cycle, "temp", ["cold", "mean", "hot"]; 
-                           savepath=savepath, fn="3panel_tempcycle.png", lloc=(-0.05, 0.38), 
+                           savepath=savepath, fn="3panel_tempcycle.png", lloc=(0.02, 0.38), 
                            subplot_lbl_loc=[0, 0.92], subplot_lbl_sz=24, Tn_all, Ti_all, Te_all, GV.alt, GV.speciesstyle)
     end
 
@@ -109,9 +111,10 @@ function make_seasonal_cycle_plots_temp(season_folders; mainalt=250, savepath=no
         println("Now doing flux plot")
         
         
-        @assert all(x->x in keys(GV), [:q, :molmass, :polarizability, :collision_xsect, # CONSTANTS.jl
+        required = [:q, :molmass, :polarizability, :collision_xsect, # CONSTANTS.jl
                                       :alt, :dz, :num_layers, :n_alt_index, :non_bdy_layers, # CUSTOMIZATIONS.jl
-                                      :all_species, :hHnet, :hDnet, :hH2net, :hHDnet, :hHrc, :hDrc, :hH2rc, :hHDrc]) # Simulation-unique stuff 
+                                      :all_species, :hHnet, :hDnet, :hH2net, :hHDnet, :hHrc, :hDrc, :hH2rc, :hHDrc] # Simulation-unique stuff 
+        check_requirements(keys(GV), required)
                                     
         flux_vs_time(state_files, temp_vs_time, change_indices, :H; fn="flux_vs_time_H$(resolution)res$(extrafn)", savepath=savepath, colormap=flux_colormap,
                                                                  num_layers=GV.num_layers, hot_H_network=GV.hHnet, hot_D_network=GV.hDnet, hot_H2_network=GV.hH2net, 
@@ -135,7 +138,8 @@ function make_seasonal_cycle_plots_temp(season_folders; mainalt=250, savepath=no
     
     # Temperature, flux, reincorporation, and flux/reincorp
     if make_reincorp_cycle_plot
-        @assert all(x->x in keys(GV), [:ion_species, :num_layers, :reaction_network])
+        required = [:ion_species, :num_layers, :reaction_network]
+        check_requirements(keys(GV), required)
         flush(stdout)
         seasonal_cycling_flux_and_recomb(state_files, temp_vs_time, mainalt, change_indices;  fn="tempcycle_reincorp_$(resolution)res$(extrafn)", savepath=savepath,                                                       
             Tn=Tn_all, Ti=Ti_all[2:end-1, 1], Te=Te_all[2:end-1, 1], globvars...)
@@ -143,7 +147,8 @@ function make_seasonal_cycle_plots_temp(season_folders; mainalt=250, savepath=no
     end
     
     if make_flux_and_pct_plot
-        @assert all(x->x in keys(GV), [:ion_species, :num_layers, :reaction_network])
+        required = [:ion_species, :num_layers, :reaction_network]
+        check_requirements(keys(GV), required)
         flush(stdout)
         seasonal_cycling_flux_and_pct(state_files, temp_vs_time, mainalt, change_indices; #=alt2=200, alt3=250,=# fn="tempcycle_flux_and_pct_$(resolution)res$(extrafn)", savepath=savepath,                                                       
                                       Tn=Tn_all, Ti=Ti_all[2:end-1, 1], Te=Te_all[2:end-1, 1], globvars...)
@@ -158,12 +163,13 @@ function make_equilibrium_plots_water(case_folders; extrafn="", water_where="mes
     =#
     
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [ # Things from CONSTANTS.jl
-                                   :q, :molmass, :polarizability, :collision_xsect,
-                                   # From CUSTOMIZATIONS.jl
-                                   :alt, :dz, :num_layers, :n_alt_index, :non_bdy_layers, :speciesstyle, 
-                                   # Simulation-unique stuff 
-                                    :all_species, :hHnet, :hDnet, :hH2net, :hHDnet, :hHrc, :hDrc, :hH2rc, :hHDrc])
+    required = [ # Things from CONSTANTS.jl
+               :q, :molmass, :polarizability, :collision_xsect,
+               # From CUSTOMIZATIONS.jl
+               :alt, :dz, :num_layers, :n_alt_index, :non_bdy_layers, :speciesstyle, 
+               # Simulation-unique stuff 
+                :all_species, :hHnet, :hDnet, :hH2net, :hHDnet, :hHrc, :hDrc, :hH2rc, :hHDrc]
+    check_requirements(keys(GV), required)
      
     
     atm_keys = Dict(1=>"low", 2=>"mean", 3=>"high")
@@ -181,9 +187,9 @@ function make_equilibrium_plots_water(case_folders; extrafn="", water_where="mes
     esc_df_mean = final_escape(case_folders[2], "final_atmosphere.h5"; globvars...)
     esc_df_high = final_escape(case_folders[3], "final_atmosphere.h5"; globvars...)
     
-    DH_of_escaping(esc_df_low; t="Low water" )
-    DH_of_escaping(esc_df_mean; t="Mean water" )
-    DH_of_escaping(esc_df_mean; t="High water" )
+    DH_of_escaping(esc_df_low; t="Dry" )
+    DH_of_escaping(esc_df_mean; t="Mean" )
+    DH_of_escaping(esc_df_mean; t="Wet" )
     
     # Define some colors
     watercolors = get_colors(3, "Blues"; strt=0.4, stp=1) # starts with lighter one and progresses to darker. 
@@ -198,11 +204,11 @@ function make_equilibrium_plots_water(case_folders; extrafn="", water_where="mes
                    titl="How $(water_where) water vapor content affects the density and D/H ratio of atomic H and D", globvars...)
     
     # 6 panel plot
-    DH_6panel([atm_states["low"], atm_states["mean"], atm_states["high"]], savepath; fn="DH_profiles_vs_water_eq$(water_where)$(extrafn)", lines_mean=["Low water", "Mean water", "High water"], 
+    DH_6panel([atm_states["low"], atm_states["mean"], atm_states["high"]], savepath; fn="DH_profiles_vs_water_eq$(water_where)$(extrafn)", lines_mean=["Dry", "Mean", "Wet"], 
                     tempcols=watercolors)
 end
 
-function make_seasonal_cycle_plots_water(season_folders; mainalt=250, savepath=nothing, resolution="high", lowres=false, plot_water_profile=false, spclbl_x=[0.7, 0.45], 
+function make_seasonal_cycle_plots_water(season_folders; mainalt=250, savepath=nothing, resolution="high", plot_water_profile=false, spclbl_x=[0.7, 0.45], 
                                          spclbl_loc=[0.75 0.25; 0.35 0.25], subplot_lbl_loc=[0,0.92], subplot_lbl_sz=24, 
                                          alt_legend_loc="upper right", flloc="upper right",  extrafn="", 
                                          plot_pct=false, flux_colormap="plasma", plot_type="heatmap", show_all_flux=false,
@@ -219,7 +225,8 @@ function make_seasonal_cycle_plots_water(season_folders; mainalt=250, savepath=n
     =#
     
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:all_species, :dz, :num_layers, :non_bdy_layers, :n_alt_index, :hHnet, :hDnet, :hH2net, :hHDnet, :hHrc, :hDrc, :hH2rc, :hHDrc])
+    required = [:all_species, :dz, :num_layers, :non_bdy_layers, :n_alt_index, :hHnet, :hDnet, :hH2net, :hHDnet, :hHrc, :hDrc, :hH2rc, :hHDrc]
+    check_requirements(keys(GV), required)
     
     # Get necessary inputs for plots --------------------------------------------------------------------- #
     atm_states, atm_states_init, state_files, Tn_all, Ti_all, Te_all = collect_atmospheres_and_temperatures(season_folders, resolution, "water"; globvars...)
@@ -233,7 +240,7 @@ function make_seasonal_cycle_plots_water(season_folders; mainalt=250, savepath=n
     if make_3panel
         make_3panel_figure([atm_states["low"], atm_states["mean2"], atm_states["high"]], watercols_dict, "water", ["low", "mean", "high"]; 
                        initial_atms=[atm_states_init["low"], atm_states_init["mean2"], atm_states_init["high"]], subplot_lbl_loc=subplot_lbl_loc,
-                       panel1labels=[L"10.4 pr $\mu$m", L"10.5 pr $\mu$m", L"10.9 pr $\mu$m"], spclbl_x=spclbl_x, spclbl_loc=spclbl_loc,
+                       panel1labels=["Dry", "Mean", "Wet"], spclbl_x=spclbl_x, spclbl_loc=spclbl_loc, lloc=(0.05, 0.38), figsz=(20, 7), 
                        esclbl="Atomic", savepath=savepath, fn="3_panel_water_cycle$(extrafn).png", globvars...)
     end
     
@@ -241,7 +248,7 @@ function make_seasonal_cycle_plots_water(season_folders; mainalt=250, savepath=n
     if make_6panel
         DH_6panel([atm_states["low"], atm_states["mean"], atm_states["high"]], savepath; fn="DH_profiles_vs_water_cycle_mesosphere$(extrafn)", 
                        lloc=[0.35, 0.4],
-                       lines_mean=["Low water", "Mean water", "High water"], subplot_lbl_loc=subplot_lbl_loc, tempcols=watercolors)
+                       lines_mean=["Dry", "Mean", "Wet"], subplot_lbl_loc=subplot_lbl_loc, tempcols=watercolors)
     end
     
     if plot_water_profile==true
@@ -283,9 +290,10 @@ function make_seasonal_cycle_plots_water(season_folders; mainalt=250, savepath=n
     if make_flux_plot
         println("Now doing flux plot")
         
-        @assert all(x->x in keys(GV), [:q, :molmass, :polarizability, :collision_xsect, # CONSTANTS.jl
+        required = [:q, :molmass, :polarizability, :collision_xsect, # CONSTANTS.jl
                                       :alt, :dz, :num_layers, :n_alt_index, :non_bdy_layers, # CUSTOMIZATIONS.jl
-                                      :all_species, :hHnet, :hDnet, :hH2net, :hHDnet, :hHrc, :hDrc, :hH2rc, :hHDrc]) # Simulation-unique stuff 
+                                      :all_species, :hHnet, :hDnet, :hH2net, :hHDnet, :hHrc, :hDrc, :hH2rc, :hHDrc] # Simulation-unique stuff 
+        check_requirements(keys(GV), required)
                                     
         flux_vs_time(state_files, water_to_plot, change_indices, :H; fn="flux_vs_time_H$(resolution)res$(extrafn)", savepath=savepath, 
                      colormap=flux_colormap, plot_type=plot_type, 
@@ -313,7 +321,8 @@ function make_seasonal_cycle_plots_water(season_folders; mainalt=250, savepath=n
     
     # DO NOT USE
     if make_flux_and_pct
-        @assert all(x->x in keys(GV), [:ion_species, :num_layers, :reaction_network])
+        required = [:ion_species, :num_layers, :reaction_network]
+        check_requirements(keys(GV), required)
         flush(stdout)
         seasonal_cycling_flux_and_pct(state_files, water_to_plot, mainalt, change_indices; fn="watercycle_fluxes_$(resolution)res$(extrafn)", typeflag="water",
                                          savepath=savepath, ivar_label=ivar_lbl, Tn=Tn_all[2:end-1], Te=Te_all[2:end-1], Ti=Ti_all[2:end-1], globvars...)
@@ -327,12 +336,13 @@ function make_insolation_plots(case_folders; savepath=nothing, extrafn="", subpl
     =#
     
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [ # Things from CONSTANTS.jl
-                                   :q, :molmass, :polarizability, :collision_xsect,
-                                   # From CUSTOMIZATIONS.jl
-                                   :alt, :dz, :num_layers, :n_alt_index, :non_bdy_layers, :speciesstyle, 
-                                   # Simulation-unique stuff 
-                                    :all_species, :hHnet, :hDnet, :hH2net, :hHDnet, :hHrc, :hDrc, :hH2rc, :hHDrc])
+    required = [ # Things from CONSTANTS.jl
+               :q, :molmass, :polarizability, :collision_xsect,
+               # From CUSTOMIZATIONS.jl
+               :alt, :dz, :num_layers, :n_alt_index, :non_bdy_layers, :speciesstyle, 
+               # Simulation-unique stuff 
+                :all_species, :hHnet, :hDnet, :hH2net, :hHDnet, :hHrc, :hDrc, :hH2rc, :hHDrc]
+    check_requirements(keys(GV), required)
     
     atm_keys = Dict(1=>"equinox1", 2=>"perihelion", 3=>"equinox2", 4=>"aphelion", 5=>"equinox3")
     atm_states = Dict("equinox1"=>Dict{Symbol, Vector{Float64}}(), "equinox2"=>Dict{Symbol, Vector{Float64}}(), "equinox3"=>Dict{Symbol, Vector{Float64}}(),
@@ -368,9 +378,13 @@ function make_insolation_plots(case_folders; savepath=nothing, extrafn="", subpl
 end
 
 function plot_limiting_flux(atm_states, atm_keys, Tn_all; savepath=nothing, simple=false, all_carriers=true, fnextra="", globvars...)
-    
+    #=
+    Plots the limiting flux 
+    =#
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:all_species, :alt, :molmass, :n_alt_index, :non_bdy_layers, :plot_grid, :zmax])
+    required = [:all_species, :alt, :molmass, :n_alt_index, :non_bdy_layers, :plot_grid, :zmax]
+    check_requirements(keys(GV), required)
+
     if simple
         therange = 2:2
     else
@@ -400,13 +414,7 @@ function plot_limiting_flux(atm_states, atm_keys, Tn_all; savepath=nothing, simp
     max_D_flux = 3e4#effusion_velocity(275, 2; zmax) * atm_states["highT"][:D][end]
     min_D_flux = 1e4#effusion_velocity(175, 2; zmax) * atm_states["lowT"][:D][end]
 
-    rcParams = PyDict(matplotlib."rcParams")
-    rcParams["font.sans-serif"] = ["Louis George Caf?"]
-    rcParams["font.monospace"] = ["FreeMono"]
-    rcParams["font.size"] = 18
-    rcParams["axes.labelsize"]= 20
-    rcParams["xtick.labelsize"] = 18
-    rcParams["ytick.labelsize"] = 18
+    set_rc_params(fs=18, axlab=20, xtls=18, ytls=18, sansserif="Louis George Caf?", monospace="FreeMono")
 
     fig, ax = subplots(figsize=(8,6))
     plot_bg(ax)
@@ -455,8 +463,9 @@ end
 
 
 function make_3panel_figure(atms, colors, exptype, atm_state_order; fn="3panel", savepath=nothing, shy=true, initial_atms=nothing, folders=nothing, Hflux=nothing, Dflux=nothing, 
-                            esclbl="Atomic", titl="", panel1labels=["Low", "Mean", "High"], spclbl_x=[0.8, 0.45], spclbl_loc=[0.75 0.25; 0.35 0.25], prumx=0.01,
-                            specialH2=false, subplot_lbl_loc=[0.05, 0.9], subplot_lbl_sz=20,  lloc=(0, 0.4), globvars...)
+                            esclbl="Atomic", titl="", panel1labels=["Low", "Mean", "High"], figsz=(20, 5),
+                            spclbl_x=[0.8, 0.45], spclbl_loc=[0.75 0.25; 0.35 0.25], prumx=0.01, lloc=(0, 0.4),
+                            specialH2=false, subplot_lbl_loc=[0.05, 0.9], subplot_lbl_sz=20,   globvars...)
     #=
     This makes the 3 panel figure which shows the inputs, the D/H vs. altitude, and the densities of H and D.
     
@@ -469,16 +478,11 @@ function make_3panel_figure(atms, colors, exptype, atm_state_order; fn="3panel",
     =#
     
     GV = values(globvars)
+
     
-    rcParams = PyDict(matplotlib."rcParams")
-    rcParams["font.sans-serif"] = ["Louis George Caf?"]
-    rcParams["font.monospace"] = ["FreeMono"]
-    rcParams["font.size"] = 18
-    rcParams["axes.labelsize"]= 20
-    rcParams["xtick.labelsize"] = 18
-    rcParams["ytick.labelsize"] = 18    
+    set_rc_params(fs=18, axlab=20, xtls=18, ytls=18, sansserif="Louis George Caf?", monospace="FreeMono")
     
-    fig, ax = subplots(1, 3, sharey=shy, figsize=(20, 5))
+    fig, ax = subplots(1, 3, sharey=shy, figsize=figsz)
     subplots_adjust(wspace=0.1)
     
     for i in 1:length(ax)
@@ -538,17 +542,11 @@ function DH_6panel(atmdict_list, savepath; lines_mean=["Solar minimum", "Solar m
     =#
     
     GV = values(globvars)
-    @assert all(x->x in keys(GV),  [:tempcols])
+    required =  [:tempcols]
+    check_requirements(keys(GV), required)
     
-    
-    rcParams = PyDict(matplotlib."rcParams")
-    rcParams["font.sans-serif"] = ["Louis George Caf?"]
-    rcParams["font.monospace"] = ["FreeMono"]
-    rcParams["font.size"] = 14
-    rcParams["axes.labelsize"]= 16
-    rcParams["xtick.labelsize"] = 14
-    rcParams["ytick.labelsize"] = 14
-    
+    set_rc_params(fs=14, axlab=16, xtls=14, ytls=14, sansserif="Louis George Caf?", monospace="FreeMono")
+
     # get D/H in water
     DH_toplot = Array{Array}(undef, 2, 3)
     
@@ -664,23 +662,18 @@ function f_vs_time(thefiles, IVAR_array, change_indices; fn="f_vs_time", ivar_la
     =#
       
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [ # Things from CONSTANTS.jl
-                                   :q, :molmass, :polarizability, :collision_xsect, :DH,
-                                   # From CUSTOMIZATIONS.jl
-                                   :alt, :dz, :num_layers, :n_alt_index, :non_bdy_layers, :speciesstyle, 
-                                   # Simulation-unique stuff 
-                                    :all_species, :hHnet, :hDnet, :hH2net, :hHDnet, :hHrc, :hDrc, :hH2rc, :hHDrc])
+    required = [ # Things from CONSTANTS.jl
+               :q, :molmass, :polarizability, :collision_xsect, :DH,
+               # From CUSTOMIZATIONS.jl
+               :alt, :dz, :num_layers, :n_alt_index, :non_bdy_layers, :speciesstyle, 
+               # Simulation-unique stuff 
+                :all_species, :hHnet, :hDnet, :hH2net, :hHDnet, :hHrc, :hDrc, :hH2rc, :hHDrc]
+    check_requirements(keys(GV), required)
     
     
 
     # Setup figure
-    rcParams = PyDict(matplotlib."rcParams")
-    rcParams["font.sans-serif"] = ["Louis George Caf?"]
-    rcParams["font.monospace"] = ["FreeMono"]
-    rcParams["font.size"] = 18
-    rcParams["axes.labelsize"]= 20
-    rcParams["xtick.labelsize"] = 18
-    rcParams["ytick.labelsize"] = 18
+    set_rc_params(fs=18, axlab=20, xtls=18, ytls=18, sansserif="Louis George Caf?", monospace="FreeMono")
     
     gridspec = matplotlib.gridspec
     fig = figure(figsize=(8, 6), constrained_layout=true)
@@ -806,19 +799,14 @@ function flux_vs_time(thefiles, IVAR_array, change_indices, sp; fn="flux_vs_time
     =#
       
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:alt, :all_species, :dz, :num_layers])
+    required = [:alt, :all_species, :dz, :num_layers]
+    check_requirements(keys(GV), required)
     
     stages=["Spring", "Summer", "Autumn", "Winter", "Spring"]
 
     # Setup figure
-    rcParams = PyDict(matplotlib."rcParams")
-    rcParams["font.sans-serif"] = ["Louis George Caf?"]
-    rcParams["font.monospace"] = ["FreeMono"]
-    rcParams["font.size"] = 18
-    rcParams["axes.labelsize"]= 20
-    rcParams["xtick.labelsize"] = 18
-    rcParams["ytick.labelsize"] = 18
-    
+    set_rc_params(fs=18, axlab=20, xtls=18, ytls=18, sansserif="Louis George Caf?", monospace="FreeMono")
+
     gridspec = matplotlib.gridspec
     fig = figure(figsize=(8, 6), constrained_layout=true)
     gs = gridspec.GridSpec(2, 1, figure=fig, height_ratios=[1, 1.5])
@@ -971,7 +959,7 @@ function seasonal_cycling_figure_original(thefiles, A, DHax, nax, fax, fax2;  fn
                                  # ylimits 
                                  Hflux_ylims=[1e8, 2e9],  Dflux_ylims=[1e4, 1e5], pct_ylims=[1e-6, 1e-4],
                                  # Figure stuff
-                                 alt_legend_loc=(0.75, 0.4), flloc="lower left", subplot_lbl_loc=[0,0.95], subplot_lbl_sz=20,
+                                 alt_legend_loc=(0.72, 0.4), flloc="lower left", subplot_lbl_loc=[0,0.95], subplot_lbl_sz=20,
                                  ivar_cmap="RdBu",  globvars...)
     #=
     
@@ -982,7 +970,8 @@ function seasonal_cycling_figure_original(thefiles, A, DHax, nax, fax, fax2;  fn
     =#
       
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:alt, :all_species, :dz])
+    required = [:alt, :all_species, :dz]
+    check_requirements(keys(GV), required)
     
     # Define colors
     tempcol = "#262626"
@@ -1026,9 +1015,7 @@ function seasonal_cycling_figure_original(thefiles, A, DHax, nax, fax, fax2;  fn
         total_H_col = [sum(get_ncurrent(f)[:H]) .* dz for f in thefiles]
         # twin ax for ratio of total col
         fax_pct = fax.twinx()
-        for side in ["top", "bottom", "left", "right"]
-            fax_pct.spines[side].set_visible(false)
-        end
+        turn_off_borders(fax_pct)
         
         fax_pct.set_ylabel("% of total column",  color=twincol)
         fax_pct.tick_params(axis="y", labelcolor=twincol)        
@@ -1043,9 +1030,7 @@ function seasonal_cycling_figure_original(thefiles, A, DHax, nax, fax, fax2;  fn
         total_D_col = [sum(get_ncurrent(f)[:D]) .* dz for f in thefiles]
         # TWIN AX for ratio
         fax2_pct = fax2.twinx()
-        for side in ["top", "bottom", "left", "right"]
-            fax2_pct.spines[side].set_visible(false)
-        end
+        turn_off_borders(fax2)
         fax2_pct.set_ylabel("% of total column", color=twincol)
         fax2_pct.tick_params(axis="y", labelcolor=twincol)
         Dpct = esc_pct_of_total_col(total_D_flux, total_D_col)
@@ -1112,14 +1097,8 @@ function seasonal_cycling_figure_skeleton(thefiles, IVAR_array, A, change_indice
     =#
       
     # Setup figure -----------------------------
-    rcParams = PyDict(matplotlib."rcParams")
-    rcParams["font.sans-serif"] = ["Louis George Caf?"]
-    rcParams["font.monospace"] = ["FreeMono"]
-    rcParams["font.size"] = 18
-    rcParams["axes.labelsize"]= 20
-    rcParams["xtick.labelsize"] = 18
-    rcParams["ytick.labelsize"] = 18
-    
+    set_rc_params(fs=18, axlab=20, xtls=18, ytls=18, sansserif="Louis George Caf?", monospace="FreeMono")
+
     gridspec = matplotlib.gridspec
     fig = figure(figsize=(8, 16), constrained_layout=true)
     gs = gridspec.GridSpec(5, 1, figure=fig, height_ratios=[2, 3, 3, 3, 3.5])
@@ -1294,13 +1273,12 @@ end
 
 function DH_alt_profile_singlepanels(ax, atmdict_list, linecols, atm_state_order; lines_mean=nothing,
                         heavysp=:D, lightsp=:H, species_pair="atomics", wl=[0.1, 0.9], ol=[0.6, 0.8],
-                        titl="", xlims=[1e-4, 1e-2], cutoff=nothing,fn="DH_profiles", lloc=(0.02,0.4),
+                        titl="", xlims=[1e-4, 1e-2], cutoff=nothing,fn="DH_profiles", lloc=(0.05,0.4),
                         opttext=[], opttext_loc=[()], opttext_col=[], legendon=false, seasoncycle=false)
     #=
     Also plots D/H by altitude, but does so on the ax object for part of a larger plot.
     
     =#
-    
     
     # get D/H in water
     DH_water = [n[:HDO] ./ (2 .* n[:H2O]) for n in atmdict_list]
@@ -1365,9 +1343,10 @@ function DH_alt_profile_singlepanels(ax, atmdict_list, linecols, atm_state_order
         L2D = PyPlot.matplotlib.lines.Line2D
         lines = [L2D([0], [0], color="black", linewidth=2, linestyle="-"),
                  L2D([0], [0], color="black", linewidth=2, linestyle=":")]
-        # water eqn "*L"$\frac{[HDO]}{2[H_2O]}$"
-        # atomic eqn " $\frac{%$heavysp_str}{%$lightsp_str}$"
-        ax.legend(lines, ["in $(species_pair)", "in water"], fontsize=16, loc=lloc)
+        if species_pair=="atomics"
+            printme = L"R$_{atomic}$"
+        end
+        ax.legend(lines, ["$(printme)", L"R$_{water}$"], fontsize=16, loc=lloc)
     end
 end
 
@@ -1419,8 +1398,26 @@ function make_water_panel(ax, atms, colors, txtlbls; spclbl_x = [0.8, 0.45], pru
                 color=colors[w, :], linestyle=GV.speciesstyle[:HDO])
     end
     ax.set_xscale("log")
-    ax.set_xlabel("Water mixing ratio")
-    
+    ax.set_xlabel(L"Water mixing ratio (cm$^{-3}$/cm$^{-3}$)")
+    ax.set_xlim(1e-13, 1e-3)
+
+    # make a conversion ax for PPM
+    ppmax = ax.twiny()
+    subplots_adjust(bottom=0.4)
+
+    # # Move twinned axis ticks and label from top to bottom
+    ppmax.xaxis.set_ticks_position("bottom")
+    ppmax.xaxis.set_label_position("bottom")
+    ppmax.spines["bottom"].set_position(("axes", -0.25))
+    # ppmax.patch.set_visible(false)
+    turn_off_borders(ppmax)
+    ppmax.spines["bottom"].set_visible(true)
+    ppmax.set_xticks(ax.get_xticks() ./ 1e-6)
+    ppmax.set_xlim(1e-13/1e-6, 1e-3/1e-6)
+    ppmax.set_xscale("log")
+    ppmax.set_xlabel("Water mixing ratio (ppm)")
+
+
     for t in 1:length(txtlbls)
         ax.text(prumx, 0.75-0.08*t, txtlbls[t], color=colors[t, :], transform=ax.transAxes)
     end
@@ -1469,12 +1466,14 @@ function esc_flux_vs_time(fax, fax2, t, thefiles, cols; lloc="lower left", show_
     =#
     
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [# Things from CONSTANTS.jl
-                                    :q, :molmass, :polarizability, :collision_xsect,
-                                    # From CUSTOMIZATIONS.jl
-                                    :alt, :dz, :num_layers, :n_alt_index, :non_bdy_layers, :speciesstyle, 
-                                    # Simulation-unique stuff 
-                                    :all_species, :hHnet, :hDnet, :hH2net, :hHDnet, :hHrc, :hDrc, :hH2rc, :hHDrc, :ion_species, :Tn, :Ti, :Te])
+    required = [# Things from CONSTANTS.jl
+                :q, :molmass, :polarizability, :collision_xsect,
+                # From CUSTOMIZATIONS.jl
+                :alt, :dz, :num_layers, :n_alt_index, :non_bdy_layers, :speciesstyle, 
+                # Simulation-unique stuff 
+                :all_species, :hHnet, :hDnet, :hH2net, :hHDnet, :hHrc, :hDrc, :hH2rc, :hHDrc, :ion_species, :Tn, :Ti, :Te]
+    check_requirements(keys(GV), required)
+    
     
     
     # Tease apart folder and filenames because it's needed for getting flux
@@ -1601,8 +1600,7 @@ function reincorp_vs_time(fax, fax2, t, thefiles, cols, change_indices; typeflag
     fax.plot(t, reincorp_array[:, 1], color=cols[1])
     fax2.plot(t, reincorp_array[:, 2], color=cols[2])
     
-    return reincorp_array
-    
+    return reincorp_array 
 end
 
 function DH_vs_time(ax, atmfile_list, whichalt, col; stages=["Equilibrium", "Hot exobase", "Mid-cycle", "Cold exobase", "End cycle"],
@@ -1689,7 +1687,9 @@ function density_vs_time(n_ax, thefiles, sole_color, A; alt2=nothing, alt3=nothi
         alt2, alt3: second/third altitude option
     =#
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:n_alt_index])
+    required = [:n_alt_index]
+    check_requirements(keys(GV), required)
+    
     
     nH = Array{Float64}(undef, length(thefiles), 3)
     nD = Array{Float64}(undef, length(thefiles), 3)
@@ -1776,7 +1776,9 @@ function collect_atmospheres_and_temperatures(season_folders, resolution, set; g
         Tn_all, Ti_all, Te_all: Arrays of shape (num_layers, len(state_files)) providing all the temperature profiles
     =#
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:alt])
+    required = [:alt]
+    check_requirements(keys(GV), required)
+    
 
     if set=="temp"
         atm_keys = Dict(1=>"midT1", 2=>"highT", 3=>"midT2", 4=>"lowT", 5=>"midT3")

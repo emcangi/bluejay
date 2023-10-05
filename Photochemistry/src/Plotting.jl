@@ -78,19 +78,15 @@ function plot_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, savepath::String, a
     =#
 
     GV = values(globvars)
-    @assert all(x->x in keys(GV),  [:neutral_species, :plot_grid, :speciescolor, :speciesstyle, :zmax])
+    required =  [:neutral_species, :plot_grid, :speciescolor, :speciesstyle, :zmax]
+    check_requirements(keys(GV), required)
 
     if print_shortcodes
-        @assert all(x->x in keys(GV),  [:hrshortcode, :rshortcode])
+        required =  [:hrshortcode, :rshortcode]
+        check_requirements(keys(GV), required)
     end 
 
-    rcParams = PyDict(matplotlib."rcParams")
-    rcParams["font.sans-serif"] = ["Louis George Caf?"]
-    rcParams["font.monospace"] = ["FreeMono"]
-    rcParams["font.size"] = 18
-    rcParams["axes.labelsize"]= 20
-    rcParams["xtick.labelsize"] = 18
-    rcParams["ytick.labelsize"] = 18
+    set_rc_params(; fs=18, axlab=20, xtls=18, ytls=18, sansserif=sansserif_choice, monospace=monospace_choice)
 
     # Convert to mixing ratio if requested ====================================================
     if mixing_ratio==true 
@@ -263,9 +259,7 @@ function plot_bg(axob; bg="#ededed")
     =#
     axob.set_facecolor(bg)
     axob.grid(zorder=-5, color="white", which="major")
-    for side in ["top", "bottom", "left", "right"]
-        axob.spines[side].set_visible(false)
-    end
+    turn_off_borders(axob)
 end
 
 function plot_extinction(solabs; fnextr="", path=nothing, tauonly=false, xsect_info=nothing, solflux=nothing, extra_t="", linth=1e-8, vm=1e-6, globvars...)
@@ -286,9 +280,9 @@ function plot_extinction(solabs; fnextr="", path=nothing, tauonly=false, xsect_i
     =#
 
     GV = values(globvars)
-    @assert all(x->x in keys(GV),  [:zmax, :plot_grid])
+    required =  [:zmax, :plot_grid]
+    check_requirements(keys(GV), required)
 
-    
     fig, ax = subplots()
 
     plot_bg(ax)
@@ -384,16 +378,11 @@ function plot_Jrates(sp, atmdict::Dict{Symbol, Vector{ftype_ncur}}; savedir=noth
     =#
 
     GV = values(globvars)
-    @assert all(x->x in keys(GV),  [:all_species, :ion_species, :num_layers, :plot_grid, :reaction_network, :speciesbclist, :Tn, :Ti, :Te])
+    required =  [:all_species, :ion_species, :num_layers, :plot_grid, :reaction_network, :speciesbclist, :Tn, :Ti, :Te]
+    check_requirements(keys(GV), required)
 
     # Plot setup
-    rcParams = PyCall.PyDict(matplotlib."rcParams")
-    rcParams["font.sans-serif"] = ["Louis George Caf?"]
-    rcParams["font.monospace"] = ["FreeMono"]
-    rcParams["font.size"] = 12
-    rcParams["axes.labelsize"]= 16
-    rcParams["xtick.labelsize"] = 16
-    rcParams["ytick.labelsize"] = 16
+    set_rc_params(; fs=12, axlab=16, xtls=16, ytls=16, sansserif=sansserif_choice, monospace=monospace_choice)
 
     # --------------------------------------------------------------------------------
     # make plot
@@ -455,12 +444,13 @@ function plot_production_and_loss(final_atm, results_dir, thefolder; globvars...
 
     =#
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:all_species, :alt, :chem_species, :collision_xsect, :dz, :hot_D_rc_funcs, :hot_H_rc_funcs, 
-                                  :hot_H2_rc_funcs, :hot_HD_rc_funcs, :Hs_dict, :hot_H_network, :hot_D_network, :hot_H2_network, :hot_HD_network,
-                                  :hrshortcode, :ion_species, :Jratedict, :molmass, :neutral_species, :non_bdy_layers, :nonthermal,
-                                  :num_layers, :n_all_layers, :n_alt_index, :polarizability, :plot_grid, :q, :rshortcode, :reaction_network,
-                                  :speciesbclist, :Tn, :Ti, :Te, :Tp, :Tprof_for_Hs, :Tprof_for_diffusion, 
-                                  :transport_species, :upper_lower_bdy_i, :upper_lower_bdy, :zmax])
+    required = [:all_species, :alt, :chem_species, :collision_xsect, :dz, :hot_D_rc_funcs, :hot_H_rc_funcs, 
+               :hot_H2_rc_funcs, :hot_HD_rc_funcs, :Hs_dict, :hot_H_network, :hot_D_network, :hot_H2_network, :hot_HD_network,
+               :hrshortcode, :ion_species, :Jratedict, :molmass, :neutral_species, :non_bdy_layers, :nonthermal,
+               :num_layers, :n_all_layers, :n_alt_index, :polarizability, :plot_grid, :q, :rshortcode, :reaction_network,
+               :speciesbclist, :Tn, :Ti, :Te, :Tp, :Tprof_for_Hs, :Tprof_for_diffusion, 
+               :transport_species, :upper_lower_bdy_i, :upper_lower_bdy, :zmax]
+    check_requirements(keys(GV), required)
 
     println("Creating production and loss plots to show convergence of species...")
     create_folder("chemeq_plots", results_dir*thefolder*"/")
@@ -496,21 +486,16 @@ function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, result
     =#
 
     GV = values(globvars)
-    @assert all(x->x in keys(GV),  [:all_species, :alt, :chem_species, :dz, :hrshortcode, :Hs_dict, :ion_species, 
-                                    :molmass, :n_all_layers, :n_alt_index, :neutral_species, :num_layers, 
-                                    :plot_grid, :polarizability, :q, :rshortcode, :reaction_network, :speciesbclist, 
-                                    :Te, :Ti, :Tn, :Tp, :Tprof_for_Hs, :Tprof_for_diffusion, :transport_species, 
-                                    :upper_lower_bdy, :upper_lower_bdy_i])
-
+    required =  [:all_species, :alt, :chem_species, :dz, :hrshortcode, :Hs_dict, :ion_species, 
+                 :molmass, :n_all_layers, :n_alt_index, :neutral_species, :num_layers, 
+                 :plot_grid, :polarizability, :q, :rshortcode, :reaction_network, :speciesbclist, 
+                 :Te, :Ti, :Tn, :Tp, :Tprof_for_Hs, :Tprof_for_diffusion, :transport_species, 
+                 :upper_lower_bdy, :upper_lower_bdy_i]
+    check_requirements(keys(GV), required)
+ 
     # ================================================================================
     # Plot setup stuff
-    rcParams = PyCall.PyDict(matplotlib."rcParams")
-    rcParams["font.sans-serif"] = ["Louis George Caf?"]
-    rcParams["font.monospace"] = ["FreeMono"]
-    rcParams["font.size"] = 12
-    rcParams["axes.labelsize"]= 16
-    rcParams["xtick.labelsize"] = 16
-    rcParams["ytick.labelsize"] = 16
+    set_rc_params(; fs=12, axlab=16, xtls=16, ytls=16, sansserif=sansserif_choice, monospace=monospace_choice)
 
     if plot_timescales==true
         total_ax = 4
@@ -784,15 +769,11 @@ function plot_species_on_demand(atmdict, spclist, filename; savepath=nothing, sh
     =#
 
     rcParams = PyDict(matplotlib."rcParams")
-    rcParams["font.sans-serif"] = ["Louis George Caf?"]
-    rcParams["font.monospace"] = ["FreeMono"]
-    rcParams["font.size"] = 18
-    rcParams["axes.labelsize"]= 20
-    rcParams["xtick.labelsize"] = 18
-    rcParams["ytick.labelsize"] = 18
+    set_rc_params(; fs=18, axlab=20, xtls=18, ytls=18, sansserif=sansserif_choice, monospace=monospace_choice)
     
     GV = values(globvars)
-    @assert all(x->x in keys(GV),  [:plot_grid, :speciescolor, :speciesstyle, :zmax])
+    required =  [:plot_grid, :speciescolor, :speciesstyle, :zmax]
+    check_requirements(keys(GV), required)
     
     atm_fig, ax = subplots(figsize=figsz)
     plot_bg(ax)
@@ -807,7 +788,8 @@ function plot_species_on_demand(atmdict, spclist, filename; savepath=nothing, sh
 
         plot_me = atmdict[sp]
         if mixing_ratio
-            @assert all(x->x in keys(GV),  [:all_species])
+            required =  [:all_species]
+            check_requirements(keys(GV), required)
             plot_me = plot_me ./ n_tot(atmdict; GV.all_species)
         end
         ax.plot(plot_me, GV.plot_grid, color=col, linewidth=2, label=sp, linestyle=ls, zorder=10)
@@ -825,11 +807,7 @@ function plot_species_on_demand(atmdict, spclist, filename; savepath=nothing, sh
     ax.set_xlabel(xlab)
     ax.set_xlim(xlims[1], xlims[2])
     ax.set_ylabel("Altitude (km)")
-    
-    # L2D = PyPlot.matplotlib.lines.Line2D
-    # legend_elements = [L2D([0], [0], color="black", linewidth=1, label="Solar minimum"),
-    #                     L2D([0], [0], color="black", linewidth=3, label="Solar maximum")]
-    # ax.legend(handles=legend_elements, loc=LL, fontsize=16)
+
     
     if titl!=nothing
         ax.set_title(titl)
@@ -864,15 +842,10 @@ function plot_temp_prof(Tprof_1; opt="", cols=[medgray, "xkcd:bright orange", "c
     =#
 
     GV = values(globvars)
-    @assert all(x->x in keys(GV),  [:alt])
+    required =  [:alt]
+    check_requirements(keys(GV), required)
 
-    rcParams = PyDict(matplotlib."rcParams")
-    rcParams["font.sans-serif"] = ["Louis George Caf?"]
-    rcParams["font.monospace"] = ["FreeMono"]
-    rcParams["font.size"] = 18
-    rcParams["axes.labelsize"]= 20
-    rcParams["xtick.labelsize"] = 18
-    rcParams["ytick.labelsize"] = 18
+    set_rc_params(; fs=18, axlab=20, xtls=18, ytls=18, sansserif=sansserif_choice, monospace=monospace_choice)
 
     fig, ax = subplots(figsize=(4,6))
     plot_bg(ax)
@@ -939,15 +912,10 @@ function plot_water_profile(atmdict, savepath::String; showonly=false, watersat=
     =#
 
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:plot_grid, :all_species, :non_bdy_layers, :speciescolor, :speciesstyle])
+    required = [:plot_grid, :all_species, :non_bdy_layers, :speciescolor, :speciesstyle]
+    check_requirements(keys(GV), required)
 
-    rcParams = PyDict(matplotlib."rcParams")
-    rcParams["font.sans-serif"] = ["Louis George Caf?"]
-    rcParams["font.monospace"] = ["FreeMono"]
-    rcParams["font.size"] = 16
-    rcParams["axes.labelsize"]= 18
-    rcParams["xtick.labelsize"] = 14
-    rcParams["ytick.labelsize"] = 14
+    set_rc_params(; fs=16, axlab=18, xtls=14, ytls=14, sansserif=sansserif_choice, monospace=monospace_choice)
 
     fig, ax = subplots(1, 3, sharey=true, figsize=(14,6))
     for a in ax
@@ -1037,6 +1005,20 @@ function plot_water_profile(atmdict, savepath::String; showonly=false, watersat=
     end
 end
 
+function set_rc_params(; fs=22, axlab=24, xtls=22, ytls=22, sansserif=nothing, monospace=nothing)
+    rcParams = PyCall.PyDict(matplotlib."rcParams")
+    if sansserif != nothing
+        rcParams["font.sans-serif"] = [sansserif]
+    end 
+    if monospace != nothing 
+        rcParams["font.monospace"] = [monospace]
+    end 
+    rcParams["font.size"] = fs
+    rcParams["axes.labelsize"]= axlab
+    rcParams["xtick.labelsize"] = xtls
+    rcParams["ytick.labelsize"] = ytls
+end
+
 function top_mechanisms(x, sp, atmdict, p_or_r; savepath=nothing, filename_extra="", y0=100, lowerlim=nothing, upperlim=nothing, globvars...) 
     #=
     Reports the top x dominant mechanisms for production or loss of species sp, and shows a plot.
@@ -1054,8 +1036,9 @@ function top_mechanisms(x, sp, atmdict, p_or_r; savepath=nothing, filename_extra
     
     # Collect global variables
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:all_species, :alt, :collision_xsect, :ion_species, :Jratedict, :molmass, :non_bdy_layers, :num_layers,  
-                           :n_alt_index, :reaction_network, :Tn, :Ti, :Te, :dz, :zmax])
+    required = [:all_species, :alt, :collision_xsect, :ion_species, :Jratedict, :molmass, :non_bdy_layers, :num_layers,  
+                           :n_alt_index, :reaction_network, :Tn, :Ti, :Te, :dz, :zmax]
+    check_requirements(keys(GV), required)
     
     # String used for various labels
     rxntype = p_or_r == "product" ? "production" : "loss"
@@ -1089,13 +1072,14 @@ function top_mechanisms(x, sp, atmdict, p_or_r; savepath=nothing, filename_extra
 
     println("Top $(L) $(rxntype) reactions sorted by highest column value: $(sorted_column_val[1:L, :])")
 
-    rcParams = PyCall.PyDict(matplotlib."rcParams")
-    rcParams["font.sans-serif"] = ["Louis George Caf?"]
-    rcParams["font.monospace"] = ["FreeMono"]
-    rcParams["font.size"] = 18
-    rcParams["axes.labelsize"]= 20
-    rcParams["xtick.labelsize"] = 18
-    rcParams["ytick.labelsize"] = 18
+    set_rc_params(; fs=18, axlab=20, xtls=18, ytls=18, sansserif=sansserif_choice, monospace=monospace_choice)
+    # rcParams = PyCall.PyDict(matplotlib."rcParams")
+    # rcParams["font.sans-serif"] = [sanserif_choice]
+    # rcParams["font.monospace"] = [monospace_choice]
+    # rcParams["font.size"] = 18
+    # rcParams["axes.labelsize"]= 20
+    # rcParams["xtick.labelsize"] = 18
+    # rcParams["ytick.labelsize"] = 18
     
     
     # PLOT -----------------------------------------------------
@@ -1127,5 +1111,14 @@ function top_mechanisms(x, sp, atmdict, p_or_r; savepath=nothing, filename_extra
         show()
     else
         savefig(savepath*"top$(L)_$(rxntype)_$(sp)$(filename_extra).png", bbox_inches="tight", dpi=300)
+    end
+end
+
+function turn_off_borders(ax)
+    #=
+    Turn off borders on an axis 
+    =#
+    for side in ["top", "bottom", "left", "right"]
+        ax.spines[side].set_visible(false)
     end
 end

@@ -80,6 +80,7 @@ scaleH,
 
 # BasicUtilities.jl
 ## Standard, miscellaneous functions
+check_requirements,
 deletefirst, 
 df_lookup,
 find_nonfinites, 
@@ -155,7 +156,9 @@ plot_rxns,
 plot_species_on_demand,
 plot_temp_prof, 
 plot_water_profile, 
+set_rc_params,
 top_mechanisms,    
+turn_off_borders,
 
 # ReactionNetwork.jl
 calculate_and_write_column_rates,

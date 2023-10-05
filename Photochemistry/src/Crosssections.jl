@@ -214,8 +214,8 @@ function populate_xsect_dict(pd_dataf; ion_xsects=true, globvars...)
     =#
 
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:Tn, :n_all_layers]) #  :Jratelist
-    
+    required = [:Tn, :n_all_layers]
+    check_requirements(keys(GV), required)
 
     # Set up =======================================================================
     xsect_dict = Dict{Symbol, Array{Array{Float64}}}()

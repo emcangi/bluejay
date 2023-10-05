@@ -130,8 +130,9 @@ function write_atmosphere(atmdict::Dict{Symbol, Vector{ftype_ncur}}, filename::S
         filename: filename to write to
     =# 
     GV = values(globvars)
-    @assert all(x->x in keys(GV),  [:alt, :num_layers, :hrshortcode, :rshortcode])
-
+    required =  [:alt, :num_layers, :hrshortcode, :rshortcode]
+    check_requirements(keys(GV), required)
+    
     sorted_keys = sort(collect(keys(atmdict)))
     atm_mat = Array{Float64}(undef, GV.num_layers, length(sorted_keys));
 
@@ -155,7 +156,8 @@ function write_final_state(atmdict, thedir, thefolder, fname; globvars...)
     =#
 
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:alt, :external_storage, :num_layers, :hrshortcode, :Jratedict, :rshortcode])
+    required = [:alt, :external_storage, :num_layers, :hrshortcode, :Jratedict, :rshortcode]
+    check_requirements(keys(GV), required)
 
     # Make sure we have the updated Jrates
     println("Adding stored Jrates to the final output file")
@@ -250,7 +252,8 @@ function load_from_paramlog(folder; quiet=true, globvars...)
         Te_arr = df_temps.Electrons
     else 
         GV = values(globvars)
-        @assert all(x->x in keys(GV), [:alt])
+        required = [:alt]
+        check_requirements(keys(GV), required)
         if quiet==false
             println("WARNING: Reconstructing temperature profiles with default options based on logged control temperatures. It is POSSIBLE the reconstruction could be wrong if the temp function changed.")
         end

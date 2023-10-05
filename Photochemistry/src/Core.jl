@@ -54,7 +54,8 @@ function compile_ncur_all(n_long, n_short, n_inactive; globvars...)
     =#
 
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:active_longlived, :active_shortlived, :inactive_species, :num_layers])
+    required = [:active_longlived, :active_shortlived, :inactive_species, :num_layers]
+    check_requirements(keys(GV), required)
 
     n_cur_active_long = unflatten_atm(n_long, GV.active_longlived; num_layers=GV.num_layers)
     n_cur_active_short = unflatten_atm(n_short, GV.active_shortlived; num_layers=GV.num_layers)
@@ -79,7 +80,8 @@ function flatten_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, species_list; gl
     =#
 
     GV = values(globvars)
-    @assert all(x->x in keys(GV),  [:num_layers])
+    required =  [:num_layers]
+    check_requirements(keys(GV), required)
 
     return deepcopy(ftype_ncur[[atmdict[sp][ialt] for sp in species_list, ialt in 1:GV.num_layers]...])
 end
@@ -133,7 +135,8 @@ function unflatten_atm(n_vec, species_list; globvars...)
     This function is the reverse of flatten_atm.
     =#
     GV = values(globvars)
-    @assert all(x->x in keys(GV),  [:num_layers])
+    required =  [:num_layers]
+    check_requirements(keys(GV), required)
 
     n_matrix = reshape(n_vec, (length(species_list), GV.num_layers))
 
@@ -243,7 +246,8 @@ function chemical_jacobian(specieslist, dspecieslist; diff_wrt_e=true, diff_wrt_
     =#
 
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:chem_species, :transport_species, :chemnet, :transportnet])
+    required = [:chem_species, :transport_species, :chemnet, :transportnet]
+    check_requirements(keys(GV), required)
 
     # set up output vectors: indices and values
     ivec = Int64[] # list of first indices (corresponding to the species being produced and lost)
@@ -253,7 +257,8 @@ function chemical_jacobian(specieslist, dspecieslist; diff_wrt_e=true, diff_wrt_
     nspecies = length(specieslist)  # this is the active species. 
     ndspecies = length(dspecieslist)  # this is the species with respect to which we differentiate
     if diff_wrt_e==true
-        @assert all(x->x in keys(GV), [:ion_species])
+        required = [:ion_species]
+        check_requirements(keys(GV), required)
         ion_cols = indexin(GV.ion_species, specieslist) # for filling in the derivatives wrt electrons 
         # println("The ion columns are $(ion_cols), expect to see new terms in those columns") # For testing
     end
@@ -356,7 +361,8 @@ function eval_rate_coef(atmdict::Dict{Symbol, Vector{ftype_ncur}}, krate::Expr; 
         rate_coefficient: evaluated rate coefficient at all atmospheric layers
     =#
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:Tn, :Ti, :Te, :all_species])
+    required = [:Tn, :Ti, :Te, :all_species]
+    check_requirements(keys(GV), required)
 
     # Set stuff up
     eval_k = mk_function(:((Tn, Ti, Te, M) -> $krate))
@@ -385,7 +391,8 @@ function getrate(sp::Symbol; chemistry_on=true, transport_on=true, sepvecs=false
     =#
 
     GV = values(globvars)
-    @assert all(x->x in keys(GV),  [:chemnet, :transportnet, :chem_species, :transport_species])
+    required =  [:chemnet, :transportnet, :chem_species, :transport_species]
+    check_requirements(keys(GV), required)
 
 
     # This block will return the total net change for the species, P - L.
@@ -575,7 +582,8 @@ function update_Jrates!(n_cur_densities::Dict{Symbol, Array{ftype_ncur, 1}}; nla
     =#
 
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:absorber, :dz, :crosssection, :Jratelist, :num_layers, :solarflux])
+    required = [:absorber, :dz, :crosssection, :Jratelist, :num_layers, :solarflux]
+    check_requirements(keys(GV), required)
 
     solarabs = optical_depth(n_cur_densities; globvars...)
     # solarabs now records the total optical depth of the atmosphere at
@@ -624,7 +632,8 @@ function effusion_velocity(Texo, m; globvars...)
     =#
 
     GV = values(globvars)
-    @assert all(x->x in keys(GV),  [:zmax])
+    required =  [:zmax]
+    check_requirements(keys(GV), required)
     
     # lambda is the Jeans parameter (Gronoff 2020), basically the ratio of the 
     # escape velocity GmM/z to the thermal energy, kT.
@@ -647,7 +656,8 @@ function escape_probability(sp, atmdict; globvars...)::Array
         Array by altitude of escape probabilities for hot atoms. 0-1.
     =#
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:all_species, :collision_xsect])
+    required = [:all_species, :collision_xsect]
+    check_requirements(keys(GV), required)
     
     A = 0.916 # escape probability at altitude where above column = 0, for high energy particles. upper limit
     a = 0.039 # how "transparent" the atmosphere is to an escaping atom. smaller for higher energy so this is for an upper limit.
@@ -670,8 +680,9 @@ function escaping_hot_atom_production(sp, source_rxns, source_rxn_rc_funcs, atmd
     =#
     
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:all_species, :alt, :collision_xsect, :ion_species, :Jratedict, :molmass, :non_bdy_layers, :num_layers,  
-                                    :n_alt_index, :Tn, :Ti, :Te, :dz])
+    required = [:all_species, :alt, :collision_xsect, :ion_species, :Jratedict, :molmass, :non_bdy_layers, :num_layers,  
+                :n_alt_index, :Tn, :Ti, :Te, :dz]
+    check_requirements(keys(GV), required)
 
     produced_hot = volume_rate_wrapper(sp, source_rxns, source_rxn_rc_funcs, atmdict, Mtot; returntype="array", zmax=GV.alt[end], globvars...) 
 
@@ -700,7 +711,8 @@ function nonthermal_escape_flux(source_rxn_network, prod_rates_by_alt; verbose=f
         for whatever species is calculated for.
     =#
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:dz])
+    required = [:dz]
+    check_requirements(keys(GV), required)
 
     # Get a vector of strings that contain the chemical reactions
     rxn_strings = vec([format_chemistry_string(r[1], r[2]) for r in source_rxn_network])
@@ -950,7 +962,8 @@ function setup_photochemical_equilibrium(; globvars...)
     =#
 
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:active_longlived, :active_shortlived, :short_lived_species, :reaction_network, :transportnet, :chem_species, :transport_species])
+    required = [:active_longlived, :active_shortlived, :short_lived_species, :reaction_network, :transportnet, :chem_species, :transport_species]
+    check_requirements(keys(GV), required)
 
 
     # ------------------ Long-lived species expression array ------------------------ #
@@ -1147,7 +1160,8 @@ function boundaryconditions(fluxcoef_dict, atmdict, M; nonthermal=true, globvars
     =#
     
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:all_species, :speciesbclist, :dz])
+    required = [:all_species, :speciesbclist, :dz]
+    check_requirements(keys(GV), required)
     
     bc_dict = Dict{Symbol, Array{ftype_ncur}}([s=>[0 0; 0 0] for s in GV.all_species])
 
@@ -1242,8 +1256,9 @@ function boundaryconditions(fluxcoef_dict, atmdict, M; nonthermal=true, globvars
     
     # SPECIAL CASE: add on the non-thermal escape for H and D. 
     if nonthermal
-        @assert all(x->x in keys(GV), [:hot_H_network, :hot_D_network, :hot_H_rc_funcs, :hot_D_rc_funcs, 
-                                       :hot_H2_network, :hot_H2_rc_funcs, :hot_HD_network, :hot_HD_rc_funcs, :Jratedict])
+        required = [:hot_H_network, :hot_D_network, :hot_H_rc_funcs, :hot_D_rc_funcs, 
+                    :hot_H2_network, :hot_H2_rc_funcs, :hot_HD_network, :hot_HD_rc_funcs, :Jratedict]
+        check_requirements(keys(GV), required)
         prod_hotH = escaping_hot_atom_production(:H, GV.hot_H_network, GV.hot_H_rc_funcs, atmdict, M; globvars...)
         prod_hotD = escaping_hot_atom_production(:D, GV.hot_D_network, GV.hot_D_rc_funcs, atmdict, M; globvars...)
         prod_hotH2 = escaping_hot_atom_production(:H2, GV.hot_H2_network, GV.hot_H2_rc_funcs, atmdict, M; globvars...)
@@ -1283,7 +1298,8 @@ function Dcoef_neutrals(z, sp::Symbol, b, atmdict::Dict{Symbol, Vector{ftype_ncu
     Usable at either a specific altitude or all altitudes (array format). z and T must be same type.
     =#
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:all_species, :n_alt_index])
+    required = [:all_species, :n_alt_index]
+    check_requirements(keys(GV), required)
 
     if (typeof(z)==Float64) & (typeof(b)==Float64)
         return b ./ n_tot(atmdict, z; GV.all_species, GV.n_alt_index)
@@ -1312,7 +1328,8 @@ function Dcoef!(D_arr, T_arr, sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncu
     =#
 
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:all_species, :molmass, :neutral_species, :n_alt_index, :polarizability, :q, :speciesbclist])
+    required = [:all_species, :molmass, :neutral_species, :n_alt_index, :polarizability, :q, :speciesbclist]
+    check_requirements(keys(GV), required)
    
     # Calculate as if it was a neutral - not using function above because this is faster than going into 
     # the function and using an if/else block since we know we'll always have vectors in this case.
@@ -1404,7 +1421,8 @@ function fluxcoefs(sp::Symbol, Kv, Dv, H0v; globvars...)
     =#
 
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:Tn, :Tp, :Hs_dict, :n_all_layers, :dz])
+    required = [:Tn, :Tp, :Hs_dict, :n_all_layers, :dz]
+    check_requirements(keys(GV), required)
 
     # Initialize arrays for downward (i to i-1) and upward (i to i+1) coefficients
     Dl = zeros(GV.n_all_layers)
@@ -1527,7 +1545,8 @@ function fluxcoefs(species_list::Vector, K, D, H0; globvars...)
     =#
 
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:Tn, :Tp, :Hs_dict, :n_all_layers, :dz])
+    required = [:Tn, :Tp, :Hs_dict, :n_all_layers, :dz]
+    check_requirements(keys(GV), required)
     
     # the return dictionary: Each species has 2 entries for every layer of the atmosphere.
     fluxcoef_dict = Dict{Symbol, Array{ftype_ncur}}([s=>fill(0., GV.n_all_layers, 2) for s in species_list])
@@ -1540,7 +1559,6 @@ function fluxcoefs(species_list::Vector, K, D, H0; globvars...)
 
     return fluxcoef_dict
 end
-
 
 function Keddy(z::Vector, nt::Vector)
     #=
@@ -1582,8 +1600,9 @@ function update_diffusion_and_scaleH(species_list, atmdict::Dict{Symbol, Vector{
         H0: Dictionary of mean atmospheric scale height by altitude. Keys are "neutral" and "ion". 
     =#
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:all_species, :alt, :speciesbclist, :molmass, :neutral_species, :n_alt_index, :polarizability, :q,
-                                   :Tn, :Tp, :Tprof_for_diffusion])
+    required = [:all_species, :alt, :speciesbclist, :molmass, :neutral_species, :n_alt_index, :polarizability, :q,
+               :Tn, :Tp, :Tprof_for_diffusion]
+    check_requirements(keys(GV), required)
 
     ncur_with_bdys = ncur_with_boundary_layers(atmdict; GV.n_alt_index, GV.all_species)
     
@@ -1621,10 +1640,11 @@ function update_transport_coefficients(species_list, atmdict::Dict{Symbol, Vecto
     =#
 
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:all_species, :alt, :speciesbclist, :dz, :hot_H_network, :hot_H_rc_funcs, :hot_D_network, :hot_D_rc_funcs, 
-                                   :hot_H2_network, :hot_H2_rc_funcs, :hot_HD_network, :hot_HD_rc_funcs,  
-                                   :Hs_dict, :ion_species, :molmass, :neutral_species, :non_bdy_layers, :num_layers, :n_all_layers, :n_alt_index, 
-                                   :polarizability, :q, :Tn, :Ti, :Te, :Tp, :Tprof_for_diffusion, :transport_species, :zmax])
+    required = [:all_species, :alt, :speciesbclist, :dz, :hot_H_network, :hot_H_rc_funcs, :hot_D_network, :hot_D_rc_funcs, 
+               :hot_H2_network, :hot_H2_rc_funcs, :hot_HD_network, :hot_HD_rc_funcs,  
+               :Hs_dict, :ion_species, :molmass, :neutral_species, :non_bdy_layers, :num_layers, :n_all_layers, :n_alt_index, 
+               :polarizability, :q, :Tn, :Ti, :Te, :Tp, :Tprof_for_diffusion, :transport_species, :zmax]
+    check_requirements(keys(GV), required)
     
     # Update the diffusion coefficients and scale heights
     K_eddy_arr, H0_dict, Dcoef_dict = update_diffusion_and_scaleH(species_list, atmdict, D_coefs; globvars...)

@@ -13,17 +13,31 @@
 
 using DoubleFloats
 
+# **************************************************************************** #
+#                                                                              #
+#                       Pathnames and folder locations                         #
+#                                                                              #
+# **************************************************************************** #
+
 const code_dir = "$(@__DIR__)/"
-# const extra_plots_dir = code_dir*"../Auxiliary plots/"
 const results_dir = code_dir*"../Results-Paper3/"
 const xsecfolder = code_dir*"uvxsect/";
 
-# Float types for calculations =================================================
+# **************************************************************************** #
+#                                                                              #
+#                                 Float types                                  #
+#                                                                              #
+# **************************************************************************** #
 # needed by both Photochemistry.jl and converge_new_file so it has to go here
+# This can be changed to Double64 to improve precision of calculations, but usually shouldn't be needed
 ftype_ncur = Float64 #Double64 #  used to store n_current values
 ftype_chem = Float64 #Double64 #  used to compute chemical reaction rates and chemical jacobian
 
-# Altitude grid specifications =================================================
+# **************************************************************************** #
+#                                                                              #
+#                  Altitude specifications - rarely changed                    #
+#                                                                              #
+# **************************************************************************** #
 const max_alt = 250e5
 const dz = 2e5
 const alt = convert(Array, (0:dz:max_alt))
@@ -37,10 +51,20 @@ const zmin = alt[1]
 const zmax = alt[end];
 const n_alt_index=Dict([z=>clamp((i-1),1, num_layers) for (i, z) in enumerate(alt)])
 
-# water altitude stuff 
 const hygropause_alt = 40e5
 
-# Common plot specifications =======================================================
+# **************************************************************************** #
+#                                                                              #
+#                                   STYLE                                      #
+#                                                                              #
+# **************************************************************************** #
+
+# Sans-serif font to use 
+sansserif_choice = "Louis George Caf?"
+
+# Monospace font to use
+monospace_choice = "FreeMono"
+
 const speciescolor = Dict( # PRIMARY NEUTRALS + IONS
                     :CO2 =>"#000000", :CO2pl=>"#000000",
                     :CO =>"#ff6600", :COpl=>"#ff6600",
@@ -86,7 +110,11 @@ const speciescolor = Dict( # PRIMARY NEUTRALS + IONS
 
 const medgray = "#444444"
 
-# Crosssection filenames ======================================================
+# **************************************************************************** #
+#                                                                              #
+#                       Crosssection filenames                                 #
+#                                                                              #
+# **************************************************************************** #
 
 
 const photochem_data_files = Dict(:CO2=>Dict("main"=>"CO2.dat"), 
@@ -103,6 +131,6 @@ const photochem_data_files = Dict(:CO2=>Dict("main"=>"CO2.dat"),
 
 if photochem_data_files[:HDO]["main"] == "h2oavgtbl.dat" 
     for i in 1:10
-        println("WARNING!!! WARNING!!! HDO CROSS SECTIONS = H2O CROSS SECTIONS! DON'T FORGET TO CHANGE THIS BACK AFTER FINISHING THE RUN!")
+        println("WARNING: HDO CROSS SECTIONS = H2O CROSS SECTIONS! DON'T FORGET TO CHANGE THIS BACK AFTER FINISHING THE RUN!")
     end
 end

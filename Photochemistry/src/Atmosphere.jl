@@ -45,7 +45,8 @@ function column_density_species(atmdict, sp; start_alt=0., end_alt=250e5, globva
     Returns the column density of species sp in atmosphere atmdict between the two altitudes (inclusive).
     =#
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:n_alt_index, :dz])
+    required = [:n_alt_index, :dz]
+    check_requirements(keys(GV), required)
 
     return column_density(atmdict[sp]; start_alt=n_alt_index[start_alt], end_alt=n_alt_index[end_alt])
 end 
@@ -60,7 +61,8 @@ function electron_density(atmdict; globvars...)
         electron density array by altitude
     =#
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:e_profile_type, :ion_species, :non_bdy_layers])
+    required = [:e_profile_type, :ion_species, :non_bdy_layers]
+    check_requirements(keys(GV), required)
 
     if GV.e_profile_type=="constant"
         E = [1e5 for i in GV.non_bdy_layers]
@@ -87,7 +89,8 @@ function find_exobase(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}; ret
     =#
 
     GV = values(globvars)
-    @assert all(x->x in keys(GV),  [:non_bdy_layers, :all_species, :Tn, :molmass, :alt, :collision_xsect, :n_alt_index, :zmax])
+    required =  [:non_bdy_layers, :all_species, :Tn, :molmass, :alt, :collision_xsect, :n_alt_index, :zmax]
+    check_requirements(keys(GV), required)
 
     H_s = scaleH(GV.non_bdy_layers, sp, GV.Tn[2:end-1]; globvars...)
     mfp_sp = 1 ./ (GV.collision_xsect[sp] .* n_tot(atmdict; GV.all_species, GV.n_alt_index))
@@ -114,7 +117,8 @@ function meanmass(atmdict::Dict{Symbol, Vector{ftype_ncur}}, z; globvars...)
     return: mean molecular mass in amu
     =#
     GV = values(globvars)
-    @assert all(x->x in keys(GV),  [:all_species, :molmass, :n_alt_index])
+    required =  [:all_species, :molmass, :n_alt_index]
+    check_requirements(keys(GV), required)
 
     counted_species = setdiff(GV.all_species, ignore)
 
@@ -137,7 +141,8 @@ function meanmass(atmdict::Dict{Symbol, Vector{ftype_ncur}}; ignore=[], globvars
     =#
 
     GV = values(globvars)
-    @assert all(x->x in keys(GV),  [:all_species, :molmass, :n_alt_index])
+    required = [:all_species, :molmass, :n_alt_index]
+    check_requirements(keys(GV), required)
 
     counted_species = setdiff(GV.all_species, ignore)
 
@@ -183,7 +188,8 @@ function ncur_with_boundary_layers(atmdict_no_bdys::Dict{Symbol, Vector{ftype_nc
                        i.e. only num_layers rows.
     =#
     GV = values(globvars)
-    @assert all(x->x in keys(GV),  [:n_alt_index, :all_species])
+    required =  [:n_alt_index, :all_species]
+    check_requirements(keys(GV), required)
 
     # This gets a sorted list of the clamped indices, so it's [1, 1, 2, 3...end-1, end, end].
     clamped_n_alt_index = sort(collect(values(GV.n_alt_index)))
@@ -209,7 +215,8 @@ function n_tot(atmdict::Dict{Symbol, Vector{ftype_ncur}}, z; ignore=[], globvars
         Density of the atmosphere at altitude z
     =#
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:n_alt_index, :all_species])
+    required = [:n_alt_index, :all_species]
+    check_requirements(keys(GV), required)
 
     counted_species = setdiff(GV.all_species, ignore)
 
@@ -230,7 +237,8 @@ function n_tot(atmdict::Dict{Symbol, Vector{ftype_ncur}}; ignore=[], globvars...
     This function is agnostic as to the number of atmospheric layers. it collects it directly from atmdict.
     =#
     GV = values(globvars)
-    @assert all(x->x in keys(GV),  [:all_species])
+    required =  [:all_species]
+    check_requirements(keys(GV), required)
 
     counted_species = setdiff(GV.all_species, ignore)
     ndensities = zeros(length(counted_species), length(atmdict[collect(keys(atmdict))[1]]))
@@ -252,7 +260,8 @@ function optical_depth(n_cur_densities; globvars...)
     =#
     
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:num_layers, :Jratelist, :absorber, :crosssection, :dz])
+    required = [:num_layers, :Jratelist, :absorber, :crosssection, :dz]
+    check_requirements(keys(GV), required)
     
     nlambda = 2000
     
@@ -318,7 +327,8 @@ function scaleH(z, sp::Symbol, T; globvars...)
         species-specific scale height at all altitudes (in cm)
     =#  
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:molmass])
+    required = [:molmass]
+    check_requirements(keys(GV), required)
 
     return @. kB*T/(GV.molmass[sp]*mH*marsM*bigG)*(((z+radiusM))^2)
 end
@@ -334,7 +344,8 @@ function scaleH(atmdict::Dict{Symbol, Vector{ftype_ncur}}, T::Vector; ignore=[],
     =#
 
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:all_species, :alt, :molmass, :n_alt_index])
+    required = [:all_species, :alt, :molmass, :n_alt_index]
+    check_requirements(keys(GV), required)
 
     counted_species = setdiff(GV.all_species, ignore)
 

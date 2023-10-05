@@ -65,13 +65,8 @@ t4 = time()
 #                              PLOT STYLING                                    #
 #                                                                              #
 # **************************************************************************** #
-rcParams = PyCall.PyDict(matplotlib."rcParams")
-rcParams["font.sans-serif"] = ["Louis George Caf?"]
-rcParams["font.monospace"] = ["FreeMono"]
-rcParams["font.size"] = 22
-rcParams["axes.labelsize"]= 24
-rcParams["xtick.labelsize"] = 22
-rcParams["ytick.labelsize"] = 22
+
+set_rc_params(sansserif=sansserif_choice, monospace=monospace_choice)
 
 # **************************************************************************** #
 #                                                                              #
@@ -153,7 +148,6 @@ function evolve_atmosphere(atm_init::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_s
     push!(PARAMETERS_SOLVER, ("SYS_SIZE", length(nstart)))
     push!(PARAMETERS_GEN, ("T_I", tspan[1]))
     push!(PARAMETERS_GEN, ("T_F", tspan[2]))
-    
     
     write_time_stuff = ["\nTIMING",
                         "Start time: $(Dates.format(now(), "yyyy-mm-dd at HH:MM:SS"))"]
@@ -520,7 +514,7 @@ function converge(n_current::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_start, lo
         # Reset iters
         iters=0
 
-        # LINEAR TIMESTEPS fur human-scale time ---------------------------------------------------------------------------------
+        # LINEAR TIMESTEPS for human-scale time --------------------------------------------------------------------------------- #
         while (total_time < GV.season_length_in_sec)
             iters += 1
             println("$(total_time) + $(linear_timestep) = new total time $(total_time+linear_timestep)")
@@ -817,12 +811,6 @@ function next_timestep(nstart, params, t, dt; reltol=1e-2, abstol=1e-12, verbose
             if verbose==true
                 println("max(n_relerr) = $(max(n_relerr[.!check_n_abserr]...))")
             end
-
-            # TROUBLESHOOTING - what's going on at the index where the maximum occurs?
-            # imax_nrel = argmax(n_relerr[.!check_n_abserr])
-            # println("nthis[imax]: $(nthis[.!check_n_abserr][imax_nrel])")
-            # println("nold[imax]: $(nold[.!check_n_abserr][imax_nrel])")
-            # println("dndt[imax]: $(dndt[.!check_n_abserr][imax_nrel])")
             
             check_n_relerr = n_relerr .< reltol
 
@@ -1143,7 +1131,6 @@ end
 if update_water_profile
     println("Seasonal modification of water profile")
     if water_case!="standard"
-        
         if water_loc=="loweratmo"
 
             # Recalculate the initialization fraction for H2O 

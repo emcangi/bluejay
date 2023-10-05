@@ -7,6 +7,18 @@
 #                          Standard, miscellaneous functions                   #
 #==============================================================================#
 
+function check_requirements(supplied, required) 
+    #=
+    Used with the global variable lists, this function checks that all of "required" 
+    are also in "supplied". If not, it tells the user which were missing.
+    =#
+    try
+        @assert all(x->x in supplied, required)
+    catch AssertionError
+        throw("AssertionError: missing the following globvars $(setdiff(required, supplied))")
+    end
+end
+
 function deletefirst(A, v)
     #=
     returns: list A with its first element equal to v removed. Used to make the derivative for 

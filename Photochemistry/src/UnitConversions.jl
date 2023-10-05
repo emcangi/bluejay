@@ -96,7 +96,8 @@ function prum_to_ppm(sp, prum, atmdict; globvars...)
 
 
     GV = values(globvars)
-    @assert all(x->x in keys(GV),  [:molmass, :all_species])
+    required =  [:molmass, :all_species]
+    check_requirements(keys(GV), required)
 
     colabund = colabund_from_prum(sp, prum; globvars...)
     nt_sum = sum(n_tot(atmdict; GV.all_species) ) * dz # get total inventory of whole atmosphere, flat
