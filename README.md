@@ -55,25 +55,26 @@ The Photochemistry module contains several submodules:
 **Initial steps**:
 - Ensure that the root folder contains the `Photochemistry` folder, the `uvxsect` folder, and the running scripts:
   - `converge_new_file.jl`
-  - `CUSTOMIZATIONS.jl`: Some basic model parameters that don't change much, as well as names of photochemical cross section data files.
+  - `CUSTOMIZATIONS.jl`: Some basic model parameters that don't change much. Importantly, the paths to folders where output will be stored are here.
   - `PARAMETERS.jl`: Parameters that the user can change before running the model. 
   - `CONSTANTS.jl`: Global constants. Only needs to be changed if changing the planet.
 - Ensure the root folder also contains critical inputs:
   - `REACTION_NETWORK.jl`, reaction rate data for the chemical network
   - `INITIAL_GUESS.jl`, an initial guess for species densities by altitude
-- Change the value of `results_dir` to the names of folders you would like to use for the results output.
+- In CUSTOIMZATIONS.jl, change the value of `results_dir` to the names of folders you would like to use for the results output.
 
 **If modeling a new planet**:
-1. Change constants in `CONSTANTS.jl`
-2. Run `modify_rxn_spreadsheet` (from the `ReactionNetwork.jl` submodule) at the command line
+1. Change constants in `CONSTANTS.jl` for the planet in question. If you change any variable names, make sure to Ctrl-F replace them all submodules of Photochemistry. 
+2. Use `scale_solar_spectrum.py` (Python, not Julia) to scale the solar min/mean/max spectra to your chosen planet. If using for exoplanets, please provide your own solar spectrum in final units of photons/s/cm^2/nm.
+3. Run `modify_rxn_spreadsheet` (from the `ReactionNetwork.jl` submodule) at the command line so that enthalpies of reaction will be re-calculated and saved to a new REACTION_NETWORK spreadsheet. WARNING: If you don't do this, non-thermal escape fluxes will NOT be reliable!
 
 **Running the model**:
-1. Modify `PARAMETERS.jl` to your chosen conditions for the simulation. Note: You may need to modify the `Temperature.jl` and `Water.jl` modules in nontrivial ways.
+1. Modify `PARAMETERS.jl` to your chosen conditions for the simulation. Note: You may need to modify the `Temperature.jl` and `Water.jl` modules in nontrivial ways; this is just the nature of the beast.
 2. At the command line, navigate to the model root folder and run `julia converge_new_file.jl`. 
 
 ## Credits
 
-The core of Jay was originally written by <a href="https://github.com/planetarymike">Michael Chaffin</a> under <a href="https://github.com/planetarymike/chaffin_natgeo_mars_photochemistry">this repo</a>. It was expanded to include deuterium chemistry by Eryn Cangi in <a href="https://github.com/emcangi/dh_fractionation">this iteration of the model</a>. 
+The core of bluejay was originally written by <a href="https://github.com/planetarymike">Michael Chaffin</a> under <a href="https://github.com/planetarymike/chaffin_natgeo_mars_photochemistry">this repo</a>. It was expanded to include deuterium chemistry by Eryn Cangi in <a href="https://github.com/emcangi/dh_fractionation">this iteration of the model</a>. 
 
 ## Citing and usage
 
@@ -83,7 +84,7 @@ You may fork and use or expand this model for your own research purposes. Any us
 @misc{Cangi2022,
   author       = {Eryn M Cangi and
   Mike Chaffin},
-  title        = {emcangi/dh\_ions: Jay},
+  title        = {emcangi/dh\_ions: bluejay},
   month        = dec,
   year         = 2022, 
   publisher    = {Zenodo},
