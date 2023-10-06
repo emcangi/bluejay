@@ -24,8 +24,8 @@ using DataFrames
 
 # Basic model parameters
 const optional_logging_note = "test" # Brief summary of simulation goal
-const seasonal_cycle = false # for paper 3
-const results_version = "v0"  # Helps keep track of attempts if you need to keep changing things
+const seasonal_cycle = true # for paper 3
+const results_version = "v99"  # Helps keep track of attempts if you need to keep changing things
 
 # Input files ---------------------------------------------------- #
 const initial_atm_file = "INITIAL_GUESS.h5" 
@@ -44,7 +44,7 @@ const solarcyc = "mean"# "equinox"
 # SOLAR CYCLE OPTIONS: "mean" # "max" # "min" # Defined for mean AU. (solar spectra varies; hand collected by Eryn)
 
 # TEMPERATURE CASES --------------------------------------------- #
-const tempcyc = "mean" # "max" # "min"#  
+const tempcyc = "max" # "mean" # "min"#  
 # Also an option which will set all temperatures to the same value: "isothermal" 
 
 # WATER CASES --------------------------------------------------- #
@@ -166,7 +166,7 @@ const Texo_opts = Dict("min"=>175., "mean"=>225., "max"=>275.,
 
 if seasonal_cycle == true
     println("Simulating an annual cycle")
-    const controltemps = [230., 130., Texo_opts[mean]]
+    const controltemps = [230., 130., Texo_opts["mean"]]
 
     if season_exp=="temperature"
         const controltemps[3] =  Texo_opts[tempcyc]
@@ -224,7 +224,11 @@ const speciesbclist=Dict(:CO2=>Dict("n"=>[2.1e17, NaN], "f"=>[NaN, 0.]),
 # **************************************************************************** #
 
 if seasonal_cycle == true
-    const solarfile = "marssolarphotonflux_$(solarcyc).dat"
+    if solarcyc in ["equinox", "aphelion", "perihelion"]
+        const solarfile = "marssolarphotonflux_$(solarcyc).dat"
+    else 
+        const solarfile = "marssolarphotonflux_solar$(solarcyc).dat"
+    end
     extra_str = seasonal_cycle==true ? "cycle" : "eq"
 
     if season_exp=="temperature"
