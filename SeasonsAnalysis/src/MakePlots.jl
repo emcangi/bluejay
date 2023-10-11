@@ -481,7 +481,7 @@ function plot_limiting_flux(atm_states, atm_keys, Tn_all; savepath=nothing, simp
     max_D_flux = 3e4#effusion_velocity(275, 2; zmax) * atm_states["highT"][:D][end]
     min_D_flux = 1e4#effusion_velocity(175, 2; zmax) * atm_states["lowT"][:D][end]
 
-    set_rc_params(fs=18, axlab=20, xtls=18, ytls=18, sansserif="Louis George Caf?", monospace="FreeMono")
+    set_rc_params(fs=18, axlab=20, xtls=18, ytls=18, sansserif=sansserif_choice, monospace=monospace_choice)
 
     fig, ax = subplots(figsize=(8,6))
     plot_bg(ax)
@@ -561,7 +561,7 @@ function make_3panel_figure(atms, colors, exptype, atm_state_order; fn="3panel",
     GV = values(globvars)
 
     
-    set_rc_params(fs=18, axlab=20, xtls=18, ytls=18, sansserif="Louis George Caf?", monospace="FreeMono")
+    set_rc_params(fs=18, axlab=20, xtls=18, ytls=18, sansserif=sansserif_choice, monospace=monospace_choice)
     
     fig, ax = subplots(1, 3, sharey=shy, figsize=figsz)
     subplots_adjust(wspace=0.1)
@@ -634,7 +634,7 @@ function DH_6panel(atmdict_list, savepath; lines_mean=["Solar minimum", "Solar m
     required =  [:tempcols]
     check_requirements(keys(GV), required)
     
-    set_rc_params(fs=14, axlab=16, xtls=14, ytls=14, sansserif="Louis George Caf?", monospace="FreeMono")
+    set_rc_params(fs=14, axlab=16, xtls=14, ytls=14, sansserif=sansserif_choice, monospace=monospace_choice)
 
     # get D/H in water
     DH_toplot = Array{Array}(undef, 2, 3)
@@ -762,7 +762,7 @@ function DH_of_escaping_vs_time(thefiles, IVAR_array, change_indices; show_all_f
     DH_tn = all_esc_df."Dtn" ./ all_esc_df."Htn" 
 
     # plot
-    set_rc_params(fs=18, axlab=20, xtls=18, ytls=18, sansserif="Louis George Caf?", monospace="FreeMono")
+    set_rc_params(fs=18, axlab=20, xtls=18, ytls=18, sansserif=sansserif_choice, monospace=monospace_choice)
     
     gridspec = matplotlib.gridspec
     fig = figure(figsize=(8, 6), constrained_layout=true)
@@ -847,7 +847,7 @@ function f_vs_time(thefiles, IVAR_array, change_indices; fn="f_vs_time", ivar_la
     check_requirements(keys(GV), required)
     
     # Setup figure
-    set_rc_params(fs=18, axlab=20, xtls=18, ytls=18, sansserif="Louis George Caf?", monospace="FreeMono")
+    set_rc_params(fs=18, axlab=20, xtls=18, ytls=18, sansserif=sansserif_choice, monospace=monospace_choice)
     
     gridspec = matplotlib.gridspec
     fig = figure(figsize=(8, 6), constrained_layout=true)
@@ -944,7 +944,7 @@ function flux_vs_time(thefiles, IVAR_array, change_indices, sp; fn="flux_vs_time
     stages=["Spring", "Summer", "Autumn", "Winter", "Spring"]
 
     # Setup figure
-    set_rc_params(fs=18, axlab=20, xtls=18, ytls=18, sansserif="Louis George Caf?", monospace="FreeMono")
+    set_rc_params(fs=18, axlab=20, xtls=18, ytls=18, sansserif=sansserif_choice, monospace=monospace_choice)
 
     gridspec = matplotlib.gridspec
     fig = figure(figsize=(8, 6), constrained_layout=true)
@@ -1216,7 +1216,7 @@ function seasonal_cycling_figure_skeleton(thefiles, IVAR_array, A, change_indice
     =#
       
     # Setup figure -----------------------------
-    set_rc_params(fs=18, axlab=20, xtls=18, ytls=18, sansserif="Louis George Caf?", monospace="FreeMono")
+    set_rc_params(fs=18, axlab=20, xtls=18, ytls=18, sansserif=sansserif_choice, monospace=monospace_choice)
 
     gridspec = matplotlib.gridspec
     fig = figure(figsize=(8, 16), constrained_layout=true)
