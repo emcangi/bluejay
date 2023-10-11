@@ -86,8 +86,6 @@ For citations, please use the "Cite this repository" button on Github.
 
 Click here to access the Zenodo DOI. This badge will display the most current release's DOI: [![DOI](https://zenodo.org/badge/285645653.svg)](https://zenodo.org/badge/latestdoi/285645653)
   
-If you do not use LaTeX, please use the above information and adapt it to your preferred style.
-
 ## Getting help and contributing
 
 This model was developed as part of my (Eryn's) PhD, so some inefficiencies likely remain. If you require any help in using the model, encounter bugs, or would like to contribute, please open a Github issue.
