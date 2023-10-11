@@ -1,4 +1,4 @@
-cff-version: 1.1.0
+cff-version: 1.2.0
 message: "If you use this software, please cite it as below. For substantial use contributing to a publication, please consider offering coauthorship to Eryn Cangi and Mike Chaffin."
 authors:
   - family-names: Cangi
@@ -7,7 +7,7 @@ authors:
   - family-names: Chaffin
     given-names: Michael
     orcid: https://orcid.org/0000-0002-1939-4797
-title: emcangi/bluejay: bluejay: atmospheric photochemistry in Julia
-version: v1.4
+title: "bluejay: atmospheric photochemistry in Julia"
+version: 1.4
 date-released: 2023-10-11
-url: https://doi.org/10.5281/zenodo.8432604
+url: "https://doi.org/10.5281/zenodo.8432604"
