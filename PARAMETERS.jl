@@ -39,8 +39,8 @@ const season_exp = "temperature" # "water" #  "insolation"#
 
 # SOLAR CASE ---------------------------------------------------- #
 const SZA = 60  # Puts the model at dayside mean
-const solarcyc = "mean"# "equinox"
-# AU OPTIONS: "perihelion" # "aphelion" #  "equinox" # Defined for solar mean. TODO: Program the solar spectrum scaling in Julia and set AU as a parameter
+const solarcyc = "mean"# 
+# AU OPTIONS: "perihelion" # "aphelion" #  "meandist" # Defined for solar mean. TODO: Program the solar spectrum scaling in Julia and set AU as a parameter
 # SOLAR CYCLE OPTIONS: "mean" # "max" # "min" # Defined for mean AU. (solar spectra varies; hand collected by Eryn)
 
 # TEMPERATURE CASES --------------------------------------------- #
