@@ -1,3 +1,9 @@
+# **************************************************************************** #
+#                                                                              #
+#                               SUPPORT FUNCTIONS                              #
+#                                                                              #
+# **************************************************************************** #
+
 function esc_pct_of_total_col(flux, col_without_flux)
     #=
     Given an escape flux and column total (not including the flux), 
@@ -22,9 +28,23 @@ function cyclical_color_array(;N=5, map="coolwarm")
     return colors
 end
 
+function parent_folders_from_full_path(list_of_full_paths)
+    #=
+    Given a list of full file pathnames, grab out the parent folders containing just the files.
+    =#
+    folder_pattern = r".+v\d\/"
+    file_pattern = r"/[a-z]+_.+\.h5"
+    thefolders = [String(match(folder_pattern, f).match) for f in list_of_full_paths]
+    return thefolders
+end
+
 function DH_of_escaping(df; t="")
     
     SMOW = 1.6e-4
+
+    thefolders = parent_folders_from_full_path(thefiles)
+    all_esc_df = get_escape_for_all_atmospheres(thefolders, thefiles)
+
     
     DH_t = (df_lookup(df, "EscapeType", "Thermal", "D") / df_lookup(df, "EscapeType", "Thermal", "H"))[1]
     DH_n = (df_lookup(df, "EscapeType", "Nonthermal", "D") / df_lookup(df, "EscapeType", "Nonthermal", "H"))[1]
@@ -53,6 +73,19 @@ function DH_of_escaping(df; t="")
     ax.set_title(t)
     
     show()
+end
+
+function draw_DH_lines(ax, multipliers; which="horizontal", smowcol="gray", DHfs=16)
+    smow = 1.6e-4
+    for m in multipliers
+        if which=="horizontal"
+            ax.axhline(m*smow, color=smowcol, linestyle=":", linewidth=1)
+            ax.text(1, m*smow, "$(m)x VSMOW", color=smowcol, fontsize=14)
+        else
+            ax.axvline(m*smow, color=smowcol, linestyle=":", linewidth=1)
+            ax.text(m*smow, 1, "$(m)x VSMOW", color=smowcol, fontsize=DHfs, rotation=90, ha="right")
+        end
+    end
 end
 
 function generate_indvar_vs_time_array(filelist; val_order=[225 275 225 175 225])

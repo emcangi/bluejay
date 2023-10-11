@@ -1,9 +1,17 @@
 
-# Calls to run plots
+# **************************************************************************** #
+#                                                                              #
+#                             PLOTTING FUNCTIONS                               #
+#                                                                              #
+# **************************************************************************** #
+
+#===============================================================================#
+#                        Basic model mechanical functions                       #
+#===============================================================================#
 
 function make_equilibrium_plots_temp(case_folders; savepath=nothing, extrafn="", globvars...)
     #=
-    case_folders must be in order of lowT, midT, highT!
+    Not used
     =#
     
     GV = values(globvars)
@@ -51,16 +59,36 @@ end
 
 function make_seasonal_cycle_plots_temp(season_folders; mainalt=250, savepath=nothing, resolution="high", extrafn="", 
                                                         make_main_cycle_plot=true, make_frac_plot=false, make_flux_plot=false, make_3panel=false,
-                                                        make_6panel=false, make_reincorp_cycle_plot=false, make_flux_and_pct_plot=false, plot_pct=false, 
+                                                        make_6panel=false, make_reincorp_cycle_plot=false, make_flux_and_pct_plot=false, 
+                                                        make_DH_of_escaping=false, plot_pct=false, 
                                                         flux_colormap="plasma", show_all_flux=false,
                                                         alt2=200, alt3=250, subplot_lbl_loc=[0, 0.95], subplot_lbl_sz=20, globvars...)
     #=
     Does all the work to load files and make plots for temp seasonal cycle. Made because we have two cases, one standard and one with 
     identical crosssections for HDO and H2O.
-    Input:
+     Input:
         season_folders: a list of folder paths containing the simulation results, IN SEASON ORDER.
-        lowres: whether to make a low resolution plot so it runs faster.
-        plot_water_profile: if true, plots the vertical profile vs. time for water. If false, plots pr um.
+    Optional:
+        mainalt: main altitude to plot for
+        savepath: place to save the figures
+        resolution: typically always high, can be done in low res and select fewer foldres. not needed since I figured out I can save the escape values
+                    in a separate XLSX (I'm smart)
+        plot_water_profile: if true, plots water vertical profile instead of pr um (typically true)
+        spclbl_x, spclbl_loc, subplot_lbl_loc, subplot_lbl_sz: described elsewhere
+        alt_legend_loc: location for legend on alttitude axis
+        flloc: described elsewhere
+        extrafn: more to put in the filename
+        plot_pct: described elsewhere
+        flux_colormap: colormap to use when plotting flux instead of other stuff
+        plot_type: used to specify heatmap when plotting flux
+        show_all_flux: if true, will print thermal and nonthermal flux lines.
+        make_main_cycle_plot: make plot showing escape, densities, and D/H over time.
+        make_frac_plot: same thing but shows fractionation factor.
+        make_flux_and_pct: same thing as main_cycle but with an extra axis for percent of total column escape
+        make_flux_plot: plot showing vertical flux in atmosphere
+        make_3panel: make results plot with altitude as y axis and time as seprate lines.
+        make_6panel: plot with D/H ratio in 6 different species
+        make_DH_of_escaping: show D/H ratio of escaping atoms over time
     =#
     
     GV = values(globvars)
@@ -135,6 +163,16 @@ function make_seasonal_cycle_plots_temp(season_folders; mainalt=250, savepath=no
         println("$(Dates.format(now(), "(HH:MM:SS)")) Done")
         flush(stdout)
     end 
+
+    # D/H of escaping atoms 
+    if make_DH_of_escaping
+        println("$(Dates.format(now(), "(HH:MM:SS)")) Start making D/H of escaping figure")
+        flush(stdout)
+        DH_of_escaping_vs_time(state_files, temp_vs_time, change_indices; fn="DH_escaping_vs_time$(resolution)res$(extrafn)", 
+                                                                           show_all_flux=show_all_flux, savepath=savepath, globvars...)
+        println("$(Dates.format(now(), "(HH:MM:SS)")) Done")
+        flush(stdout)
+    end
     
     # Temperature, flux, reincorporation, and flux/reincorp
     if make_reincorp_cycle_plot
@@ -159,7 +197,7 @@ end
 function make_equilibrium_plots_water(case_folders; extrafn="", water_where="mesospheric", proflabels=[L"10.38 pr $\mu$m", L"10.5 pr $\mu$m", L"10.94 pr $\mu$m"], 
                                       spclbl_x=[0.8, 0.45], spclbl_loc=[0.75 0.25; 0.35 0.25], globvars...)
     #=,
-    case_folders must be in order of low, mean, high!
+    Not used.
     =#
     
     GV = values(globvars)
@@ -214,14 +252,34 @@ function make_seasonal_cycle_plots_water(season_folders; mainalt=250, savepath=n
                                          plot_pct=false, flux_colormap="plasma", plot_type="heatmap", show_all_flux=false,
                                          # Which plots to make on this call
                                          make_main_cycle_plot=true, make_frac_plot=false, make_flux_and_pct=false, make_flux_plot=false, 
-                                         make_3panel=true, make_6panel=true, globvars...)
+                                         make_3panel=true, make_6panel=true, make_DH_of_escaping=false, globvars...)
     #=
     Does all the work to load files and make plots for water seasonal cycle. Made because we have two cases, one standard and one with 
     identical crosssections for HDO and H2O.
+
     Input:
         season_folders: a list of folder paths containing the simulation results, IN SEASON ORDER.
-        lowres: whether to make a low resolution plot so it runs faster.
-        plot_water_profile: if true, plots the vertical profile vs. time for water. If false, plots pr um.
+    Optional:
+        mainalt: main altitude to plot for
+        savepath: place to save the figures
+        resolution: typically always high, can be done in low res and select fewer foldres. not needed since I figured out I can save the escape values
+                    in a separate XLSX (I'm smart)
+        plot_water_profile: if true, plots water vertical profile instead of pr um (typically true)
+        spclbl_x, spclbl_loc, subplot_lbl_loc, subplot_lbl_sz: described elsewhere
+        alt_legend_loc: location for legend on alttitude axis
+        flloc: described elsewhere
+        extrafn: more to put in the filename
+        plot_pct: described elsewhere
+        flux_colormap: colormap to use when plotting flux instead of other stuff
+        plot_type: used to specify heatmap when plotting flux
+        show_all_flux: if true, will print thermal and nonthermal flux lines.
+        make_main_cycle_plot: make plot showing escape, densities, and D/H over time.
+        make_frac_plot: same thing but shows fractionation factor.
+        make_flux_and_pct: same thing as main_cycle but with an extra axis for percent of total column escape
+        make_flux_plot: plot showing vertical flux in atmosphere
+        make_3panel: make results plot with altitude as y axis and time as seprate lines.
+        make_6panel: plot with D/H ratio in 6 different species
+        make_DH_of_escaping: show D/H ratio of escaping atoms over time
     =#
     
     GV = values(globvars)
@@ -235,7 +293,7 @@ function make_seasonal_cycle_plots_water(season_folders; mainalt=250, savepath=n
     # Define some colors
     watercolors = get_colors(3, "Blues"; strt=0.4, stp=1) # starts with lighter one and progresses to darker. 
     watercols_dict = Dict("low"=>watercolors[1, :], "mean"=>watercolors[2, :], "high"=>watercolors[3, :])
-    
+
     # 3 panel plot
     if make_3panel
         make_3panel_figure([atm_states["low"], atm_states["mean2"], atm_states["high"]], watercols_dict, "water", ["low", "mean", "high"]; 
@@ -250,7 +308,7 @@ function make_seasonal_cycle_plots_water(season_folders; mainalt=250, savepath=n
                        lloc=[0.35, 0.4],
                        lines_mean=["Dry", "Mean", "Wet"], subplot_lbl_loc=subplot_lbl_loc, tempcols=watercolors)
     end
-    
+
     if plot_water_profile==true
         # Fill in the water profiles into an array for plotting
         H2O_profile_array = Array{Float64}(undef, GV.num_layers, length(state_files))
@@ -318,6 +376,16 @@ function make_seasonal_cycle_plots_water(season_folders; mainalt=250, savepath=n
         println("$(Dates.format(now(), "(HH:MM:SS)")) Done")
         flush(stdout)
     end
+
+    # D/H of escaping atoms 
+    if make_DH_of_escaping
+        println("$(Dates.format(now(), "(HH:MM:SS)")) Start making D/H escaping figure")
+        flush(stdout)
+        DH_of_escaping_vs_time(state_files, water_to_plot, change_indices; fn="DH_escaping_vs_time$(resolution)res$(extrafn)", 
+                                                                           show_all_flux=show_all_flux, savepath=savepath, globvars...)
+        println("$(Dates.format(now(), "(HH:MM:SS)")) Done")
+        flush(stdout)
+    end
     
     # DO NOT USE
     if make_flux_and_pct
@@ -331,8 +399,13 @@ function make_seasonal_cycle_plots_water(season_folders; mainalt=250, savepath=n
 end
 
 function make_insolation_plots(case_folders; savepath=nothing, extrafn="", subplot_lbl_loc=[0.01, 0.92], subplot_lbl_sz=24, globvars...)
-    #=,
-    case_folders must be in order of low, mean, high!
+    #=
+    Make a few plots for insolation, but not many since it didn't produce interesting results
+
+    Inputs:
+        case_folders: folders containing model results for 3 cases. must be in order of low, med, high insolation
+    Optional:
+        idk they're all defined elsewhere in this file and I'm tired.
     =#
     
     GV = values(globvars)
@@ -353,33 +426,27 @@ function make_insolation_plots(case_folders; savepath=nothing, extrafn="", subpl
         atm_states[atm_keys[i]] = get_ncurrent(thefolder*"final_atmosphere.h5");
     end
     
-    # get escape
-    esc_df_peri = final_escape(case_folders[2], "final_atmosphere.h5"; globvars...)
-    esc_df_eq = final_escape(case_folders[3], "final_atmosphere.h5"; globvars...)
-    esc_df_ap = final_escape(case_folders[4], "final_atmosphere.h5"; globvars...)
-    
-    DH_of_escaping(esc_df_peri; t="Perihelion" )
-    DH_of_escaping(esc_df_eq; t="Equinox" )
-    DH_of_escaping(esc_df_ap; t="Aphelion" )
-    
     # 3 panel plot
     solcols = get_colors(3, "inferno"; stp=0.8)
     solcols_dict = Dict("ap"=>solcols[1, :], "eq"=>solcols[2, :], "peri"=>solcols[3, :])
 
     # println(keys(atm_states["equinox2"]))
-    make_3panel_figure([atm_states["aphelion"], atm_states["equinox2"], atm_states["perihelion"]], solcols_dict, "insolation", ["ap", "eq", "peri"]; shy=false, 
-                        esclbl="Total", titl="How insolation affects the density and D/H ratio of atomic H and D", fn="3_panel_insolation_cycle", savepath=savepath,  
+    make_3panel_figure([atm_states["aphelion"], atm_states["equinox2"], atm_states["perihelion"]], solcols_dict, "insolation", ["ap", "eq", "peri"]; 
+                        shy=false, fn="3_panel_insolation_cycle", savepath=savepath, panel1labels=["Aphelion", "Mean distance", "Perihelion"],
+                        line_lbl_x = 0.64,
                         subplot_lbl_loc, subplot_lbl_sz, globvars...)
     
     # 6 panel plot
     DH_6panel([atm_states["aphelion"], atm_states["equinox2"], atm_states["perihelion"]], savepath; fn="DH_profiles_vs_insolation", 
-                     lines_mean=["Aphelion", "Equinox", "Perihelion"], lloc=[0.4, 0.7], 
+                     lines_mean=["Aphelion", "Mean distance", "Perihelion"], lloc=[0.4, 0.7], 
                     tempcols=solcols, subplot_lbl_loc, subplot_lbl_sz)
 end
 
 function plot_limiting_flux(atm_states, atm_keys, Tn_all; savepath=nothing, simple=false, all_carriers=true, fnextra="", globvars...)
     #=
     Plots the limiting flux 
+
+    This is not a reasonable plot to use because limiting flux doesn't make sense to evalutae at all altitudes. Ask Roger Yelle why
     =#
     GV = values(globvars)
     required = [:all_species, :alt, :molmass, :n_alt_index, :non_bdy_layers, :plot_grid, :zmax]
@@ -462,19 +529,33 @@ end
 # Make figures ==============================================================================
 
 
-function make_3panel_figure(atms, colors, exptype, atm_state_order; fn="3panel", savepath=nothing, shy=true, initial_atms=nothing, folders=nothing, Hflux=nothing, Dflux=nothing, 
-                            esclbl="Atomic", titl="", panel1labels=["Low", "Mean", "High"], figsz=(20, 5),
-                            spclbl_x=[0.8, 0.45], spclbl_loc=[0.75 0.25; 0.35 0.25], prumx=0.01, lloc=(0, 0.4),
-                            specialH2=false, subplot_lbl_loc=[0.05, 0.9], subplot_lbl_sz=20,   globvars...)
+function make_3panel_figure(atms, colors, exptype, atm_state_order; fn="3panel", savepath=nothing, shy=true, initial_atms=nothing, 
+                            figsz=(20, 5),  specialH2=false, panel1labels=["Low", "Mean", "High"], line_lbl_x=0.01,
+                            spclbl_x=[0.8, 0.45], spclbl_loc=[0.75 0.25; 0.35 0.25], lloc=(0, 0.4),
+                            subplot_lbl_loc=[0.05, 0.9], subplot_lbl_sz=20,   globvars...)
     #=
     This makes the 3 panel figure which shows the inputs, the D/H vs. altitude, and the densities of H and D.
     
     Inputs:
         atms: list of atmospheric state dictionaries
         colors: dictionary where keys describe exobase state and entry is a 3-item array with RGB values
-        exptype: string, experiment type
-        shy: share y
-        initial_atms: used to fill in the water plots
+        exptype: string, experiment type; "temp" "water" or "insolation"
+        atm_state_order: ordering of the entries in atms, helps label things correctly.
+
+    Optional inputs:
+        fn: filename
+        savepath: path to save to 
+        shy: share y. i guess at one point I wanted it set to false???
+        initial_atms: optional initial atmospheric dictionaries, useful when plotting the water  modeling results.
+        figsz: figure size
+        specialH2: whether to show H2 in the density panel instead of H (yes if true)
+        panel1labels: line labels to print in the first panel showing the independent variable
+        line_lbl_x: x-coordinate to print the line labels in panel 1 
+        spclbl_x: x-coordinate to print the species names H2O and HDO in the water panel
+        spclbl_loc: location to print the labels for H and D in the density panel
+        lloc: location for legend
+        subplot_lbl_loc: where to print the subplot panel labels
+        subplot_lbl_sz: font size for said labels
     =#
     
     GV = values(globvars)
@@ -504,9 +585,9 @@ function make_3panel_figure(atms, colors, exptype, atm_state_order; fn="3panel",
     if exptype == "temp"
         make_temperature_panel(ax[1], GV.Tn_all, GV.Ti_all, GV.Te_all; GV.alt, tempcols=colors_3)
     elseif exptype=="water"
-        make_water_panel(ax[1], initial_atms, colors_3, panel1labels; spclbl_x=spclbl_x, prumx=prumx, globvars...)
+        make_water_panel(ax[1], initial_atms, colors_3, panel1labels; spclbl_x=spclbl_x, line_lbl_x=line_lbl_x, globvars...)
     elseif exptype=="insolation"
-        make_insolation_panel(ax[1], colors_3, ["Aphelion", "Equinox", "Perihelion"]; GV.speciesstyle)
+        make_insolation_panel(ax[1], colors_3, panel1labels; line_lbl_x, GV.speciesstyle)
     end
     
     # PANEL 2
@@ -514,7 +595,7 @@ function make_3panel_figure(atms, colors, exptype, atm_state_order; fn="3panel",
         ax[2].set_ylabel("Altitude (km)")
         subplots_adjust(wspace=0.2)
     end
-    # atm_state_order = ["mean", "hot", "mean", "cold", "mean"]
+
     DH_alt_profile_singlepanels(ax[2], atms, colors, atm_state_order;
                             heavysp=:D, lightsp=:H, wl=[0.29, 0.9], ol=[0.6, 0.5], lloc=lloc,
                             xlims=[1e-4, 1e-2], legendon=true)
@@ -525,8 +606,8 @@ function make_3panel_figure(atms, colors, exptype, atm_state_order; fn="3panel",
     show()
 end
 
-function DH_6panel(atmdict_list, savepath; lines_mean=["Solar minimum", "Solar mean", "Solar maximum"], 
-                        wl=[2.2e-4, 250], ol=[2.2e-3, 185], lloc=[0.3, 0.7], fn="DH_profiles", cutoff=[1 1 1; 1 1 n_alt_index[52e5]], 
+function DH_6panel(atmdict_list, savepath; lines_mean=["Solar minimum", "Solar mean", "Solar maximum"],  
+                        lloc=[0.3, 0.7], fn="DH_profiles", cutoff=[1 1 1; 1 1 n_alt_index[52e5]], 
                         subplot_lbl_loc=[0, 0.95], subplot_lbl_sz=20, globvars...)
     #= 
     Plots the D/H ratio in 6 different species vs. altitude for several atmospheres and saves it.
@@ -536,6 +617,14 @@ function DH_6panel(atmdict_list, savepath; lines_mean=["Solar minimum", "Solar m
         savepath: Where to save the plot
 
     Optional:
+        lines_mean: line labels 
+        lloc: location to draw the legend for the lines 
+        fn: Filename 
+        cutoff: altitude index below which not to plot. Useful because the HCO+ D/H ratios 
+                go crazy low down because of really small numbers dividing other small numbers. 
+                The shape is the shape of the final grid of plots.
+        subplot_lbl_loc: where to draw the subplot panel labels, in transform coords
+        subplot_lbl_sz: font size for these labels
 
     Output:
         A 6-panel plot of D/H ratio in different species.
@@ -587,13 +676,8 @@ function DH_6panel(atmdict_list, savepath; lines_mean=["Solar minimum", "Solar m
         a.set_xticklabels(["", "-4", "-3", "-2"])
         a.set_yticks(ticks=collect(0:50:zmax/1e5))
         a.tick_params(axis="x", which="both", bottom=true, top=true, labelbottom=true, labeltop=false)
-        # ax.set_title(titl)
-        smowcol = "gray"
         multiplier = [1, 2, 5, 10, 25, 50]
-        for m in multiplier
-            a.axvline(m*smow, color=smowcol, linestyle=":", linewidth=1)
-            a.text(m*smow, 1, "$(m)x VSMOW", color=smowcol, fontsize=12, rotation=90, ha="right")
-        end
+        draw_DH_lines(a, multiplier; DHfs=12, which="vertical")
 
     end
 
@@ -609,7 +693,7 @@ function DH_6panel(atmdict_list, savepath; lines_mean=["Solar minimum", "Solar m
                     plotme[1:cutoff[i, j]] .= 0
                 end
                 
-                ax[i, j].plot(plotme, plot_grid, zorder=10, color=GV.tempcols[sc, :])#, linewidth=lw[i]) # [cutoff:end]
+                ax[i, j].plot(plotme, plot_grid, zorder=10, color=GV.tempcols[sc, :])
                 
                 # Labels 
                 heavysp_str = string_to_latexstr(string(heavysp[i, j]); dollarsigns=false)
@@ -641,6 +725,98 @@ function DH_6panel(atmdict_list, savepath; lines_mean=["Solar minimum", "Solar m
     savefig(savepath*"/$(fn).png", bbox_inches="tight", dpi=300)
 end
 
+function DH_of_escaping_vs_time(thefiles, IVAR_array, change_indices; show_all_flux=false, lloc=nothing, fn="DH_escaping_vs_time", ivar_label="Temp. (K)", 
+                     savepath=nothing, colorbar_tix=collect(logrange(1e-10,1e-2,5)), subplot_lbl_loc=[-0.3,0.92], subplot_lbl_sz=24,
+                     ivar_cmap="RdBu", globvars...)
+
+    #=
+    Plots D/H of escaping atoms as a function of time
+
+    thefiles: list of final atmosphere files to use for each datapoint in the plot.
+    IVAR_array: array of values to plot for temperature cycling
+    change_indices: indices of IVAR_array at which the value changes (i.e., start of seasons)
+
+    Optional:
+    fn: Name of image file to save
+    ivar_label: y-axis label for the top panel of the plot, showing the independent variable. Temp. (K) or Water
+    savepath: path in which to save the image
+    colorbar_tix: ticks to assign to the colorbar for the independent variable plot (if water).
+    subplot_lbl_loc: axis-based coordinates in which to place subfigure labels like "a)", etc
+    subplot_lbl_sz: fontsize to use for said labels.
+    ivar_cmap: colormap to use for the colorbar, must be valid in matplotlib.
+    =#
+    
+    GV = values(globvars)
+
+    total_num_files = length(thefiles)
+    t = 1:total_num_files
+
+    # Collect escape info...
+    thefolders = parent_folders_from_full_path(thefiles)
+    all_esc_df = get_escape_for_all_atmospheres(thefolders, thefiles)
+
+    
+    # calculate D/H (total)
+    DH_t = all_esc_df."Dt" ./ all_esc_df."Ht"
+    DH_n = all_esc_df."Dn" ./ all_esc_df."Hn"
+    DH_tn = all_esc_df."Dtn" ./ all_esc_df."Htn" 
+
+    # plot
+    set_rc_params(fs=18, axlab=20, xtls=18, ytls=18, sansserif="Louis George Caf?", monospace="FreeMono")
+    
+    gridspec = matplotlib.gridspec
+    fig = figure(figsize=(8, 6), constrained_layout=true)
+    gs = gridspec.GridSpec(2, 1, figure=fig, height_ratios=[1, 2])
+    
+    IVax = subplot(gs.new_subplotspec((0, 0)))
+    DHax = subplot(gs.new_subplotspec((1, 0)))
+    setp(IVax.get_xticklabels(), visible=false)
+    
+    subplots_adjust(hspace=0.08)
+
+    # Independent variable axis
+    stages = set_up_independent_var_ax(IVax, thefiles, t, IVAR_array, ivar_label, ivar_cmap, colorbar_tix; thefig=fig, GV.alt)
+
+    # D/H axis
+    plot_bg(DHax)
+    culler = "purple"
+    DHax.plot(t, DH_tn, color=culler)
+
+    if show_all_flux
+        DHax.plot(t, DH_t, color=culler, linestyle="--")
+        DHax.plot(t, DH_n, color=culler, linestyle=":")
+
+        L2D = PyPlot.matplotlib.lines.Line2D
+        lines = [L2D([0], [0], color=culler), 
+                 L2D([0], [0], color=culler, linestyle="--"),
+                 L2D([0], [0], color=culler, linestyle=":")]  
+        DHax.legend(lines, ["total", "thermal", "nonthermal"], fontsize=14, loc=lloc)
+    end
+    
+    DHax.set_yscale("log")
+    
+    # D/H lines
+    multiplier = [0.01, 0.1, 1, 5, 10]
+    draw_DH_lines(DHax, multiplier)
+
+    axlist = [IVax, DHax]
+    for i in 1:length(axlist)
+        axlist[i].xaxis.set_major_locator(matplotlib.ticker.FixedLocator(change_indices))
+        axlist[i].set_xlim(change_indices[1]-2, total_num_files+2)
+        axlist[i].text(subplot_lbl_loc..., "$(Unicode.julia_chartransform('a') + (i-1))"*")", fontsize=subplot_lbl_sz, transform=axlist[i].transAxes)
+    end
+    format_time_axis(DHax, change_indices, length(thefiles), stages)
+    
+    DHax.set_ylabel("D/H of escaping atoms")
+
+    # SAVE IT
+    if savepath != nothing
+        savefig("$(savepath)$(fn).png", bbox_inches="tight", dpi=300)
+    end
+    
+    show()
+end
+
 function f_vs_time(thefiles, IVAR_array, change_indices; fn="f_vs_time", ivar_label="Temp. (K)", 
                      savepath=nothing, colorbar_tix=collect(logrange(1e-10,1e-2,5)), subplot_lbl_loc=[0,0.92], subplot_lbl_sz=24,
                      ivar_cmap="RdBu", globvars...)
@@ -670,8 +846,6 @@ function f_vs_time(thefiles, IVAR_array, change_indices; fn="f_vs_time", ivar_la
                 :all_species, :hHnet, :hDnet, :hH2net, :hHDnet, :hHrc, :hDrc, :hH2rc, :hHDrc]
     check_requirements(keys(GV), required)
     
-    
-
     # Setup figure
     set_rc_params(fs=18, axlab=20, xtls=18, ytls=18, sansserif="Louis George Caf?", monospace="FreeMono")
     
@@ -681,49 +855,14 @@ function f_vs_time(thefiles, IVAR_array, change_indices; fn="f_vs_time", ivar_la
     
     IVax = subplot(gs.new_subplotspec((0, 0)))
     fracax = subplot(gs.new_subplotspec((1, 0)))
-    setp(IVax.get_xticklabels(), visible=false)
-    
+    setp(IVax.get_xticklabels(), visible=false)    
     subplots_adjust(hspace=0.08)
 
-    
     # Ind Var ax --------------------------------------------------------------------------------------------------------
-    tempcol = "#e66101"
-    watercol = "#5e3c99"
-    println("$(Dates.format(now(), "(HH:MM:SS)")) Working on ind. var. axis")
-    plot_bg(IVax)
-
-    # Needed to set up x axis correctly.
     total_num_files = length(thefiles)
     t = 1:total_num_files
+    stages = set_up_independent_var_ax(IVax, thefiles, t, IVAR_array, ivar_label, ivar_cmap, colorbar_tix; GV.alt)
     
-    if occursin("Temp", ivar_label)
-        IVax.plot(t, IVAR_array, color=tempcol)
-        IVax.yaxis.set_major_locator(matplotlib.ticker.FixedLocator([minimum(IVAR_array), mode(IVAR_array), maximum(IVAR_array)]))
-        IVax.set_ylabel(ivar_label)
-        stages=["Spring", "Summer", "Autumn", "Winter", "Spring"]
-    elseif occursin("Water", ivar_label)
-        if !isa(IVAR_array, Vector)
-            img = IVax.imshow(IVAR_array, cmap=ivar_cmap, extent=(t[1], t[end], alt[1]/1e5, alt[end]/1e5),
-                              interpolation="nearest", origin="lower", aspect="auto", norm=matplotlib.colors.LogNorm(vmin=1e-10, vmax=1e-2), zorder=10)
-            IVax.set_yticks([0, 50, 100, 150, 200, 250])
-            IVax.set_ylabel("Altitude (km)")
-            IVax.tick_params(which="both", axis="both", labelsize=12)
-
-            fig.subplots_adjust(right=0.9)
-            cbar_ax = fig.add_axes(get_cbar_size(IVax)) 
-            cbar = fig.colorbar(img, cax=cbar_ax, label="Water MR", ticks=colorbar_tix)
-            cbar.ax.tick_params(labelsize=12)
-        else 
-            IVax.plot(t, IVAR_array, color=watercol)
-            IVax.set_ylim(9, 13)
-            IVax.yaxis.set_major_locator(matplotlib.ticker.FixedLocator([9, 10, 11, 12, 13]))
-            IVax.set_ylabel(ivar_label)
-        end
-        stages=[" ", "Perihelion", " ", "Aphelion", " "]
-    end
-    
-    println("$(Dates.format(now(), "(HH:MM:SS)")) ind. var. axis completed")
-
     # Frac axis -----------------------------------------------------------------------------------------------------
     println("$(Dates.format(now(), "(HH:MM:SS)")) Working on frac axis")
     
@@ -819,43 +958,8 @@ function flux_vs_time(thefiles, IVAR_array, change_indices, sp; fn="flux_vs_time
 
     
     # Ind Var ax --------------------------------------------------------------------------------------------------------
-    tempcol = "#e66101"
-    watercol = "#5e3c99"
-    println("$(Dates.format(now(), "(HH:MM:SS)")) Working on ind. var. axis")
-    plot_bg(IVax)
-    
-    if occursin("Temp", ivar_label)
-        t = 1:length(IVAR_array)
-        IVax.plot(t, IVAR_array, color=tempcol)
-        IVax.yaxis.set_major_locator(matplotlib.ticker.FixedLocator([minimum(IVAR_array), mode(IVAR_array), maximum(IVAR_array)]))
-        IVax.set_ylabel(ivar_label)
-    elseif occursin("Water", ivar_label)
-        if !isa(IVAR_array, Vector)
-            t = 1:size(IVAR_array)[2]
-            img = IVax.imshow(IVAR_array, cmap="RdBu", extent=(t[1], t[end], alt[1]/1e5, alt[end]/1e5),
-                              interpolation="nearest", origin="lower", aspect="auto", norm=matplotlib.colors.LogNorm(vmin=1e-10, vmax=1e-2), zorder=10)
-            IVax.set_yticks([0, 50, 100, 150, 200, 250])
-            IVax.set_ylabel("Altitude (km)")
-            IVax.tick_params(which="both", axis="both", labelsize=12)
+    stages = set_up_independent_var_ax(IVax, thefiles, t, IVAR_array, ivar_label, ivar_cmap, colorbar_tix; GV.alt)
 
-            fig.subplots_adjust(right=0.9)
-            
-            # Add colorbar
-            cbar_ax = fig.add_axes(get_cbar_size(IVax)) # left, bottom, width, height
-            cbar = fig.colorbar(img, cax=cbar_ax, label="Water MR", ticks=colorbar_tix)
-            cbar.ax.tick_params(labelsize=12)
-        else 
-            t = 1:length(IVAR_array)
-            IVax.plot(t, IVAR_array, color=watercol)
-            IVax.set_ylim(9, 13)
-            IVax.yaxis.set_major_locator(matplotlib.ticker.FixedLocator([9, 10, 11, 12, 13]))
-            IVax.set_ylabel(ivar_label)
-        end
-    end
-    
-    flush(stdout)
-    println("$(Dates.format(now(), "(HH:MM:SS)")) ind. var. axis completed")
-    flush(stdout)
     # Flux axis -----------------------------------------------------------------------------------------------------
     println("$(Dates.format(now(), "(HH:MM:SS)")) Working on flux axis")
     flush(stdout)
@@ -867,7 +971,6 @@ function flux_vs_time(thefiles, IVAR_array, change_indices, sp; fn="flux_vs_time
     filenames = [String(match(file_pattern, f).match) for f in thefiles]
     
     # Make a zero array
-    # PandL_heatmap = zeros(GV.num_layers, length(filenames))
     flux_heatmap = zeros(GV.num_layers, length(filenames))
     
     c = 1 # column counter
@@ -942,7 +1045,6 @@ function flux_vs_time(thefiles, IVAR_array, change_indices, sp; fn="flux_vs_time
     end
 
     format_time_axis(fluxax, change_indices, length(thefiles), stages)
-    # fluxax.set_xticklabels(stages)
 
     # SAVE IT
     if savepath != nothing
@@ -953,7 +1055,7 @@ function flux_vs_time(thefiles, IVAR_array, change_indices, sp; fn="flux_vs_time
 end
 
 function seasonal_cycling_figure_original(thefiles, A, DHax, nax, fax, fax2;  fn="vstime_multialt", ivar_label=L"T$_{exo}$ (K)", 
-                                 savepath=nothing, W_array=nothing, alt2=nothing, alt3=nothing, show_all_flux=false, plot_pct=false, fill_flux=true,
+                                 savepath=nothing, W_array=nothing, alt2=nothing, alt3=nothing, show_all_flux=false, plot_pct=false,
                                  # ticks
                                  Hflux_ticks=[1e7, 1e8, 1e9], Dflux_ticks=[1e1, 1e2, 1e3, 1e4], density_ticks=[1e3, 1e4, 1e5, 1e6, 1e7], colorbar_tix=collect(logrange(1e-10,1e-2,5)),
                                  # ylimits 
@@ -974,8 +1076,6 @@ function seasonal_cycling_figure_original(thefiles, A, DHax, nax, fax, fax2;  fn
     check_requirements(keys(GV), required)
     
     # Define colors
-    tempcol = "#262626"
-    watercol = "xkcd:true blue"
     faxcol = "#e66101"
     twincol = "xkcd:cornflower"
     densitycol = "xkcd:merlot"
@@ -995,11 +1095,8 @@ function seasonal_cycling_figure_original(thefiles, A, DHax, nax, fax, fax2;  fn
     # Flux axes (H and D) --------------------------------------------------------------------------------------------
     println("$(Dates.format(now(), "(HH:MM:SS)")) Working on flux axes")
     flush(stdout)
-
     
-    if fill_flux==true
-        total_H_flux, total_D_flux = esc_flux_vs_time(fax, fax2, t, thefiles, [faxcol, faxcol]; show_all_flux=show_all_flux, lloc=flloc, globvars...)
-    end
+    total_H_flux, total_D_flux = esc_flux_vs_time(fax, fax2, t, thefiles, [faxcol, faxcol]; show_all_flux=show_all_flux, lloc=flloc, globvars...)
 
     if Hflux_ylims!=nothing
         fax.set_ylim(Hflux_ylims[1], Hflux_ylims[2])
@@ -1062,16 +1159,13 @@ function seasonal_cycling_figure_original(thefiles, A, DHax, nax, fax, fax2;  fn
     # D/H axis -----------------------------------------------------------------------------------------------------
     println("$(Dates.format(now(), "(HH:MM:SS)")) Working on D/H axis")
     thiscol = alt2 == nothing ? densitycol : altcols[1, :]
-    DH_vs_time(DHax, thefiles, A, [thiscol]; titl="", drawtext_formulae=false, 
-                    printtext=[], text_loc=[[]], text_col=["black"], lw=2, wmark="", omark="")
+    DH_vs_time(DHax, thefiles, A, [thiscol];  lw=2)
     
     if alt2 != nothing
-        DH_vs_time(DHax, thefiles, alt2, [altcols[2, :]]; titl="", drawtext_formulae=false, 
-                    printtext=[], text_loc=[[]], text_col=["black"],  lw=2, wmark="", omark="")
+        DH_vs_time(DHax, thefiles, alt2, [altcols[2, :]]; lw=2)
     end
     if alt3 != nothing
-        DH_vs_time(DHax, thefiles, alt3, [altcols[3, :]]; titl="", drawtext_formulae=false, 
-                    printtext=[], text_loc=[[]], text_col=["black"], lw=2, wmark="", omark="")
+        DH_vs_time(DHax, thefiles, alt3, [altcols[3, :]];  lw=2)
     end
     
     println("$(Dates.format(now(), "(HH:MM:SS)")) D/H axis completed")
@@ -1086,14 +1180,39 @@ function seasonal_cycling_figure_original(thefiles, A, DHax, nax, fax, fax2;  fn
     show()
 end
 
-function seasonal_cycling_figure_skeleton(thefiles, IVAR_array, A, change_indices;  fn="vstime_multialt", ivar_label=L"T$_{exo}$ (K)", pct_ylims=[9e-7, 1e-4],
-                                 savepath=nothing, W_array=nothing, alt2=nothing, alt3=nothing, DH_ylims=[3e-4,5e-3], Hflux_ticks=[1e7, 1e8, 1e9],# Hflux_ylims=[1e7, 1.2e9], Dflux_ylims=[9e0, 9e4], 
-                                 Dflux_ticks=[1e1, 1e2, 1e3, 1e4], density_ticks=[1e3, 1e4, 1e5, 1e6, 1e7], colorbar_tix=collect(logrange(1e-10,1e-2,5)),
-                                 flloc="upper center", plot_pct=false, subplot_lbl_loc=[0,0.95], subplot_lbl_sz=20,
-                                 ivar_cmap="RdBu", fill_flux=true, globvars...)
+function seasonal_cycling_figure_skeleton(thefiles, IVAR_array, A, change_indices;  fn="vstime_multialt", ivar_label=L"T$_{exo}$ (K)", 
+                                         alt2=nothing, alt3=nothing, 
+                                         pct_ylims=[9e-7, 1e-4], DH_ylims=[3e-4,5e-3], 
+                                         savepath=nothing, W_array=nothing, Hflux_ticks=[1e7, 1e8, 1e9],
+                                         Dflux_ticks=[1e1, 1e2, 1e3, 1e4], density_ticks=[1e3, 1e4, 1e5, 1e6, 1e7], colorbar_tix=collect(logrange(1e-10,1e-2,5)),
+                                         flloc="upper center", plot_pct=false, subplot_lbl_loc=[0,0.95], subplot_lbl_sz=20,
+                                         ivar_cmap="RdBu", globvars...)
     #=
-    IVAR_array: array of values to plot for temperature cycling
-    A: an altitude to choose
+    Inputs:
+        thefiles: list of files to plot results for
+        IVAR_array: array of values to plot for independent variable (temp or water)
+        A: an altitude to choose
+        change_indices: indices within thefiles that signify a change to a new simulation (change in independent variable)
+
+    Optional:
+        fn: filename extension to sae
+        ivar_label: label for the first panel Y-axis
+        alt2, alt3: other optional alts for which to plot densities and D/H
+        pct_ylims: y-limits for the percent of total column escape axis
+        DH_ylims: y-limits or D/H axis
+        savepath: path to save to
+        W_array: maybe not used???
+        Hflux_ticks: ticks to use for the H flux y axis
+        Dflux_ticks: likewise for D
+        density_ticks: likewise for density axis
+        colorbar_tix: ticks for the independent variable colorbar if plotting water
+        flloc: flux legend location
+        plot_pct: whether to make the axis showing percent of total colkumn that escapes
+        subplot_lbl_loc: location of labels for subplot panels
+        subplot_lbl_sz: font for previous
+        ivar_cmap: Colormap to use for water colorbar
+        
+
     =#
       
     # Setup figure -----------------------------
@@ -1117,9 +1236,6 @@ function seasonal_cycling_figure_skeleton(thefiles, IVAR_array, A, change_indice
     
     setp(IVax.get_xticklabels(), visible=false)
     subplots_adjust(hspace=0.08)
-
-    tempcol = "#262626"
-    watercol = "xkcd:true blue"
     
     altcols = get_colors(3, "Purples"; strt=0.4, stp=1)
 
@@ -1128,34 +1244,7 @@ function seasonal_cycling_figure_skeleton(thefiles, IVAR_array, A, change_indice
     t = 1:total_num_files
     
     # Ind Var ax --------------------------------------------------------------------------------------------------------
-    println("$(Dates.format(now(), "(HH:MM:SS)")) Working on ind. var. axis")
-    plot_bg(IVax)
-    
-    if occursin("T", ivar_label)
-        IVax.plot(t, IVAR_array, color=tempcol)
-        IVax.yaxis.set_major_locator(matplotlib.ticker.FixedLocator([minimum(IVAR_array), mode(IVAR_array), maximum(IVAR_array)]))
-        IVax.set_ylabel(ivar_label)
-        stages=["Spring", "Summer", "Autumn", "Winter", "Spring"]
-    elseif occursin("Water", ivar_label)
-        if !isa(IVAR_array, Vector)
-            img = IVax.imshow(IVAR_array, cmap=ivar_cmap, extent=(t[1], t[end], alt[1]/1e5, alt[end]/1e5),
-                              interpolation="nearest", origin="lower", aspect="auto", norm=matplotlib.colors.LogNorm(vmin=1e-10, vmax=1e-2), zorder=10)
-            IVax.set_yticks([0, 50, 100, 150, 200, 250])
-            IVax.set_ylabel("Altitude (km)")
-            IVax.tick_params(which="both", axis="both", labelsize=12)
-
-            fig.subplots_adjust(right=0.9)
-            cbar_ax = fig.add_axes(get_cbar_size(IVax)) 
-            cbar = fig.colorbar(img, cax=cbar_ax, label="Water\nmixing ratio", ticks=colorbar_tix)
-            cbar.ax.tick_params(labelsize=12)
-        else 
-            IVax.plot(t, IVAR_array, color=watercol)
-            IVax.set_ylim(9, 13)
-            IVax.yaxis.set_major_locator(matplotlib.ticker.FixedLocator([9, 10, 11, 12, 13]))
-            IVax.set_ylabel(ivar_label)
-        end
-        stages=[" ", "Perihelion", " ", "Aphelion", " "]
-    end
+    stages = set_up_independent_var_ax(IVax, thefiles, t, IVAR_array, ivar_label, ivar_cmap, colorbar_tix; globvars...)
     
     # Flux axes (H and D) -------------------------------------------------------------------------------------------- #
     
@@ -1201,6 +1290,8 @@ end
 
 
 # Individual panels ========================================================================
+
+# By altitude ------------------------------------------------------------------------------
 
 function make_temperature_panel(ax, Tn_all, Ti_all, Te_all; globvars...)
     #=
@@ -1271,10 +1362,96 @@ function make_temperature_panel(ax, Tn_all, Ti_all, Te_all; globvars...)
     ax.text(Ti_all[end]+10, 150, "Electrons", color=ecol)
 end
 
+function make_water_panel(ax, atms, colors, txtlbls; spclbl_x = [0.8, 0.45], line_lbl_x=0.01, globvars...)
+    #=
+    Plots water mixing ratio vs. altitude. Includes a conversion axis for ppm.
+
+    Inputs
+        ax: axis object on which to plot
+        atms: atmospheric state dictionaries to use in plotting
+        colors: colors to use for the three profiles
+        txtlbls: strings to print and label the lines
+    Optional inputs:
+        spclbl_x: optional x-coordinate for printing the species labels (h2O and HDO)
+        line_lbl_x: optional x-coordinate to start printing the labels for the lines.
+
+    Outputs: n/a
+    =#
+
+    GV = values(globvars)
+
+    plot_bg(ax)
+    for w in 1:length(atms)
+        ax.plot(atms[w][:H2O][1:GV.upper_lower_bdy_i]./n_tot(atms[w]; GV.all_species, GV.alt)[1:GV.upper_lower_bdy_i], plot_grid[1:GV.upper_lower_bdy_i], 
+                color=colors[w, :])
+        ax.plot(atms[w][:HDO][1:GV.upper_lower_bdy_i]./n_tot(atms[w]; GV.all_species, GV.alt)[1:GV.upper_lower_bdy_i], plot_grid[1:GV.upper_lower_bdy_i], 
+                color=colors[w, :], linestyle=GV.speciesstyle[:HDO])
+    end
+    ax.set_xscale("log")
+    ax.set_xlabel(L"Water mixing ratio (cm$^{-3}$/cm$^{-3}$)")
+    ax.set_xlim(1e-13, 1e-3)
+
+    # make a conversion ax for PPM ------------------ 
+    ppmax = ax.twiny()
+    subplots_adjust(bottom=0.4)
+    ppmax.xaxis.set_ticks_position("bottom")
+    ppmax.xaxis.set_label_position("bottom")
+    ppmax.spines["bottom"].set_position(("axes", -0.25))
+    turn_off_borders(ppmax)
+    ppmax.spines["bottom"].set_visible(true)
+    ppmax.set_xticks(ax.get_xticks() ./ 1e-6)
+    ppmax.set_xlim(1e-13/1e-6, 1e-3/1e-6)
+    ppmax.set_xscale("log")
+    ppmax.set_xlabel("Water mixing ratio (ppm)")
+
+    # Print labels for lines
+    for t in 1:length(txtlbls)
+        ax.text(line_lbl_x, 0.75-0.08*t, txtlbls[t], color=colors[t, :], transform=ax.transAxes)
+    end
+    
+    ax.text(1, 0.95, "Water abundances above $(plot_grid[GV.upper_lower_bdy_i]) km\nare solved for, not prescribed.", ha="right", va="top", color="black",
+            transform=ax.transAxes)
+    
+    ax.text(spclbl_x[1], 0.1, L"H$_2$O", color="black", transform=ax.transAxes)
+    ax.text(spclbl_x[2], 0.1, "HDO", color="black", transform=ax.transAxes)
+    ax.set_ylabel("Altitude (km)")
+end
+
+function make_insolation_panel(ax, colors, txtlbls; line_lbl_x=0.7, globvars...)
+    #=
+    Plots solar flux by wavelength, similar to make_temperature_panel
+
+    Inputs:
+        ax: axis object on which to plot
+        colors: colors to use for the three lines
+        txtlbls: labels to apply to each line.
+    =#
+
+    GV = values(globvars)
+    plot_bg(ax)
+    
+    ap_flux = readdlm(code_dir*"marssolarphotonflux_aphelion.dat",'\t', Float64, comments=true, comment_char='#')[1:2000,:]
+    eq_flux = readdlm(code_dir*"marssolarphotonflux_equinox.dat",'\t', Float64, comments=true, comment_char='#')[1:2000,:]
+    peri_flux = readdlm(code_dir*"marssolarphotonflux_perihelion.dat",'\t', Float64, comments=true, comment_char='#')[1:2000,:]
+    
+    ax.plot(ap_flux[1:2000, 1], ap_flux[1:2000, 2], color=colors[1, :])
+    ax.plot(eq_flux[1:2000, 1], eq_flux[1:2000, 2], color=colors[2, :])
+    ax.plot(peri_flux[1:2000, 1], peri_flux[1:2000, 2], color=colors[3, :])
+    
+    ax.set_yscale("log")
+    ax.set_xlabel("Wavelength (nm)")
+    ax.set_ylabel("Insolation\n"*L"($\gamma$ s$^{-1}$ cm$^{-2}$ nm$^{-1}$)")
+    ax.set_xlim(0.5, 350)
+    
+    for t in 1:length(txtlbls)
+        ax.text(line_lbl_x, 0.7-0.1*t, txtlbls[t], color=colors[t, :], transform=ax.transAxes)
+    end
+end
+
 function DH_alt_profile_singlepanels(ax, atmdict_list, linecols, atm_state_order; lines_mean=nothing,
                         heavysp=:D, lightsp=:H, species_pair="atomics", wl=[0.1, 0.9], ol=[0.6, 0.8],
                         titl="", xlims=[1e-4, 1e-2], cutoff=nothing,fn="DH_profiles", lloc=(0.05,0.4),
-                        opttext=[], opttext_loc=[()], opttext_col=[], legendon=false, seasoncycle=false)
+                        opttext=[], opttext_loc=[()], opttext_col=[], legendon=false)
     #=
     Also plots D/H by altitude, but does so on the ax object for part of a larger plot.
     
@@ -1292,12 +1469,6 @@ function DH_alt_profile_singlepanels(ax, atmdict_list, linecols, atm_state_order
     end
     
     DH_other = [n[heavysp] ./ (Hfactor_light * n[lightsp]) for n in atmdict_list]
-    
-    # Make a scale to show D/H in terms of earth value
-    smow = 1.6e-4
-    DHtoSMOW(x) = x ./ smow
-    SMOWtoDH(x) =  x .* smow
-
 
     # plot setup
     plot_bg(ax)
@@ -1320,14 +1491,9 @@ function DH_alt_profile_singlepanels(ax, atmdict_list, linecols, atm_state_order
     end
     
     # Show SMOW lines for orientation
-    smowcol = "gray"
-    DHfs = 16
     multiplier = [1, 2, 5, 10, 15, 25, 50]
-    for m in multiplier
-        ax.axvline(m*smow, color=smowcol, linestyle=":", linewidth=1)
-        ax.text(m*smow, 1, "$(m)x VSMOW", color=smowcol, fontsize=DHfs, rotation=90, ha="right")
-    end
-    
+    draw_DH_lines(ax, multiplier; which="vertical")
+
     # Optional text
     for t in 1:length(opttext)
         ax.text(opttext_loc[t]..., opttext[t], color=opttext_col[t], transform=ax.transAxes, fontsize=14)
@@ -1356,7 +1522,13 @@ function make_density_panel(ax, atmdict_list, colors, atm_state_order; spclbl_lo
 
     Inputs:
         ax: axis object on which to plot. Should be part of an externally-created figure.
-        atmdict_list:...
+        atmdict_list: atmospheric state dictionaries to plot for (should be 3)
+        colors: colors to use for each line (3)
+        atm_state_order: tells what order the dictionaries appear in so things plot correctly
+
+    Optional:
+        spclbl_loc: optional location for species labels (H and D) on density panel
+        specialH2: whethe to plot H2 instead of H (troubleshooting reasons)
     =#
     GV = values(globvars)
     plot_bg(ax)
@@ -1383,86 +1555,64 @@ function make_density_panel(ax, atmdict_list, colors, atm_state_order; spclbl_lo
     end
 end
 
-function make_water_panel(ax, atms, colors, txtlbls; spclbl_x = [0.8, 0.45], prumx=0.01, globvars...)
+# Vs time ------------------------------------------------------------------------------------
+
+function set_up_independent_var_ax(IVax, thefiles, t, IVAR_array, ivar_label, ivar_cmap, colorbar_tix; thefig=nothing, globvars...)
     #=
-    Plots water mixing ratio, apparently, vs. altitude.
+    Make the independent variable axis for the time figures. 
     =#
-
     GV = values(globvars)
+    tempcol = "#262626"
+    watercol = "xkcd:true blue"
+    plot_bg(IVax)
+    stages = ["Spring", "Summer", "Autumn", "Winter", "Spring"]
 
-    plot_bg(ax)
-    for w in 1:length(atms)
-        ax.plot(atms[w][:H2O][1:GV.upper_lower_bdy_i]./n_tot(atms[w]; GV.all_species, GV.alt)[1:GV.upper_lower_bdy_i], plot_grid[1:GV.upper_lower_bdy_i], 
-                color=colors[w, :])
-        ax.plot(atms[w][:HDO][1:GV.upper_lower_bdy_i]./n_tot(atms[w]; GV.all_species, GV.alt)[1:GV.upper_lower_bdy_i], plot_grid[1:GV.upper_lower_bdy_i], 
-                color=colors[w, :], linestyle=GV.speciesstyle[:HDO])
+    # Needed to set up x axis correctly.
+    total_num_files = length(thefiles)
+    t = 1:total_num_files
+    
+    if occursin("(K)", ivar_label)
+        IVax.plot(t, IVAR_array, color=tempcol)
+        IVax.yaxis.set_major_locator(matplotlib.ticker.FixedLocator([minimum(IVAR_array), mode(IVAR_array), maximum(IVAR_array)]))
+        IVax.set_ylabel(ivar_label)
+    elseif occursin("Water", ivar_label)
+        if !isa(IVAR_array, Vector)
+            img = IVax.imshow(IVAR_array, cmap=ivar_cmap, extent=(t[1], t[end], GV.alt[1]/1e5, GV.alt[end]/1e5),
+                              interpolation="nearest", origin="lower", aspect="auto", norm=matplotlib.colors.LogNorm(vmin=1e-10, vmax=1e-2), zorder=10)
+            IVax.set_yticks([0, 50, 100, 150, 200, 250])
+            IVax.set_ylabel("Altitude (km)")
+            IVax.tick_params(which="both", axis="both", labelsize=12)
+
+            thefig.subplots_adjust(right=0.9)
+            cbar_ax = thefig.add_axes(get_cbar_size(IVax)) 
+            cbar = thefig.colorbar(img, cax=cbar_ax, label="Water MR", ticks=colorbar_tix)
+            cbar.ax.tick_params(labelsize=12)
+        else 
+            IVax.plot(t, IVAR_array, color=watercol)
+            IVax.set_ylim(9, 13)
+            IVax.yaxis.set_major_locator(matplotlib.ticker.FixedLocator([9, 10, 11, 12, 13]))
+            IVax.set_ylabel(ivar_label)
+        end
+        stages = [" ", "Perihelion", " ", "Aphelion", " "]
     end
-    ax.set_xscale("log")
-    ax.set_xlabel(L"Water mixing ratio (cm$^{-3}$/cm$^{-3}$)")
-    ax.set_xlim(1e-13, 1e-3)
 
-    # make a conversion ax for PPM
-    ppmax = ax.twiny()
-    subplots_adjust(bottom=0.4)
-
-    # # Move twinned axis ticks and label from top to bottom
-    ppmax.xaxis.set_ticks_position("bottom")
-    ppmax.xaxis.set_label_position("bottom")
-    ppmax.spines["bottom"].set_position(("axes", -0.25))
-    # ppmax.patch.set_visible(false)
-    turn_off_borders(ppmax)
-    ppmax.spines["bottom"].set_visible(true)
-    ppmax.set_xticks(ax.get_xticks() ./ 1e-6)
-    ppmax.set_xlim(1e-13/1e-6, 1e-3/1e-6)
-    ppmax.set_xscale("log")
-    ppmax.set_xlabel("Water mixing ratio (ppm)")
-
-
-    for t in 1:length(txtlbls)
-        ax.text(prumx, 0.75-0.08*t, txtlbls[t], color=colors[t, :], transform=ax.transAxes)
-    end
-    
-    ax.text(1, 0.95, "Water abundances above $(plot_grid[GV.upper_lower_bdy_i]) km\nare solved for, not prescribed.", ha="right", va="top", color="black",
-            transform=ax.transAxes)
-    
-    ax.text(spclbl_x[1], 0.1, L"H$_2$O", color="black", transform=ax.transAxes)
-    ax.text(spclbl_x[2], 0.1, "HDO", color="black", transform=ax.transAxes)
-    ax.set_ylabel("Altitude (km)")
-end
-
-function make_insolation_panel(ax, colors, txtlbls; globvars...)
-    #=
-    I guess this plots solar flux by wavelength, similar to make_temperature_panel
-    =#
-
-    GV = values(globvars)
-    plot_bg(ax)
-    
-    ap_flux = readdlm(code_dir*"marssolarphotonflux_aphelion.dat",'\t', Float64, comments=true, comment_char='#')[1:2000,:]
-    eq_flux = readdlm(code_dir*"marssolarphotonflux_equinox.dat",'\t', Float64, comments=true, comment_char='#')[1:2000,:]
-    peri_flux = readdlm(code_dir*"marssolarphotonflux_perihelion.dat",'\t', Float64, comments=true, comment_char='#')[1:2000,:]
-    
-    ax.plot(ap_flux[1:2000, 1], ap_flux[1:2000, 2], label="Aphelion", color=colors[1, :])
-    ax.plot(eq_flux[1:2000, 1], eq_flux[1:2000, 2], label="Equinox", color=colors[2, :])
-    ax.plot(peri_flux[1:2000, 1], peri_flux[1:2000, 2], label="Perihelion", color=colors[3, :])
-    
-    ax.set_yscale("log")
-    ax.set_xlabel("Wavelength (nm)")
-    ax.set_ylabel("Insolation\n"*L"($\gamma$ s$^{-1}$ cm$^{-2}$ nm$^{-1}$)")
-    ax.set_xlim(0.5, 350)
-    
-    for t in 1:length(txtlbls)
-        ax.text(0.7, 0.8-0.15*t, txtlbls[t], color=colors[t, :], transform=ax.transAxes)
-    end
+    return stages
 end
 
 function esc_flux_vs_time(fax, fax2, t, thefiles, cols; lloc="lower left", show_all_flux=false, globvars...)
     #=
-    sp: :H or :D
-    t: time array to plot against
-    thefiles: list of filenames
-    A: an altitude
-    col: color array
+    Plots escape fluxes over time.
+
+    Inputs:
+        fax: First escape axis object
+        fax2: Second escape axis object
+        t: x-axis array of times
+        thefiles: files to plot from
+        cols: colors to use, should be the same color currently
+
+    Optional:
+        lloc: legend location, string or tuple
+        show_all_flux: if set to false, will not print the thermal and non-thermal lines, just total
     =#
     
     GV = values(globvars)
@@ -1474,14 +1624,8 @@ function esc_flux_vs_time(fax, fax2, t, thefiles, cols; lloc="lower left", show_
                 :all_species, :hHnet, :hDnet, :hH2net, :hHDnet, :hHrc, :hDrc, :hH2rc, :hHDrc, :ion_species, :Tn, :Ti, :Te]
     check_requirements(keys(GV), required)
     
-    
-    
-    # Tease apart folder and filenames because it's needed for getting flux
-    folder_pattern = r".+v\d\/"
-    file_pattern = r"/[a-z]+_.+\.h5"
-    thefolders = [String(match(folder_pattern, f).match) for f in thefiles]
-    filenames = [String(match(file_pattern, f).match) for f in thefiles]
-
+    # Collect escape information
+    thefolders = parent_folders_from_full_path(thefiles)
     all_esc_df = get_escape_for_all_atmospheres(thefolders, thefiles)
 
     # Plot it
@@ -1504,53 +1648,140 @@ function esc_flux_vs_time(fax, fax2, t, thefiles, cols; lloc="lower left", show_
     return all_esc_df."Htn", all_esc_df."Dtn"    
 end
 
-function get_escape_for_all_atmospheres(thefolders, thefiles)
+function density_vs_time(n_ax, thefiles, sole_color, A; alt2=nothing, alt3=nothing, altcols=nothing, density_ticks=[1e3, 1e4, 1e5, 1e6, 1e7], globvars...)
     #=
+    Makes panel of H and D densities over time.
     Inputs:
-        thefolders: list of 5 folders representing Mars season (first season repeated). Each folder contains a full simulation
-                    run of length 1 Mars season (~1.4e7 sec)
-        thefiles: Ordered list of files in thefolders. 
-
-    Outputs: a dataframe containing the thermal, non-thermal, and total escape of H and D for each particular file in thefiles.
-
-    Called in esc_flux_vs_time and f_vs_time
-    =#
-    # Check for a saved file with the escape values in it
-    parent_folder = String(match(r".+v\d\/(?=I)", thefiles[1]).match)
-    println("Searching $(parent_folder) for an escape spreadsheet")
-    flush(stdout)
-
-    if isfile(parent_folder*"escape.xlsx")
-        println("Found the spreadsheet")
-        flush(stdout)
-        all_esc_df = DataFrame(XLSX.readtable(parent_folder*"escape.xlsx", "Escape"))
-    else # If no saved file, generate the escapes
-        println("No saved escape info found, generating escape for all folders and files in $(parent_folder) and creating spreadsheet")
-        flush(stdout)
-
-        # This is what takes the most time and makes it take forever to do seasonal_cycling_figure.
-        escdfs = [final_escape(foldy, f; globvars...) for (foldy, f) in zip(thefolders, filenames)]
-
-        H_tn = collect(Iterators.flatten([df_lookup(i, "EscapeType", "Total", "H") for i in escdfs]))
-        H_t = collect(Iterators.flatten([df_lookup(i, "EscapeType", "Thermal", "H") for i in escdfs]))
-        H_n = collect(Iterators.flatten([df_lookup(i, "EscapeType", "Nonthermal", "H") for i in escdfs]))
+        n_ax: axis object on which to plot densities
+        thefiles: all the filenames for which to plot results
+        sole_color: color to use when plotting only one altitude
+        A: main altitude for which to plot results.
         
-        D_tn = collect(Iterators.flatten([df_lookup(i, "EscapeType", "Total", "D") for i in escdfs]))
-        D_t = collect(Iterators.flatten([df_lookup(i, "EscapeType", "Thermal", "D") for i in escdfs]))
-        D_n = collect(Iterators.flatten([df_lookup(i, "EscapeType", "Nonthermal", "D") for i in escdfs]))
 
-        all_esc_df = DataFrame("Ht"=>H_t, "Hn"=>H_n, "Htn"=>H_tn, "Dt"=>D_t, "Dn"=>D_n, "Dtn"=>D_tn)
+    Optional:
+        alt2, alt3: second/third altitude option
+        altcols: an array of shape (3, 3) which can be used to plot values for up to 3 altitudes.
+        density_ticks: ticks for the y axis 
 
-        # Write out the escape to the file
-        XLSX.writetable(parent_folder*"escape.xlsx", "Escape"=>all_esc_df)
-        println("Finished generating and saving escape info")
-        flush(stdout)
+    Output: n/a
+    =#
+    GV = values(globvars)
+    required = [:n_alt_index]
+    check_requirements(keys(GV), required)
+    
+    
+    nH = Array{Float64}(undef, length(thefiles), 3)
+    nD = Array{Float64}(undef, length(thefiles), 3)
+
+    # Collect densities into new arrays
+    for (i, a) in enumerate(thefiles)
+        n = get_ncurrent(a)
+        nH[i, 1] = n[:H][GV.n_alt_index[A*1e5]]
+        nD[i, 1] = n[:D][GV.n_alt_index[A*1e5]]
+
+        if alt2 != nothing
+            nH[i, 2] = n[:H][GV.n_alt_index[alt2*1e5]]
+            nD[i, 2] = n[:D][GV.n_alt_index[alt2*1e5]]
+        end
+        if alt3 != nothing
+            nH[i, 3] = n[:H][GV.n_alt_index[alt3*1e5]]
+            nD[i, 3] = n[:D][GV.n_alt_index[alt3*1e5]]
+        end
     end
-    return all_esc_df
+
+    # PLOT
+    x = 1:length(thefiles)
+    thiscol = alt2 == nothing ? sole_color : altcols[1, :]
+    n_ax.plot(x, nH[:, 1], color=thiscol)
+    n_ax.plot(x, nD[:, 1], color=thiscol)
+
+    if alt2 != nothing
+        n_ax.plot(x, nH[:, 2], color=altcols[2, :])
+        n_ax.plot(x, nD[:, 2], color=altcols[2, :])
+    end
+    if alt3 != nothing
+        n_ax.plot(x, nH[:, 3], color=altcols[3, :])
+        n_ax.plot(x, nD[:, 3], color=altcols[3, :])
+    end
+
+    # Text labels
+    printtext=["H", "D"]
+    text_loc=[[0.1, 0.95], [0.1, 0.25]]
+    for (ti, l) in zip(printtext, text_loc)
+        n_ax.text(l..., ti, va="top", size=20, color="black", transform=n_ax.transAxes)
+    end
+
+    n_ax.yaxis.set_major_locator(matplotlib.ticker.FixedLocator(density_ticks))
+end
+
+function DH_vs_time(ax, atmfile_list, whichalt, col; 
+                        heavysp=:D, lightsp=:H, species_pair="atomics", #ylims=[1e-4, 1e-2], cutoff=nothing, fn="DH_profiles", 
+                        lw=1, ls="-", plot_waterdh=false)
+    #=
+    Plots D/H over the anual cycle in a single panel as part of a larger figure.
+    
+    Inputs:
+        ax: axis object on which to plot
+        atmdict_list: List of atmospheric state dictionaries to use, in order.
+        whichalt: altitude at which to plot
+        col: color to use for the main plot line
+    Optional:
+        heavysp: heavier of the two species, usually :D
+        lightsp: usually :H
+        species_pair: isotope pairs; "atomics", "water", etc. 
+        wmark, omark: markers to use in plotting the lines for water and "other", usually unused.
+        lw: linewidth
+        ls: linestyle
+        plot_waterdh: whether to plot D/H in water, almost never used
+
+        
+    
+    wl, ol: where to place labels for the lines
+    
+    =#
+        
+    # Set a factor used to identify number of H atoms
+    if occursin("H2", string(lightsp))
+        Hfactor_light = 2
+    elseif occursin("H3", string(lightsp))
+        Hfactor_light = 3
+    else
+        Hfactor_light = 1
+    end
+    
+    # Populate the plottable D/H arrays
+    DH_water = Array{Float64}(undef, length(atmfile_list), 1)
+    DH_other = Array{Float64}(undef, length(atmfile_list), 1)
+    
+    for (i, a) in enumerate(atmfile_list)
+        n = get_ncurrent(a)
+        # get D/H in water
+        DH_water[i] = n[:HDO][n_alt_index[whichalt*1e5]] ./ (2 .* n[:H2O][n_alt_index[whichalt*1e5]])
+        DH_other[i] = n[heavysp][n_alt_index[whichalt*1e5]] ./ (Hfactor_light * n[lightsp][n_alt_index[whichalt*1e5]])
+    end
+    
+    # plot actual content
+    ax.plot(1:length(atmfile_list), DH_other, zorder=10, linewidth=lw, linestyle=ls, color=col[1], label=species_pair)
+    if plot_waterdh
+        ax.plot(1:length(atmfile_list), DH_water, zorder=10, linewidth=lw, linestyle=ls, color=col[2], label="water")
+    end
+
+    # Show SMOW lines for orientation
+    multiplier = [2, 5, 10, 15, 25]
+    draw_DH_lines(ax, multiplier)
+    
+    # Text showing which line is which
+    heavysp_str = "[$(string_to_latexstr(string(heavysp); dollarsigns=false))]"
+    lightsp_str = "[$(string_to_latexstr(string(lightsp); dollarsigns=false))]"
+    if Hfactor_light > 1
+        lightsp_str = "$(Hfactor_light)"*lightsp_str
+    end
 end
 
 function reincorp_vs_time(fax, fax2, t, thefiles, cols, change_indices; typeflag="temp", globvars...)
     #=
+    Not currently using this because whether it returns a believable value is suspect
+
     t: time array to plot against
     thefiles: list of filenames
     A: an altitude
@@ -1601,138 +1832,6 @@ function reincorp_vs_time(fax, fax2, t, thefiles, cols, change_indices; typeflag
     fax2.plot(t, reincorp_array[:, 2], color=cols[2])
     
     return reincorp_array 
-end
-
-function DH_vs_time(ax, atmfile_list, whichalt, col; stages=["Equilibrium", "Hot exobase", "Mid-cycle", "Cold exobase", "End cycle"],
-                        heavysp=:D, lightsp=:H, species_pair="atomics", titl="", ylims=[1e-4, 1e-2], cutoff=nothing, fn="DH_profiles", 
-                        wmark=".", omark="d", lw=1, ls="-",  drawtext_formulae=true, plot_waterdh=false,
-                        printtext=[], text_loc=[[]], text_col=[] )
-    #=
-    Plots D/H over the anual cycle in a single panel as part of a larger figure.
-    
-    atmdict_list: List of atmospheric state dictionaries to use, in order.
-    savepath: where to save plot
-    pairs: isotope pairs; "atomics", "water", etc. 
-    whichalt: altitude at which to plot
-    
-    wl, ol: where to place labels for the lines
-    
-    =#
-        
-    # Set a factor used to identify number of H atoms
-    if occursin("H2", string(lightsp))
-        Hfactor_light = 2
-    elseif occursin("H3", string(lightsp))
-        Hfactor_light = 3
-    else
-        Hfactor_light = 1
-    end
-    
-    # Populate the plottable D/H arrays
-    DH_water = Array{Float64}(undef, length(atmfile_list), 1)
-    DH_other = Array{Float64}(undef, length(atmfile_list), 1)
-    
-    for (i, a) in enumerate(atmfile_list)
-        n = get_ncurrent(a)
-        # get D/H in water
-        DH_water[i] = n[:HDO][n_alt_index[whichalt*1e5]] ./ (2 .* n[:H2O][n_alt_index[whichalt*1e5]])
-        DH_other[i] = n[heavysp][n_alt_index[whichalt*1e5]] ./ (Hfactor_light * n[lightsp][n_alt_index[whichalt*1e5]])
-    end
-    
-    # Make a scale to show D/H in terms of earth value
-    smow = 1.6e-4
-    DHtoSMOW(x) = x ./ smow
-    SMOWtoDH(x) =  x .* smow
-    
-
-    # plot actual content
-    ax.plot(1:length(atmfile_list), DH_other, zorder=10, marker=omark, markersize=5, linewidth=lw, linestyle=ls, color=col[1], label=species_pair)
-    if plot_waterdh
-        ax.plot(1:length(atmfile_list), DH_water, zorder=10, marker=wmark, markersize=5, linewidth=lw, linestyle=ls, color=col[2], label="water")
-    end
-
-    # Show SMOW lines for orientation
-    smowcol = "gray"
-    multiplier = [2, 5, 10, 15, 25]
-    for m in multiplier
-        ax.axhline(m*smow, color=smowcol, linestyle=":", linewidth=1)
-        ax.text(1, m*smow, "$(m)x VSMOW", color=smowcol, fontsize=14)
-    end
-    
-    # Text showing which line is which
-    heavysp_str = "[$(string_to_latexstr(string(heavysp); dollarsigns=false))]"
-    lightsp_str = "[$(string_to_latexstr(string(lightsp); dollarsigns=false))]"
-    if Hfactor_light > 1
-        lightsp_str = "$(Hfactor_light)"*lightsp_str
-    end
-    
-    if drawtext_formulae==true
-        ax.text(wl[1], wl[2], L"Water: $\frac{[HDO]}{2[H_2O]}$", va="top", size=16, color=col, transform=ax.transAxes)
-        ax.text(ol[1], ol[2], L"%$(species_pair): $\frac{%$heavysp_str}{%$lightsp_str}$", va="top", size=16, color=col, transform=ax.transAxes)
-    end
-    
-    for (t, l, c) in zip(printtext, text_loc, text_col)
-        ax.text(l..., t, va="top", size=16, color=c, transform=ax.transAxes)
-    end
-end
-
-function density_vs_time(n_ax, thefiles, sole_color, A; alt2=nothing, alt3=nothing, altcols=nothing, density_ticks=[1e3, 1e4, 1e5, 1e6, 1e7], globvars...)
-    #=
-    Makes panel of H and D densities over time.
-    Inputs:
-        n_ax: axis object on which to plot densities
-        thefiles: all the filenames for which to plot results
-        altcols: an array of shape (3, 3) which can be used to plot values for up to 3 altitudes.
-        A: main altitude for which to plot results.
-        alt2, alt3: second/third altitude option
-    =#
-    GV = values(globvars)
-    required = [:n_alt_index]
-    check_requirements(keys(GV), required)
-    
-    
-    nH = Array{Float64}(undef, length(thefiles), 3)
-    nD = Array{Float64}(undef, length(thefiles), 3)
-
-    # Collect densities into new arrays
-    for (i, a) in enumerate(thefiles)
-        n = get_ncurrent(a)
-        nH[i, 1] = n[:H][GV.n_alt_index[A*1e5]]
-        nD[i, 1] = n[:D][GV.n_alt_index[A*1e5]]
-
-        if alt2 != nothing
-            nH[i, 2] = n[:H][GV.n_alt_index[alt2*1e5]]
-            nD[i, 2] = n[:D][GV.n_alt_index[alt2*1e5]]
-        end
-        if alt3 != nothing
-            nH[i, 3] = n[:H][GV.n_alt_index[alt3*1e5]]
-            nD[i, 3] = n[:D][GV.n_alt_index[alt3*1e5]]
-        end
-    end
-
-    # PLOT
-    x = 1:length(thefiles)
-    thiscol = alt2 == nothing ? sole_color : altcols[1, :]
-    n_ax.plot(x, nH[:, 1], color=thiscol)
-    n_ax.plot(x, nD[:, 1], color=thiscol)
-
-    if alt2 != nothing
-        n_ax.plot(x, nH[:, 2], color=altcols[2, :])
-        n_ax.plot(x, nD[:, 2], color=altcols[2, :])
-    end
-    if alt3 != nothing
-        n_ax.plot(x, nH[:, 3], color=altcols[3, :])
-        n_ax.plot(x, nD[:, 3], color=altcols[3, :])
-    end
-
-    # Text labels
-    printtext=["H", "D"]
-    text_loc=[[0.1, 0.95], [0.1, 0.25]]
-    for (ti, l) in zip(printtext, text_loc)
-        n_ax.text(l..., ti, va="top", size=20, color="black", transform=n_ax.transAxes)
-    end
-
-    n_ax.yaxis.set_major_locator(matplotlib.ticker.FixedLocator(density_ticks))
 end
 
 # Helpers
@@ -1825,4 +1924,52 @@ function collect_atmospheres_and_temperatures(season_folders, resolution, set; g
     else
         return atm_states, atm_states_init, state_files, Tn_all, Ti_all, Te_all
     end
+end
+
+function get_escape_for_all_atmospheres(thefolders, thefiles)
+    #=
+    Helper function that wil either load the XLSX file containing escape of H and D for all files in thefiles
+    or make and save a new XLSX file. 
+
+    Inputs:
+        thefolders: list of parent folders for each entry in thefiles. 
+        thefiles: Ordered list of files in thefolders. 
+
+    Outputs: a dataframe containing the thermal, non-thermal, and total escape of H and D for each particular file in thefiles.
+
+    Called in esc_flux_vs_time and f_vs_time
+    =#
+    # Check for a saved file with the escape values in it
+    parent_folder = String(match(r".+v\d\/(?=I)", thefiles[1]).match)
+    println("Searching $(parent_folder) for an escape spreadsheet")
+    flush(stdout)
+
+    if isfile(parent_folder*"escape.xlsx")
+        println("Found the spreadsheet")
+        flush(stdout)
+        all_esc_df = DataFrame(XLSX.readtable(parent_folder*"escape.xlsx", "Escape"))
+    else # If no saved file, generate the escapes
+        println("No saved escape info found, generating escape for all folders and files in $(parent_folder) and creating spreadsheet")
+        flush(stdout)
+
+        # This is what takes the most time and makes it take forever to do seasonal_cycling_figure.
+        filenames = [String(match(file_pattern, f).match) for f in thefiles]
+        escdfs = [final_escape(foldy, f; globvars...) for (foldy, f) in zip(thefolders, filenames)]
+
+        H_tn = collect(Iterators.flatten([df_lookup(i, "EscapeType", "Total", "H") for i in escdfs]))
+        H_t = collect(Iterators.flatten([df_lookup(i, "EscapeType", "Thermal", "H") for i in escdfs]))
+        H_n = collect(Iterators.flatten([df_lookup(i, "EscapeType", "Nonthermal", "H") for i in escdfs]))
+        
+        D_tn = collect(Iterators.flatten([df_lookup(i, "EscapeType", "Total", "D") for i in escdfs]))
+        D_t = collect(Iterators.flatten([df_lookup(i, "EscapeType", "Thermal", "D") for i in escdfs]))
+        D_n = collect(Iterators.flatten([df_lookup(i, "EscapeType", "Nonthermal", "D") for i in escdfs]))
+
+        all_esc_df = DataFrame("Ht"=>H_t, "Hn"=>H_n, "Htn"=>H_tn, "Dt"=>D_t, "Dn"=>D_n, "Dtn"=>D_tn)
+
+        # Write out the escape to the file
+        XLSX.writetable(parent_folder*"escape.xlsx", "Escape"=>all_esc_df)
+        println("Finished generating and saving escape info")
+        flush(stdout)
+    end
+    return all_esc_df
 end

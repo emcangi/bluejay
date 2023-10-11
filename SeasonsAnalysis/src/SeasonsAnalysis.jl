@@ -26,7 +26,8 @@ make_equilibrium_plots_temp, make_seasonal_cycle_plots_temp,
 make_equilibrium_plots_water, make_seasonal_cycle_plots_water, make_insolation_plots, plot_limiting_flux, 
 make_3panel_figure, DH_6panel, f_vs_time, flux_vs_time, seasonal_cycling_figure_original, 
 seasonal_cycling_figure_skeleton, make_temperature_panel, DH_alt_profile_singlepanels, make_density_panel, 
-make_water_panel, make_insolation_panel, esc_flux_vs_time, DH_vs_time, density_vs_time, generate_indvar_vs_time_array
+make_water_panel, make_insolation_panel, esc_flux_vs_time, DH_vs_time, density_vs_time, generate_indvar_vs_time_array,
+parent_folders_from_full_path, draw_DH_lines
 
 
 # ~*~*~*~*~*~*~*~~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~        
