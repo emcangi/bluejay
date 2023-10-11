@@ -66,8 +66,5 @@ REACTION_NETWORK_backup_20230311.xlsx
 Solar spectra/final_spectrum_marssolarphotonflux_aphelion.png
 Solar spectra/final_spectrum_marssolarphotonflux_equinox.png
 Solar spectra/final_spectrum_marssolarphotonflux_perihelion.png
-h5files_insolation/
 h5files_same_xsects/
-h5files_water_loweratm/
-scale_solar_spectrum.py
 test.xlsx
