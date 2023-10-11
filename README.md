@@ -82,21 +82,7 @@ The core of bluejay was originally written by <a href="https://github.com/planet
 
 You may fork and use or expand this model for your own research purposes. All usages of bluejay or results derived from it should be acknowledged with at the very least, a citation; if your use of bluejay constitutes a non-negligible or substantial part of a paper, please extend an offer of coauthorship to Eryn Cangi and Mike Chaffin. 
 
-For citations to bluejay, you may use this Bibtex entry:
-
-```
-@misc{Cangi2022,
-  author       = {Eryn M Cangi and
-  Mike Chaffin},
-  title        = {emcangi/dh\_ions: bluejay},
-  month        = dec,
-  year         = 2022, 
-  publisher    = {Zenodo},
-  version      = {v1.2}, #<----Fill in with the most current version, please
-  doi          = {10.5281/zenodo.7662300}, #<----Fill in with the most current DOI, shown in the badge below.
-  url          = {https://doi.org/10.5281/zenodo.7662300} #<----Fill in with the most current DOI, shown in the badge below.
-}
-```
+For citations, please use the "Cite this repository" button on Github. 
 
 Click here to access the Zenodo DOI. This badge will display the most current release's DOI: [![DOI](https://zenodo.org/badge/285645653.svg)](https://zenodo.org/badge/latestdoi/285645653)
   
