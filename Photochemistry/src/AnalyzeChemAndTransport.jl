@@ -15,14 +15,14 @@ function chemical_lifetime(s::Symbol, atmdict; globvars...)
     Good for comparing with the results of diffusion_timescale.
     =#
     GV = values(globvars)
-    required = [:all_species, :Jratelist, :n_alt_index, :reaction_network, :Tn, :Ti, :Te]
+    required = [:all_species, :Jratelist, :n_alt_index, :ion_species, :num_layers, :reaction_network, :Tn, :Ti, :Te]
     check_requirements(keys(GV), required)
 
     loss_all_rxns, ratecoefs = get_volume_rates(s, atmdict; species_role="reactant", which="all", remove_sp_density=true, 
                                                GV.all_species, GV.ion_species, GV.num_layers, GV.reaction_network, 
                                                Tn=GV.Tn[2:end-1], Ti=GV.Ti[2:end-1], Te=GV.Te[2:end-1])
 
-    total_loss_by_alt = zeros(size(Tn[2:end-1]))
+    total_loss_by_alt = zeros(size(GV.Tn[2:end-1]))
 
     for k in keys(loss_all_rxns)
         total_loss_by_alt += loss_all_rxns[k]
@@ -286,7 +286,7 @@ end
 #                   Transport and escape functions                              #
 #===============================================================================#
 
-function diffusion_timescale(s::Symbol, T_arr::Array, atmdict, Dcoef_template::Array; globvars...)
+function diffusion_timescale(s::Symbol, T_arr::Array, atmdict; globvars...)
     #=
     Inputs:
         s: species symbol
@@ -300,8 +300,11 @@ function diffusion_timescale(s::Symbol, T_arr::Array, atmdict, Dcoef_template::A
     required = [:all_species, :alt, :molmass, :n_alt_index, :neutral_species, :polarizability, :q, :speciesbclist]
     check_requirements(keys(GV), required)
 
+    # Get diffusion coefficient array template
+    Dcoef_template = zeros(size(T_arr)) 
+
+    # Other stuff
     Hs = scaleH(GV.alt, s, T_arr; GV.molmass)
-    
     ncur_with_bdys =  ncur_with_boundary_layers(atmdict; GV.all_species, GV.n_alt_index)
     
     # Molecular diffusion timescale: H_s^2 / D, scale height over diffusion constant
