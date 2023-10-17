@@ -82,9 +82,7 @@ The core of bluejay was originally written by <a href="https://github.com/planet
 
 You may fork and use or expand this model for your own research purposes. All usages of bluejay or results derived from it should be acknowledged with at the very least, a citation; if your use of bluejay constitutes a non-negligible or substantial part of a paper, please extend an offer of coauthorship to Eryn Cangi and Mike Chaffin. 
 
-For citations, please use the "Cite this repository" button on Github. 
-
-Click here to access the Zenodo DOI. This badge will display the most current release's DOI: [![DOI](https://zenodo.org/badge/285645653.svg)](https://zenodo.org/badge/latestdoi/285645653)
+For citations, please use the "Cite this repository" button on Github, but make sure to replace the DOI with the most current. This badge will display the most current release's DOI and link to the Zenodo repository: [![DOI](https://zenodo.org/badge/285645653.svg)](https://zenodo.org/badge/latestdoi/285645653)
   
 ## Getting help and contributing
 
