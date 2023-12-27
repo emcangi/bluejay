@@ -87,7 +87,7 @@ function set_h2oinitfrac_bySVP(atmdict, h_alt; globvars...)
     for i in [1:length(H2Oinitfrac);]
         H2Oinitfrac[i] = H2Oinitfrac[i] < H2Osatfrac[i+1] ? H2Oinitfrac[i] : H2Osatfrac[i+1]
     end
-    return H2Oinitfrac
+    return H2Oinitfrac, H2Osatfrac
 end
 
 function setup_water_profile!(atmdict; dust_storm_on=false, make_sat_curve=false, water_amt="standard", excess_water_in="mesosphere", 
@@ -111,7 +111,7 @@ function setup_water_profile!(atmdict; dust_storm_on=false, make_sat_curve=false
     check_requirements(keys(GV), required)
 
     # H2O Water Profile ================================================================================================================
-    H2Oinitfrac = set_h2oinitfrac_bySVP(atmdict, hygropause_alt; globvars...)
+    H2Oinitfrac, H2Osatfrac = set_h2oinitfrac_bySVP(atmdict, hygropause_alt; globvars...)
 
     # For doing high and low water cases ================================================================================================
     if (water_amt=="standard") | (excess_water_in=="loweratmo")
@@ -150,8 +150,8 @@ function setup_water_profile!(atmdict; dust_storm_on=false, make_sat_curve=false
     else
         satarray = nothing 
     end
-    # H2Oinitfrac, HDOinitfrac, atmdict[:H2O], atmdict[:HDO], 
-    plot_water_profile(atmdict, GV.results_dir*GV.sim_folder_name; watersat=satarray, plot_grid=GV.plot_grid, showonly=showonly, globvars...)
+
+    plot_water_profile(atmdict, GV.results_dir*GV.sim_folder_name; watersat=satarray, H2Oinitf=H2Oinitfrac, plot_grid=GV.plot_grid, showonly=showonly, globvars...)
 end 
 
 function water_tanh_prof(z; f=10, z0=62, dz=11)

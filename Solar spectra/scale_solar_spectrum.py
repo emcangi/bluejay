@@ -135,8 +135,8 @@ def interpolate_solar_spectrum(spec, AU, show_plots=True, extrap_tail=False, sca
 
 
 # Get user input
-print("Enter the file with solar spectrum data in W/m^2/nm or press enter to use default (composite_SSI_20221122.dat, EUVM up to 189.5 and TSIS above): ")
-solarfile = input() if input()!="" else "composite_SSI_20221122.dat"
+solarfile = input("Enter the file with solar spectrum data in W/m^2/nm or press enter to use default (composite_SSI_20221122.dat, EUVM up to 189.5 and TSIS above): ")
+# solarfile = input() if input()!="" else "composite_SSI_20221122.dat"
 print("Enter number of header rows: ")
 numheader = int(input())
 print("Enter AU at which you'd like the output: ")
@@ -146,15 +146,15 @@ descriptive_tag = input()
 
 longest_euvm_wavelength = 189.51
 print(f"Scaling to {theAU} above wavelength={longest_euvm_wavelength} nm. Shortwards of that, EUVM data are used.")
-
+print(f"loading {solarfile}")
 solarspec = np.loadtxt(solarfile, skiprows=numheader)
 
 solarspec_df = pd.DataFrame(solarspec, columns=["wavelength (nm)", "irradiance (W/m^2/nm)"])
 solarspec_df_tidy = interpolate_solar_spectrum(solarspec_df, theAU, show_plots=True, scale_above=longest_euvm_wavelength, desctag=descriptive_tag)
 
 with open(f"marssolarphotonflux_{descriptive_tag}.dat", "a") as f:
-    f.write('# wavelength (nm)\tphoton flux (phot/s/cm^2/nm)\n')
-    f.write('# Original input has been scaled to {} above wavelength={} nm\n'.format(theAU, longest_euvm_wavelength))
+    f.write("# wavelength (nm)\\tphoton flux (phot/s/cm^2/nm)"+'\\n')
+    f.write(f'# Original input has been scaled to {theAU} above wavelength={longest_euvm_wavelength} nm\\n')
     solarspec_df_tidy.to_csv(f, sep='\t', float_format="%.2f", index=False)
 
 solarspec_df_tidy.to_csv(f"marssolarphotonflux_{descriptive_tag}.dat", sep='\t', float_format="%.2f", columns=["wavelength (nm)", "photon flux (phot/s/cm^2/nm)"], index=False)

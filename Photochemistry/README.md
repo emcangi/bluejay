@@ -2,7 +2,7 @@ This module contains all the functions needed to run the 1D photochemical simula
 
 # Basic utility functions
 
-These functions are basic functions usedmore than once to operate on other objects. They have little to do the specific science addressed by this project and are often used for reading command line input, formatting inputs, looking for nans, etc. 
+These functions are basic functions usedmore than once to operate on other objects. They have little to do with the specific science addressed by this project and are often used for reading command line input, formatting inputs, looking for nans, etc. 
 
 create_folder
 deletefirst

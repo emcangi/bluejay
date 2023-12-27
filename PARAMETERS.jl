@@ -23,33 +23,33 @@ using DataFrames
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
 
 # Basic model parameters
-const optional_logging_note = "test" # Brief summary of simulation goal
-const seasonal_cycle = true # for paper 3
-const results_version = "v99"  # Helps keep track of attempts if you need to keep changing things
+const optional_logging_note = "" # Brief summary of simulation goal
+const seasonal_cycle = true# true # for paper 3
+const results_version = "v0"  # Helps keep track of attempts if you need to keep changing things
 
 # Input files ---------------------------------------------------- #
-const initial_atm_file = "INITIAL_GUESS.h5" 
+const initial_atm_file = "season_final_atms/inclusive/inclusive_ap2.h5"#"INITIAL_GUESS.h5" 
 const reaction_network_spreadsheet = code_dir*"REACTION_NETWORK.xlsx" # "REACTION_NETWORK_MIN_IONOSPHERE.xlsx" #
 
 # DEFINE THE MAIN INDEPENDENT VARIABLE  ---------------------------- #
 # This is the one you'd like to change and see how the atmosphere responds.
 # If you just want to run the model and get some basic output, 
 # just select "temperature".
-const season_exp = "temperature" # "water" #  "insolation"#
+const season_exp = "inclusive-mean" # inclusive-peri" #"inclusive-mean" #"inclusive-ap"#   # insolation"#"temperature" # "water" #  
 
 # SOLAR CASE ---------------------------------------------------- #
 const SZA = 60  # Puts the model at dayside mean
-const solarcyc = "mean"# 
-# AU OPTIONS: "perihelion" # "aphelion" #  "meandist" # Defined for solar mean. TODO: Program the solar spectrum scaling in Julia and set AU as a parameter
+const solarcyc = "meansundist" # 
+# AU OPTIONS: "perihelion" #  "meansundist" # "aphelion" #  Defined for solar mean. TODO: Program the solar spectrum scaling in Julia and set AU as a parameter
 # SOLAR CYCLE OPTIONS: "mean" # "max" # "min" # Defined for mean AU. (solar spectra varies; hand collected by Eryn)
 
 # TEMPERATURE CASES --------------------------------------------- #
-const tempcyc = "max" # "mean" # "min"#  
+const tempcyc = "mean" # "min"#  "max" # "mean"
 # Also an option which will set all temperatures to the same value: "isothermal" 
 
 # WATER CASES --------------------------------------------------- #
 # Amount of water in the atmosphere
-const water_case = "standard" #"low" #"high" #  
+const water_case = "standard" #"low" # "standard" #"high" #  
 const water_loc = "mesosphere" # Location to alter water if selecting "low" or "high" water case "loweratmo" #  "everywhere" #   
 
 # OPTIONAL: Extra parcel of water to simulate effect of dust storms
@@ -162,7 +162,8 @@ const f_fac_opts = Dict("low"=>0.005, "standard"=>10, "high"=>100) # a parameter
 
 # Other simulation controls ------------------------------------------------------------------------- #
 const Texo_opts = Dict("min"=>175., "mean"=>225., "max"=>275., 
-                       "equinox"=>225., "aphelion"=>225., "peihelion"=>225.) # Since these solar inputs are defined for solar mean conditions, use solar mean temp for all.
+                       "meansundist"=>225., "aphelion"=>225., "perihelion"=>225.) # Since these solar inputs are defined for solar mean conditions, use solar mean temp for all.
+const Texo_inclusive_opts = Dict("inclusive-mean"=>225., "inclusive-ap"=>175., "inclusive-peri"=>275.)
 
 if seasonal_cycle == true
     println("Simulating an annual cycle")
@@ -170,6 +171,10 @@ if seasonal_cycle == true
 
     if season_exp=="temperature"
         const controltemps[3] =  Texo_opts[tempcyc]
+    end
+
+    if occursin("inclusive", season_exp)
+        const controltemps = [230., 130., Texo_inclusive_opts[season_exp]]
     end
 else
     const controltemps = [230., 130., Texo_opts[solarcyc]]
@@ -224,28 +229,31 @@ const speciesbclist=Dict(:CO2=>Dict("n"=>[2.1e17, NaN], "f"=>[NaN, 0.]),
 # **************************************************************************** #
 
 if seasonal_cycle == true
-    if solarcyc in ["equinox", "aphelion", "perihelion"]
+    # solar input
+    if solarcyc in ["meansundist", "aphelion", "perihelion"]
         const solarfile = "marssolarphotonflux_$(solarcyc).dat"
     else 
         const solarfile = "marssolarphotonflux_solar$(solarcyc).dat"
     end
     extra_str = seasonal_cycle==true ? "cycle" : "eq"
 
+    # folder naming scheme
     if season_exp=="temperature"
         const tag = "paper3_temp$(extra_str)_Texo=$(Int64(controltemps[3]))_$(results_version)"
 
     elseif season_exp=="insolation"
-        # const solarfile = "marssolarphotonflux_$(solarcyc).dat"
         const tag = "paper3_insolation_$(solarcyc)_$(results_version)"
 
     elseif season_exp=="water"
         const tag = "paper3_water$(extra_str)_$(water_case)_$(water_loc)_$(results_version)"
 
+    elseif occursin("inclusive", season_exp)
+        const tag = "paper3_$(season_exp)_$(results_version)"
     else
         throw("Simulation type is seasonal cycle but no valid testing parameter specified")
     end
-else
-    if solarcyc in ["equinox", "aphelion", "perihelion"]
+else # not a seasonal cycle experiment
+    if solarcyc in ["meansundist", "aphelion", "perihelion"]
         const solarfile = "marssolarphotonflux_$(solarcyc).dat"
     else 
         const solarfile = "marssolarphotonflux_solar$(solarcyc).dat"
