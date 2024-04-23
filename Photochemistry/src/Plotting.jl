@@ -262,6 +262,43 @@ function plot_bg(axob; bg="#ededed")
     turn_off_borders(axob)
 end
 
+function plot_directional_flux(sp, atmdict; globvars...)
+    #=
+    Makes a directional flux plot for sp in atmosphere atmdict.
+    =#
+    GV = values(globvars)
+    required = [:all_species, :alt, :dz, :Hs_dict, :molmass, :n_alt_index, :neutral_species, :polarizability, :q, 
+                :speciesbclist, :Tn, :Ti, :Te, :Tp, :Tprof_for_Hs, :Tprof_for_diffusion, :transport_species]
+    
+    check_requirements(keys(GV), required)
+    
+    fluxes, up, down = get_directional_fluxes(sp, atmdict; return_up_n_down=true, globvars...)
+    
+    fpos, fneg = flux_pos_and_neg(fluxes)
+
+    fig, ax = subplots()
+    plot_bg(ax)
+    ax.scatter(fpos[2:end-1], plot_grid, marker="^", color="red", label="UP", zorder=10)
+    ax.scatter(fneg[2:end-1], plot_grid, marker="v", color="blue", label="DOWN", zorder=10)
+    ax.legend()
+    ax.set_xscale("log")
+    ax.set_ylabel("Alt (km)")
+    ax.set_title(string_to_latexstr(string(sp))*" transport")
+    ax.set_xlabel(L"Net fluxes (cm$^{-2}$s$^{-1}$)")
+    show() 
+
+    fig, ax = subplots()
+    plot_bg(ax)
+    ax.plot(up[2:end-1], plot_grid, color="red", label="Upward flux")
+    ax.plot(down[2:end-1], plot_grid, color="blue", label="Downward flux")
+    ax.legend()
+    ax.set_xscale("log")
+    ax.set_ylabel("Alt (km)")
+    ax.set_title(string_to_latexstr(string(sp))*" transport")
+    ax.set_xlabel(L"Directional flux (cm$^{-2}$s$^{-1}$)")
+    show()    
+end
+
 function plot_extinction(solabs; fnextr="", path=nothing, tauonly=false, xsect_info=nothing, solflux=nothing, extra_t="", linth=1e-8, vm=1e-6, globvars...)
     #=
 
@@ -397,6 +434,7 @@ function plot_Jrates(sp, atmdict::Dict{Symbol, Vector{ftype_ncur}}; savedir=noth
     
     # Collect chem production equations and total 
     if !isempty(keys(rxd_prod))
+        println("doing the thing")
         for kv in rxd_prod  # loop through the dict of format reaction => [rates by altitude]
             lbl = "$(kv[1])"
 
@@ -409,7 +447,7 @@ function plot_Jrates(sp, atmdict::Dict{Symbol, Vector{ftype_ncur}}; savedir=noth
             # else
             #     ax.semilogx(kv[2], GV.plot_grid, linestyle="-", linewidth=1, label=lbl)
             # end
-            ax.semilogx(kv[2], GV.plot_grid, linestyle="-", linewidth=1, label=lbl)
+            ax.semilogx(kv[2], GV.plot_grid, linestyle="-", linewidth=1, label=string_to_latexstr(lbl))
             
             # set the xlimits
             if minimum(kv[2]) <= minx
@@ -437,6 +475,37 @@ function plot_Jrates(sp, atmdict::Dict{Symbol, Vector{ftype_ncur}}; savedir=noth
             show()
         end
     end
+end
+
+function plot_net_volume_change(sp, atmdict; globvars...)
+    #=
+    Makes a plot of net gain per volume for species sp in atmosphere atmdict.
+    =#
+    
+    GV = values(globvars)
+    required = [:all_species, :alt, :collision_xsect, :dz, :Hs_dict,  :hot_H_network, :hot_D_network, :hot_H2_network, :hot_HD_network, 
+                 :hot_H_rc_funcs, :hot_D_rc_funcs, :hot_H2_rc_funcs, :hot_HD_rc_funcs,
+                :ion_species, :Jratedict, :molmass, :n_alt_index, :n_all_layers, :num_layers, :neutral_species, :non_bdy_layers, :polarizability, :q, 
+                :speciesbclist, :Tn, :Ti, :Te, :Tp, :Tprof_for_Hs, :Tprof_for_diffusion, :transport_species]
+    
+    check_requirements(keys(GV), required)
+
+    PnL = get_transport_PandL_rate(sp, atmdict; globvars...);
+
+
+    fpos, fneg = flux_pos_and_neg(PnL)
+
+    fig, ax = subplots()
+    plot_bg(ax)
+    ax.scatter(fpos, plot_grid, marker="^", color="red", label="Gain", zorder=10)
+    ax.scatter(fneg, plot_grid, marker="v", color="blue", label="Loss", zorder=10)
+    ax.legend()
+    # ax.axhline(165, linestyle="--", color="gray", linewidth=2, zorder=0)
+    ax.set_xscale("log")
+    ax.set_ylabel("Alt (km)")
+    ax.set_title(string_to_latexstr(string(sp))*" transport")
+    ax.set_xlabel(L"Net transport bulk flow (cm$^{-3}$s$^{-1}$)")
+    show() 
 end
 
 function plot_production_and_loss(final_atm, results_dir, thefolder; globvars...)
@@ -740,9 +809,108 @@ function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, result
     end
 end
 
-function plot_species_on_demand(atmdict, spclist, filename; savepath=nothing, showonly=false, mixing_ratio=false, 
+function plot_reaction_on_demand(atmdict, reactants; print_col_total=false, products=nothing, ax=nothing, rxntype="all", lowerlim=nothing, upperlim=nothing, 
+                                 savepath=nothing, plottitle="", coltotal_loc=[0.5, 0.5], globvars...)
+    #=
+    A function to plot a single chemical reaction as it happens in atmdict on demand.
+
+    Inputs:
+        atmdict: present atmospheric state dictionary
+        reactants: list of reactant species (symbols)
+        products: same but for products; optional. If not specified, code will get all reactions with the associated reactants.
+                  If specified, any reaction that produces one or more of the products will be counted.
+        rxntype: "all", "Jrates", or "krates"
+    Outputs: 
+        A plot
+    =#
+
+    # Collect global variables
+    GV = values(globvars)
+    required = [:all_species, :alt, :collision_xsect, :ion_species, :Jratedict, :molmass, :non_bdy_layers, :num_layers,  
+                           :n_alt_index, :reaction_network, :Tn, :Ti, :Te, :dz, :zmax]
+    check_requirements(keys(GV), required)
+
+    # Build an evalutable network
+    relevant_reactions = deepcopy(GV.reaction_network)
+
+    for r in reactants
+        relevant_reactions = filter_network(r, rxntype, "reactant"; reaction_network=relevant_reactions)
+    end
+    
+    if products != nothing
+        temporary_variable = []
+        for p in products
+            with_these_products = filter_network(p, rxntype, "product"; reaction_network=relevant_reactions)
+            temporary_variable = vcat(temporary_variable, with_these_products)
+        end
+        relevant_reactions = unique(temporary_variable)
+    end
+
+    rc_funcs = Dict([rxn => mk_function(:((Tn, Ti, Te, M) -> $(rxn[3]))) for rxn in relevant_reactions]);
+    
+    # Atmospheric density
+    Mtot = n_tot(atmdict; GV.all_species)
+    
+    # Reaction strings used for labeling dataframes
+    rxn_strings = [format_chemistry_string(rr[1], rr[2]) for rr in relevant_reactions]
+    if length(rxn_strings) == 0
+        throw("Error: There are no reactions involving $(join(reactants, "+")) that produce one or more of $(products)")
+    end
+
+    # Get volume rates by altitude 
+    by_alt = volume_rate_wrapper(reactants[1], relevant_reactions, rc_funcs, atmdict, Mtot; globvars...) # array format--by alt
+    by_alt_df = DataFrame(by_alt, rxn_strings)
+
+    # also calculate a total rate for all reactions
+    thestr = "Total: $(join(reactants, "+")) --> Products"
+    push!(rxn_strings, thestr)
+    total = sum(by_alt, dims=2)
+    by_alt_df[!, thestr] .= total
+    
+
+    # PLOT -----------------------------------------------------
+    if ax == nothing
+        fig, ax = subplots(figsize=(7.5, 5))
+    end
+
+    set_rc_params(; fs=18, axlab=20, xtls=18, ytls=18, sansserif=sansserif_choice, monospace=monospace_choice)
+    plot_bg(ax)
+    ax.set_ylabel("Altitude (km)")
+    if lowerlim!=nothing
+        ax.set_xlim(left=lowerlim)
+    end
+    if upperlim!=nothing
+        ax.set_xlim(right=upperlim)
+    end
+    ax.tick_params(which="both", labeltop=true, labelbottom=true, top=true)
+    ax.set_ylim(0, 250)
+    ax.set_xscale("log")
+    ax.set_xlabel(L"Rate (cm$^{-3}$ s$^{-1}$)")
+    ax.set_title(plottitle)
+
+    for rs in rxn_strings[1:end-1]
+        ax.plot(by_alt_df[!, rs], plot_grid, label=string_to_latexstr(rs), linewidth=2)
+    end
+    # PLot the total separately so we can do it in black
+    ax.plot(by_alt_df[!, rxn_strings[end]], plot_grid, label=string_to_latexstr(rxn_strings[end]), linewidth=3, color="black")
+    ax.legend(bbox_to_anchor=(1.01, 1))
+
+    # Print col total of total line
+    if print_col_total
+        coltotstr = @sprintf "%.2E" sum(total .* GV.dz) # format the number
+        ax.text(coltotal_loc..., "Column total = $(coltotstr)", transform=ax.transAxes)
+    end
+    
+    if savepath==nothing
+        show()
+    else
+        savefig(savepath*"$(rxn_strings[1]).png", bbox_inches="tight", dpi=300)
+    end
+end
+
+function plot_species_on_demand(atmdict, spclist, filename; savepath=nothing, showonly=false, shaded_region=false, axh_text="", mixing_ratio=false, plot_e=false, lw=2,
                                 xlab=L"Number density (cm$^{-3}$)", xlims=(1e-12, 1e18), figsz=(16,6), ylims=(0,zmax/1e5), titl=nothing,
-                                overridestyle=false, posdict = Dict(), extratext=nothing, LL=(0.9,0.9),
+                                overridestyle=false, posdict = Dict(), extratext=nothing, LL=(0.9,0.9), titlcol="black",
                                 globvars...)
     #=
     Makes a "spaghetti plot" of the species in spclist, in concentrations by altitude in the
@@ -792,15 +960,25 @@ function plot_species_on_demand(atmdict, spclist, filename; savepath=nothing, sh
             check_requirements(keys(GV), required)
             plot_me = plot_me ./ n_tot(atmdict; GV.all_species)
         end
-        ax.plot(plot_me, GV.plot_grid, color=col, linewidth=2, label=sp, linestyle=ls, zorder=10)
-        
-        
+        ax.plot(plot_me, GV.plot_grid, color=col, linewidth=lw, label=sp, linestyle=ls, zorder=10)
         
         textloc = get(posdict, sp, nothing)
         if textloc != nothing
             ax.text(posdict[sp]..., L"$\mathrm{%$(string_to_latexstr(string(sp), dollarsigns=false))}$", transform=ax.transAxes, color=col, fontsize=17)
         end
     end
+
+    if plot_e==true
+        required =  [:non_bdy_layers]
+        check_requirements(keys(GV), required)
+        ionsp = [sp for sp in keys(atmdict) if charge_type(sp)=="ion"]
+        ax.plot(electron_density(atmdict; e_profile_type="quasineutral", ion_species=ionsp, GV.non_bdy_layers), GV.plot_grid, 
+                color="black", linewidth=lw, linestyle=":", zorder=10)
+        if get(posdict, "e^-", nothing) != nothing
+            ax.text(posdict["e^-"]..., L"$\mathrm{e^-}$", transform=ax.transAxes, color="black", fontsize=17)
+        end
+    end 
+
     ax.tick_params(axis="x", which="both", labeltop=false, top=true)
     ax.set_ylim(ylims[1], ylims[2])
     ax.set_xscale("log")
@@ -808,9 +986,14 @@ function plot_species_on_demand(atmdict, spclist, filename; savepath=nothing, sh
     ax.set_xlim(xlims[1], xlims[2])
     ax.set_ylabel("Altitude (km)")
 
+    if shaded_region != nothing
+        ax.fill_between([xlims[1], xlims[2]], [shaded_region[1], shaded_region[1]], y2=[shaded_region[2], shaded_region[2]], color="gray", alpha=0.3, 
+                        linewidth=1, zorder=5)
+        ax.annotate(axh_text, (1.2e-2, 210), color="black", fontsize=14, zorder=10)  # xycoords="axes fraction", 
+    end
     
     if titl!=nothing
-        ax.set_title(titl)
+        ax.set_title(titl, color=titlcol)
     end
     
     if extratext != nothing
@@ -896,7 +1079,7 @@ function plot_temp_prof(Tprof_1; opt="", cols=[medgray, "xkcd:bright orange", "c
     end
 end
 
-function plot_water_profile(atmdict, savepath::String; showonly=false, watersat=nothing, H2Oinitf=nothing, prev_profs=nothing, globvars...)  # H2Oinitf, HDOinitf, nH2O, nHDO, 
+function plot_water_profile(atmdict, savepath::String; showonly=false, watersat=nothing, H2Oinitf=nothing, prev_profs=nothing, globvars...)  
     #=
     Plots the water profile in mixing ratio and number densities, in two panels.
 
@@ -938,7 +1121,7 @@ function plot_water_profile(atmdict, savepath::String; showonly=false, watersat=
     ax[1].set_ylabel("Altitude (km)")
     ax[1].set_xticks(collect(logrange(1e-12, 1e-2, 6)))
     
-    # Number density 
+    # Number density ----------------------
     if prev_profs != nothing
         ax[2].semilogx(prev_profs[1], GV.plot_grid, color=prevcol)
         ax[2].semilogx(prev_profs[2], GV.plot_grid, color=prevcol, linestyle=GV.speciesstyle[:HDO])
@@ -985,10 +1168,10 @@ function plot_water_profile(atmdict, savepath::String; showonly=false, watersat=
 
     # Will make a plot of the water profile and the saturation vapor pressure curve on the same axis for comparison
     if (watersat != nothing) & (H2Oinitf!=nothing)
-        throw("Need to update the code to plot water saturation")
+        # throw("Need to update the code to plot water saturation")
         fig, ax = subplots(figsize=(4,6))
         plot_bg(ax)
-        semilogx(convert(Array{Float64}, H2Oinitf), GV.plot_grid, color=col, linewidth=3, label=L"H$_2$O initial fraction")
+        semilogx(convert(Array{Float64}, H2Oinitf), GV.plot_grid, color="red", linewidth=3, label=L"H$_2$O initial fraction")
         semilogx(convert(Array{Float64}, watersat[2:end-1]), GV.plot_grid, color="black", alpha=0.5, linewidth=3, label=L"H$_2$O saturation")
         xlabel("Mixing ratio", fontsize=18)
         ylabel("Altitude [km]", fontsize=18)
@@ -1019,7 +1202,7 @@ function set_rc_params(; fs=22, axlab=24, xtls=22, ytls=22, sansserif=nothing, m
     rcParams["ytick.labelsize"] = ytls
 end
 
-function top_mechanisms(x, sp, atmdict, p_or_r; savepath=nothing, filename_extra="", y0=100, lowerlim=nothing, upperlim=nothing, globvars...) 
+function top_mechanisms(x, sp, atmdict, p_or_r; savepath=nothing, filename_extra="", y0=100, count_above=1, lowerlim=nothing, upperlim=nothing, globvars...) 
     #=
     Reports the top x dominant mechanisms for production or loss of species sp, and shows a plot.
 
@@ -1037,7 +1220,7 @@ function top_mechanisms(x, sp, atmdict, p_or_r; savepath=nothing, filename_extra
     # Collect global variables
     GV = values(globvars)
     required = [:all_species, :alt, :collision_xsect, :ion_species, :Jratedict, :molmass, :non_bdy_layers, :num_layers,  
-                           :n_alt_index, :reaction_network, :Tn, :Ti, :Te, :dz, :zmax]
+                :n_alt_index, :reaction_network, :Tn, :Ti, :Te, :dz, :zmax]
     check_requirements(keys(GV), required)
     
     # String used for various labels
@@ -1053,16 +1236,15 @@ function top_mechanisms(x, sp, atmdict, p_or_r; savepath=nothing, filename_extra
     # Reaction strings used for labeling dataframes
     rxn_strings = vec([format_chemistry_string(r[1], r[2]) for r in relevant_reactions])
 
-    
     # Get volume rates by altitude 
     by_alt = volume_rate_wrapper(sp, relevant_reactions, rc_funcs, atmdict, Mtot; globvars...) # array format--by alt
     by_alt_df = DataFrame(by_alt, rxn_strings)
     
     # Get the column value and its sorted equivalent
-    column_val = sum(by_alt .* GV.dz, dims=1)
-    column_val_df = DataFrame("Rxn"=>rxn_strings, "Value"=>vec(column_val))
-    sorted_column_val = sort(column_val_df, [:Value], rev=true)
-    
+    sorted_column_val = get_column_rates(sp, atmdict; which="all", role=p_or_r, startalt_i=count_above, returntype="df", 
+                                        globvars...,
+                                        Tn=GV.Tn[2:end-1], Ti=GV.Ti[2:end-1], Te=GV.Te[2:end-1]) # Adjust the temp arrays so they match 
+
     # Top number of reactions, limit x
     if nrow(sorted_column_val) < x
         L = nrow(sorted_column_val)
@@ -1070,16 +1252,9 @@ function top_mechanisms(x, sp, atmdict, p_or_r; savepath=nothing, filename_extra
         L = x
     end
 
-    println("Top $(L) $(rxntype) reactions sorted by highest column value: $(sorted_column_val[1:L, :])")
+    println("Top $(L) $(rxntype) reactions above $(non_bdy_layers[count_above] / 1e5) km sorted by highest column value: $(sorted_column_val[1:L, :])")
 
     set_rc_params(; fs=18, axlab=20, xtls=18, ytls=18, sansserif=sansserif_choice, monospace=monospace_choice)
-    # rcParams = PyCall.PyDict(matplotlib."rcParams")
-    # rcParams["font.sans-serif"] = [sanserif_choice]
-    # rcParams["font.monospace"] = [monospace_choice]
-    # rcParams["font.size"] = 18
-    # rcParams["axes.labelsize"]= 20
-    # rcParams["xtick.labelsize"] = 18
-    # rcParams["ytick.labelsize"] = 18
     
     
     # PLOT -----------------------------------------------------
@@ -1100,10 +1275,10 @@ function top_mechanisms(x, sp, atmdict, p_or_r; savepath=nothing, filename_extra
     ax.set_xlabel(L"Rate (cm$^{-3}$ s$^{-1}$)")
     
     # get the reaction strings for the top L reactions of each panel
-    top5_rxn_strs = sorted_column_val.Rxn[1:L]
+    top5_rxn_strs = sorted_column_val.Reaction[1:L]
     
     for row in eachrow(sorted_column_val)[1:L]
-        ax.plot(by_alt_df[!, row.Rxn], plot_grid, label=string_to_latexstr(row.Rxn), linewidth=2)#, color=thiscol)
+        ax.plot(by_alt_df[!, row.Reaction], plot_grid, label=string_to_latexstr(row.Reaction), linewidth=2)
     end
     ax.legend(loc=(1.01, 0.5))
     
@@ -1112,6 +1287,7 @@ function top_mechanisms(x, sp, atmdict, p_or_r; savepath=nothing, filename_extra
     else
         savefig(savepath*"top$(L)_$(rxntype)_$(sp)$(filename_extra).png", bbox_inches="tight", dpi=300)
     end
+    return by_alt_df
 end
 
 function turn_off_borders(ax)

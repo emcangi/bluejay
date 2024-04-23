@@ -1328,43 +1328,52 @@ function Dcoef!(D_arr, T_arr, sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncu
     =#
 
     GV = values(globvars)
-    required = [:all_species, :molmass, :neutral_species, :n_alt_index, :polarizability, :q, :speciesbclist]
+    required = [:all_species, :molmass, :neutral_species, :n_alt_index, :polarizability, :q, :speciesbclist, :use_ambipolar, :use_molec_diff]
     check_requirements(keys(GV), required)
-   
-    # Calculate as if it was a neutral - not using function above because this is faster than going into 
-    # the function and using an if/else block since we know we'll always have vectors in this case.
-    D_arr[:] .= (binary_dcoeff_inCO2(sp, T_arr)) ./ n_tot(atmdict; GV.all_species, GV.n_alt_index)
+
+    if GV.use_molec_diff==true
+        # Calculate as if it was a neutral - not using function above because this is faster than going into 
+        # the function and using an if/else block since we know we'll always have vectors in this case.
+        D_arr[:] .= (binary_dcoeff_inCO2(sp, T_arr)) ./ n_tot(atmdict; GV.all_species, GV.n_alt_index)
+        if (GV.use_ambipolar==false) & (charge_type(sp)=="ion")# temporarily disallow molecular diffusion for ions
+            D_arr[:] .= 0
+        end
+    else
+        D_arr[:] .= 0 
+    end
 
     # If an ion, overwrite with the ambipolar diffusion
-    if charge_type(sp) == "ion"
-        # a place to store the density array and nu_in
-        species_density = zeros(size(T_arr))
-        sum_nu_in = zeros(size(T_arr))
+    if GV.use_ambipolar==true
+        if charge_type(sp) == "ion"
+            # a place to store the density array and nu_in
+            species_density = zeros(size(T_arr))
+            sum_nu_in = zeros(size(T_arr))
 
-        # mi = GV.molmass[sp] .* mH
-        # create the sum of nu_in. Note that this depends on density, but we only have density for the real layers,
-        # so we have to assume the density at the boundary layers is the same as at the real layers.
-        for n in GV.neutral_species
-            species_density = atmdict[n]
+            # mi = GV.molmass[sp] .* mH
+            # create the sum of nu_in. Note that this depends on density, but we only have density for the real layers,
+            # so we have to assume the density at the boundary layers is the same as at the real layers.
+            for n in GV.neutral_species
+                species_density = atmdict[n]
 
-            # This sets the species density to a boundary condition if it exists. 
-            if haskey(GV.speciesbclist, n)
-                if haskey(GV.speciesbclist[n], "n") 
-                    if !isnan(GV.speciesbclist[n]["n"][1])
-                        species_density[1] = GV.speciesbclist[n]["n"][1]
-                    end
-                    if !isnan(GV.speciesbclist[n]["n"][2]) # currently this should never apply.
-                        species_density[end] = GV.speciesbclist[n]["n"][2]
+                # This sets the species density to a boundary condition if it exists. 
+                if haskey(GV.speciesbclist, n)
+                    if haskey(GV.speciesbclist[n], "n") 
+                        if !isnan(GV.speciesbclist[n]["n"][1])
+                            species_density[1] = GV.speciesbclist[n]["n"][1]
+                        end
+                        if !isnan(GV.speciesbclist[n]["n"][2]) # currently this should never apply.
+                            species_density[end] = GV.speciesbclist[n]["n"][2]
+                        end
                     end
                 end
+                
+                sum_nu_in .+= 2 .* pi .* (((GV.polarizability[n] .* GV.q .^ 2) ./ reduced_mass(GV.molmass[sp], GV.molmass[n])) .^ 0.5) .* species_density
+
             end
             
-            sum_nu_in .+= 2 .* pi .* (((GV.polarizability[n] .* GV.q .^ 2) ./ reduced_mass(GV.molmass[sp], GV.molmass[n])) .^ 0.5) .* species_density
+            D_arr .= (kB .* T_arr) ./ (GV.molmass[sp] .* mH .* sum_nu_in)
 
         end
-        
-        D_arr .= (kB .* T_arr) ./ (GV.molmass[sp] .* mH .* sum_nu_in)
-
     end
     return D_arr
 end
@@ -1601,7 +1610,7 @@ function update_diffusion_and_scaleH(species_list, atmdict::Dict{Symbol, Vector{
     =#
     GV = values(globvars)
     required = [:all_species, :alt, :speciesbclist, :molmass, :neutral_species, :n_alt_index, :polarizability, :q,
-               :Tn, :Tp, :Tprof_for_diffusion]
+               :Tn, :Tp, :Tprof_for_diffusion, :use_ambipolar, :use_molec_diff]
     check_requirements(keys(GV), required)
 
     ncur_with_bdys = ncur_with_boundary_layers(atmdict; GV.n_alt_index, GV.all_species)
@@ -1643,7 +1652,7 @@ function update_transport_coefficients(species_list, atmdict::Dict{Symbol, Vecto
     required = [:all_species, :alt, :speciesbclist, :dz, :hot_H_network, :hot_H_rc_funcs, :hot_D_network, :hot_D_rc_funcs, 
                :hot_H2_network, :hot_H2_rc_funcs, :hot_HD_network, :hot_HD_rc_funcs,  
                :Hs_dict, :ion_species, :molmass, :neutral_species, :non_bdy_layers, :num_layers, :n_all_layers, :n_alt_index, 
-               :polarizability, :q, :Tn, :Ti, :Te, :Tp, :Tprof_for_diffusion, :transport_species, :zmax]
+               :polarizability, :q, :Tn, :Ti, :Te, :Tp, :Tprof_for_diffusion, :transport_species, :use_ambipolar, :use_molec_diff, :zmax]
     check_requirements(keys(GV), required)
     
     # Update the diffusion coefficients and scale heights

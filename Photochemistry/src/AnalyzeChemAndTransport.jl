@@ -31,7 +31,7 @@ function chemical_lifetime(s::Symbol, atmdict; globvars...)
     return chem_lt = 1 ./ total_loss_by_alt
 end
 
-function get_column_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}; which="all", sp2=nothing, role="product", startalt_i=1, globvars...)
+function get_column_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}; which="all", sp2=nothing, role="product", startalt_i=1, returntype="df", globvars...)
     #=
     Input:
         sp: species for which to search for reactions
@@ -42,7 +42,9 @@ function get_column_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}};
         sp2: optional second species to include, i.e. usually sp's ion.
         role: "product" or "reactant" only.
         startalt_i: Index of the altitude at which to start. This lets you only calculate column rate down to a certain altitude, which is
-                    useful, for example, for water, which is fixed at 80 km so we don't care what produces/consumes it.
+                    useful, for example, for water, which is fixed at 80 km so we don't care what produces/consumes it,
+                    or if you want to know the column rate only above a certain altitude.
+        returntype: whether to return a dataframe ("df") or a dictionary "dict"
     Output:
         sorted: Total column rates for all reactions of species sp. Sorted, in order of largest rate to smallest. NOT a dictionary.
                 sorted[1] is the top production mechanism, e.g.
@@ -75,8 +77,12 @@ function get_column_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}};
     end
     
     sorted = sort(collect(colrate_dict), by=x->x[2], rev=true)
-    
-    return sorted
+
+    if returntype=="df"
+        return DataFrame([[names(DataFrame(sorted))]; collect.(eachrow(DataFrame(sorted)))], [:Reaction; :ColumnRate])
+    else 
+        return sorted 
+    end
 end
 
 function get_volume_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}; species_role="both", which="all", remove_sp_density=false, globvars...)
@@ -297,7 +303,7 @@ function diffusion_timescale(s::Symbol, T_arr::Array, atmdict; globvars...)
     =#
     
     GV = values(globvars)
-    required = [:all_species, :alt, :molmass, :n_alt_index, :neutral_species, :polarizability, :q, :speciesbclist]
+    required = [:all_species, :alt, :molmass, :n_alt_index, :neutral_species, :polarizability, :q, :speciesbclist, :use_ambipolar, :use_molec_diff]
     check_requirements(keys(GV), required)
 
     # Get diffusion coefficient array template
@@ -308,12 +314,17 @@ function diffusion_timescale(s::Symbol, T_arr::Array, atmdict; globvars...)
     ncur_with_bdys =  ncur_with_boundary_layers(atmdict; GV.all_species, GV.n_alt_index)
     
     # Molecular diffusion timescale: H_s^2 / D, scale height over diffusion constant
-    molec_timescale = (Hs .^ 2) ./ Dcoef!(Dcoef_template, T_arr, s, ncur_with_bdys; GV.all_species, GV.molmass, GV.neutral_species, GV.n_alt_index, GV.polarizability, GV.q, GV.speciesbclist)
+    D = Dcoef!(Dcoef_template, T_arr, s, ncur_with_bdys; globvars...)
+    molec_or_ambi_timescale = (Hs .^ 2) ./ D
    
     # Eddy timescale... this was in here only as scale H... 
-    eddy_timescale = (Hs .^ 2) ./ Keddy(alt, n_tot(ncur_with_bdys; GV.all_species, GV.molmass)) 
+    K = Keddy(alt, n_tot(ncur_with_bdys; GV.all_species, GV.molmass)) 
+    eddy_timescale = (Hs .^ 2) ./ K
 
-    return molec_timescale, eddy_timescale
+    # Combined timescale?!??
+    combined_timescale = (Hs .^ 2) ./ (K .+ D)
+
+    return molec_or_ambi_timescale, eddy_timescale, combined_timescale
 end
 
 function final_escape(thefolder, thefile; globvars...)
@@ -328,7 +339,7 @@ function final_escape(thefolder, thefile; globvars...)
                                    # From CUSTOMIZATIONS.jl
                                    :alt, :dz, :num_layers, :n_alt_index, :non_bdy_layers, 
                                    # Simulation-unique stuff 
-                                    :all_species, :hHnet, :hDnet, :hH2net, :hHDnet, :hHrc, :hDrc, :hH2rc, :hHDrc]
+                                    :all_species, :hHnet, :hDnet, :hH2net, :hHDnet, :hHrc, :hDrc, :hH2rc, :hHDrc, :use_ambipolar, :use_molec_diff]
     check_requirements(keys(GV), required)
     
     # First load the atmosphere and associated variables.
@@ -407,7 +418,7 @@ function get_transport_PandL_rate(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype
     GV = values(globvars)
     required = [:all_species, :alt, :dz, :Hs_dict, :molmass,  :n_alt_index,
                                    :neutral_species, :num_layers, :polarizability, :q, :speciesbclist, :Te, :Ti, :Tn, :Tp, 
-                                   :Tprof_for_Hs, :Tprof_for_diffusion, :transport_species]
+                                   :Tprof_for_Hs, :Tprof_for_diffusion, :transport_species, :use_ambipolar, :use_molec_diff]
     check_requirements(keys(GV), required)
 
     if nonthermal
@@ -473,7 +484,7 @@ function get_transport_PandL_rate(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype
     end
 end
 
-function get_directional_fluxes(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}; nonthermal=true, globvars...)
+function get_directional_fluxes(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}; nonthermal=true, return_up_n_down=false, globvars...)
     #=
     Returns the flux up and down from each atmospheric cell. 
 
@@ -489,9 +500,9 @@ function get_directional_fluxes(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_n
     =#
 
     GV = values(globvars)
-    required = [:all_species, :alt, :dz, :Hs_dict, :molmass,  :n_alt_index,
-                                   :neutral_species, :num_layers, :polarizability, :q, :speciesbclist, :Te, :Ti, :Tn, :Tp, 
-                                   :Tprof_for_Hs, :Tprof_for_diffusion, :transport_species]
+    required = [:all_species, :alt, :dz, :Hs_dict, :molmass, :n_alt_index,
+               :neutral_species, :num_layers, :polarizability, :q, :speciesbclist, :Te, :Ti, :Tn, :Tp, 
+               :Tprof_for_Hs, :Tprof_for_diffusion, :transport_species, :use_ambipolar, :use_molec_diff]
     check_requirements(keys(GV), required)
 
     if nonthermal
@@ -515,31 +526,45 @@ function get_directional_fluxes(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_n
 
     # Fill array 
     flux = fill(convert(ftype_ncur, NaN), (length(GV.alt), 1)) # will store positive and negative values at each alt, with + meaning up, - meaning down.
+    up = fill(convert(ftype_ncur, NaN), (length(GV.alt), 1)) # Bethan asked for just up fluxes on time so now I also track them separately. 
+    down = fill(convert(ftype_ncur, NaN), (length(GV.alt), 1))
     flux[1] = NaN # 0 alt
+    up[1] = NaN
+    down[1] = NaN
 
     # Lower boundary 
     up2 = thesebcs[1, 2] # in from the boundary layer (upwards)
     down2 = atmdict[sp][1]*thesebcs[1, 1] # out to boundary layer (downwards)
     flux[2] = up2 - down2
+    up[2] = up2
+    down[2] = down2
 
     # println("Alt $(alt[2]): up $(up2*dz), down $(down2*dz), net $(up2*dz-down2*dz)")
 
     for ialt in 3:length(flux) - 2
-        up = atmdict[sp][ialt-1]*fluxcoefs_bulk_layers[sp][ialt-1, 2] # in from layer below (upwards)
-        down = atmdict[sp][ialt]*fluxcoefs_bulk_layers[sp][ialt, 1]     # out to the layer below [downwards]
+        up_i = atmdict[sp][ialt-1]*fluxcoefs_bulk_layers[sp][ialt-1, 2] # in from layer below (upwards)
+        down_i = atmdict[sp][ialt]*fluxcoefs_bulk_layers[sp][ialt, 1]     # out to the layer below [downwards]
         # println("Alt $(GV.alt[ialt]): up $(up*dz), down $(down*dz), net $(up*dz-down*dz)")
-        flux[ialt] = up - down
+        flux[ialt] = up_i - down_i
+        up[ialt] = up_i
+        down[ialt] = down_i
     end
 
     up_penult = atmdict[sp][end]*thesebcs[2, 1] # (#/cm³) * (#/s) out to space from upper bdy (thermal loss from velocity bc) (upwards)
     down_penult = thesebcs[2, 2] # in from upper boundary layer (non-thermal loss from flux bc) (downwards) (has to be negative to come out positive)
     flux[end-1] = up_penult - down_penult
+    up[end-1] = up_penult
+    down[end-1] = down_penult
     # println("Alt $(alt[end-1]): up $(up_penult*dz), down $(down_penult*dz), net $(up_penult*dz-down_penult*dz)")
 
     flux[end] = NaN
+    up[end] = NaN 
+    down[end] = NaN
 
     # mult by dz so the array is truly a flux
     flux = flux .* GV.dz
+    up = up .* GV.dz 
+    down = down .* GV.dz
 
     # Use these for a sanity check if you like. 
     # println("Activity in the top layer for sp $(sp) AS FLUX:")
@@ -549,7 +574,11 @@ function get_directional_fluxes(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_n
     # println("In from layer below: $(atmdict[sp][end-1]*fluxcoefs_all[sp][end-1, 2]*GV.dz)")
     # println("net in the second to last layer $(atmdict[sp][end-1]*fluxcoefs_all[sp][end-1, 2]*GV.dz -atmdict[sp][end]*fluxcoefs_all[sp][end, 1]*GV.dz)")
 
-    return flux
+    if !return_up_n_down
+        return flux
+    else 
+        return flux, up, down
+    end
 end
 
 function flux_pos_and_neg(fluxarr) 

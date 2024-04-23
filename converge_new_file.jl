@@ -487,7 +487,6 @@ function converge(n_current::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_start, lo
 
             # Update total time and model 
             total_time += dt # update total time
-            # n_old = deepcopy(n_current)
             n_current = update!(n_current, total_time, dt; abstol=abstol, reltol=reltol, globvars...)
             # if verbose==true
             #     println("max(n_current-n_old) = $(max([max((abs.(n_current[sp] - n_old[sp]))...) for sp in GV.all_species]...))\n\n")
@@ -638,19 +637,9 @@ function get_rates_and_jacobian(n, p, t; globvars...)
 
     # retrieve the shortlived species from their storage and flatten them
     n_short = flatten_atm(external_storage, GV.active_shortlived; GV.num_layers)
-    # Turn on following 3 lines for debugging
-    # if nans_present(n_short)
-    #     throw("n_short has nans")
-    # end
 
     # Update Jrates
     n_cur_all = compile_ncur_all(n, n_short, GV.n_inactive; GV.active_longlived, GV.active_shortlived, GV.inactive_species, GV.num_layers)
-    # Turn on the following 5 lines for debugging - if the active species may have nans.
-    # for k in keys(n_cur_all)
-    #     if nans_present(n_cur_all[k])
-    #         throw("n_cur_all has nans")
-    #     end
-    # end
 
     update_Jrates!(n_cur_all; GV.Jratelist, GV.crosssection, GV.num_layers, GV.absorber, GV.dz, GV.solarflux)
     # copy all the Jrates into an external dictionary for storage
@@ -664,10 +653,6 @@ function get_rates_and_jacobian(n, p, t; globvars...)
     # set the concentrations of species assumed to be in photochemical equilibrium. 
     n_short_updated = set_concentrations!(external_storage, n, n_short, GV.n_inactive, Jrates, M, E; 
                                           GV.active_longlived, GV.active_shortlived, GV.inactive_species, GV.Tn, GV.Ti, GV.Te, GV.num_layers)
-    # Debugging
-    # if nans_present(n_short_updated)
-    #     throw("n_short_updated has nans")
-    # end
 
     # Reconstruct the dictionary that holds densities
     updated_ncur_all = compile_ncur_all(n, n_short_updated, GV.n_inactive; GV.active_longlived, GV.active_shortlived, GV.inactive_species, GV.num_layers)
@@ -678,25 +663,8 @@ function get_rates_and_jacobian(n, p, t; globvars...)
                                                                Jratedict=Dict([j=>n_cur_all[j] for j in GV.Jratelist]), # Needed for nonthermal BCs
                                                                globvars...)
 
-    # Turn on the following block for more nan debugging
-    # if nans_present(tlower) || nans_present(tupper) || nans_present(tup) || nans_present(tdown)
-    #     if nans_present(tlower) 
-    #         println("tlower has nans: ", tlower)
-    #     end
-    #     if nans_present(tupper)
-    #         println("tupper has nans: ", tupper)
-    #     end
-    #     if nans_present(tup)
-    #         println("tup has nans: ", tup)
-    #     end
-    #     if nans_present(tdown)
-    #         println("tdown has nans: ", tdown)
-    #     end
-    #     throw("transport coefficients have nans")
-    # end
-
-    return (ratefn(n, n_short_updated, GV.n_inactive, Jrates, tup, tdown, tlower, tupper, M, E; globvars...),# E FIX ATTEMPT   
-            chemJmat(n, n_short, GV.n_inactive, Jrates, tup, tdown, tlower, tupper, M, E; globvars...) ) # E FIX ATTEMPT
+    return (ratefn(n, n_short_updated, GV.n_inactive, Jrates, tup, tdown, tlower, tupper, M, E; globvars...), 
+            chemJmat(n, n_short, GV.n_inactive, Jrates, tup, tdown, tlower, tupper, M, E; globvars...) ) 
 end
 
 function next_timestep(nstart, params, t, dt; reltol=1e-2, abstol=1e-12, verbose=false, globvars...)
@@ -1020,6 +988,7 @@ end
 println("$(Dates.format(now(), "(HH:MM:SS)")) Loading atmosphere")
 n_current = get_ncurrent(initial_atm_file)
 
+
 #                       Establish new species profiles                          #
 #===============================================================================#
 
@@ -1142,8 +1111,6 @@ if update_water_profile
             n_current[:H2O][1:upper_lower_bdy_i] = H2Oinitfrac[1:upper_lower_bdy_i] .* n_tot(n_current; n_alt_index, all_species)[1:upper_lower_bdy_i]
             n_current[:HDO][1:upper_lower_bdy_i] = 2 * DH * n_current[:H2O][1:upper_lower_bdy_i]
         else 
-            # fdict = Dict("high"=>500, "low"=>0.005)
-
             # Create the new multipliers to change the profiles
             multiplier = water_tanh_prof(non_bdy_layers./1e5; f=f_fac_opts[water_case], z0=add_water_alt_opts[water_case])
             if modified_water_alts == "below fixed point"
@@ -1164,7 +1131,7 @@ if update_water_profile
         plot_water_profile(n_current, results_dir*sim_folder_name; prev_profs=[prevh2o, prevhdo], plot_grid, all_species, non_bdy_layers, speciescolor, speciesstyle) 
     else
         # Recalculate the initialization fraction for H2O 
-        H2Oinitfrac = set_h2oinitfrac_bySVP(n_current, hygropause_alt; all_species, alt, num_layers, n_alt_index, H2Osat, water_mixing_ratio)
+        H2Oinitfrac, H2Osatfrac = set_h2oinitfrac_bySVP(n_current, hygropause_alt; all_species, alt, num_layers, n_alt_index, H2Osat, water_mixing_ratio)
 
         prevh2o = deepcopy(n_current[:H2O])
         prevhdo = deepcopy(n_current[:HDO])
@@ -1621,7 +1588,7 @@ try
                                  neutral_species, non_bdy_layers, num_layers, n_all_layers, n_alt_index, n_inactive, n_steps, 
                                  polarizability, plot_grid, q, reaction_network, rshortcode, season_length_in_sec, sol_in_sec, solarflux, speciesbclist, speciescolor, speciesstyle, 
                                  Tn=Tn_arr, Ti=Ti_arr, Te=Te_arr, Tp=Tplasma_arr, Tprof_for_diffusion, transport_species, opt="",
-                                 upper_lower_bdy_i, zmax)
+                                 upper_lower_bdy_i, use_ambipolar, use_molec_diff, zmax)
 catch y
     XLSX.writetable("$(results_dir)$(sim_folder_name)/PARAMETERS.xlsx", "General"=>PARAMETERS_GEN, "AtmosphericConditions"=>PARAMETERS_CONDITIONS, "SpeciesLists"=>PARAMETERS_SPLISTS,
                     "Solver"=>PARAMETERS_SOLVER, "Crosssections"=>PARAMETERS_XSECTS, "BoundaryConditions"=>PARAMETERS_BCS)
@@ -1733,7 +1700,7 @@ elseif problem_type == "Gear"
                                   hot_H_network, hot_D_network, hot_H2_network, hot_HD_network, hrshortcode, ion_species, Jratedict,
                                   molmass, neutral_species, non_bdy_layers, num_layers, n_all_layers, n_alt_index, polarizability, 
                                   plot_grid, q, rshortcode, reaction_network, speciesbclist, Tn=Tn_arr, Ti=Ti_arr, Te=Te_arr, Tp=Tplasma_arr, 
-                                  Tprof_for_Hs, Tprof_for_diffusion, transport_species, upper_lower_bdy_i, upper_lower_bdy, zmax)
+                                  Tprof_for_Hs, Tprof_for_diffusion, transport_species, upper_lower_bdy_i, upper_lower_bdy, use_ambipolar, use_molec_diff, zmax)
     end
 
 else
