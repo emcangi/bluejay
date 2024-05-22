@@ -2,197 +2,17 @@
 #                                                                              #
 #                     PHOTOCHEMISTRY CROSS SECTIONS                            #
 #                                                                              #
+# This file contains all code which does the work of reading from the input    #
+# files which contain cross section info and are provided to the model. Also,  # 
+# it includes populate_xsect_dict, which makes the grand dictionary needed to  # 
+# run the model. There are probably many inefficiencies here, although it has  #
+# been improved over time. They're probably not worth fixing because they only #
+# add a small amount of time at the beginning of the model run.                #
+#                                                                              # 
 # **************************************************************************** #
 
-function binupO2(list)
-    #=
-    Mike originally wrote this
-    =#
-    ret = Float64[];
-    for i in [176:203;]
-        posss = getpos(list[:,1],x->i<x<i+1)
-        dl = diff([map(x->list[x[1],1],posss); i])
-        x0 = map(x->list[x[1],2], posss)
-        x1 = map(x->list[x[1],3], posss)
-        x2 = map(x->list[x[1],4], posss)
-        ax0 = reduce(+,map(*,x0, dl))/reduce(+, dl)
-        ax1 = reduce(+,map(*,x1, dl))/reduce(+, dl)
-        ax2 = reduce(+,map(*,x2, dl))/reduce(+, dl)
-        append!(ret,[i+0.5, ax0, ax1, ax2])
-    end
-    return transpose(reshape(ret, 4, 203-176+1))
-end
 
-function co2xsect(co2xdata, T)
-    #=
-    Makes an array of CO2 cross sections at temperature T, of format 
-    [wavelength in nm, xsect]. 
-
-    Data are available at 195K and 295K, so crosssections at temperatures between 
-    these are created by first calculating the fraction that T is along the 
-    line from 195 to 295, and then calculating a sort of weighted average of 
-    the crosssections at 195 and 295K based on that information. 
-    =#
-    clamp(T, 195, 295)
-    Tfrac = (T-195)/(295-195)
-
-    arr = [co2xdata[:,1]; (1-Tfrac)*co2xdata[:,2] + Tfrac*co2xdata[:,3]]
-    reshape(arr, length(co2xdata[:,1]),2)
-end
-
-function h2o2xsect_l(l, T) 
-    #=
-    from 260-350 the following analytic calculation fitting the
-    temperature dependence is recommended by Sander 2011.
-
-    Analytic calculation of H2O2 cross section using temperature dependencies
-    l: wavelength in nm
-    T: temperature in K
-    =#
-    l = clamp(l, 260, 350)
-    T = clamp(T, 200, 400)
-
-    A = [64761., -921.70972, 4.535649,
-         -0.0044589016, -0.00004035101,
-         1.6878206e-7, -2.652014e-10, 1.5534675e-13]
-    B = [6812.3, -51.351, 0.11522, -0.000030493, -1.0924e-7]
-
-    lpowA = map(n->l^n,[0:7;])
-    lpowB = map(n->l^n,[0:4;])
-
-    expfac = 1.0/(1+exp(-1265/T))
-
-    return 1e-21*(expfac*reduce(+, map(*, A, lpowA))+(1-expfac)*reduce(+, map(*, B, lpowB)))
-end
-
-function h2o2xsect(h2o2xdata, T) 
-    #=
-    stitches together H2O2 cross sections, some from Sander 2011 table and some
-    from the analytical calculation recommended for 260-350nm recommended by the
-    same.
-    T: temperature in K
-    =#
-    retl = h2o2xdata[:,1]
-    retx = 1e4*h2o2xdata[:,2] # factor of 1e4 b/c file is in 1/m2
-    addl = [260.5:349.5;]
-    retl = [retl; addl]
-    retx = [retx; map(x->h2o2xsect_l(x, T),addl)]
-    return reshape([retl; retx], length(retl), 2)
-end
-
-function hdo2xsect(hdo2xdata, T) 
-    #=
-    Currently this is a direct copy of h2o2xsect because no HDO2 crosssections
-    exist. In the future this could be expanded if anyone ever makes those
-    measurements.
-    =#
-    retl = hdo2xdata[:,1]
-    retx = 1e4*hdo2xdata[:,2] # factor of 1e4 b/c file is in 1/m2
-    addl = [260.5:349.5;]
-    retl = [retl; addl]
-    retx = [retx; map(x->h2o2xsect_l(x, T),addl)]
-    reshape([retl; retx], length(retl), 2)
-end
-
-function ho2xsect_l(l) 
-    #= 
-    compute HO2 cross-section as a function of wavelength l in nm, as given by 
-    Sander 2011 JPL Compilation 
-    =#
-    a = 4.91
-    b = 30612.0
-    sigmamed = 1.64e-18
-    vmed = 50260.0
-    v = 1e7/l;
-    if 190<=l<=250
-        return HO2absx = sigmamed / ( 1 - b/v ) * exp( -a * log( (v-b)/(vmed-b) )^2 )
-    else
-        return 0.0
-    end
-end
-
-function o2xsect(o2xdata, o2schr130K, o2schr190K, o2schr280K, T)
-    #=
-    For O2, used in quantum yield calculations,
-    including temperature-dependent Schumann-Runge bands.
-
-    ...details missing
-    =# 
-    
-    o2x = deepcopy(o2xdata);
-    # fill in the schumann-runge bands according to Minschwaner 1992
-    T = clamp(T, 130, 500)
-    if 130<=T<190
-        o2schr = o2schr130K
-    elseif 190<=T<280
-        o2schr = o2schr190K
-    else
-        o2schr = o2schr280K
-    end
-
-    del = ((T-100)/10)^2
-
-    for i in [176.5:203.5;]
-        posO2 = something(findfirst(isequal(i), o2x[:, 1]), 0)
-        posschr = something(findfirst(isequal(i), o2schr[:, 1]), 0)
-        o2x[posO2, 2] += 1e-20*(o2schr[posschr, 2]*del^2
-                                + o2schr[posschr, 3]*del
-                                + o2schr[posschr, 4])
-    end
-
-    # add in the herzberg continuum (though tiny)
-    # measured by yoshino 1992
-    for l in [192.5:244.5;]
-        posO2 = something(findfirst(isequal(l), o2x[:, 1]), 0)
-        o2x[posO2, 2] += 1e-24*(-2.3837947e4
-                            +4.1973085e2*l
-                            -2.7640139e0*l^2
-                            +8.0723193e-3*l^3
-                            -8.8255447e-6*l^4)
-    end
-
-    return o2x
-end
-
-function O3O1Dquantumyield(lambda, temp) 
-    #=
-    Quantum yield for O(1D) from O3 photodissociation. 
-    "The quantum yield of O1D from ozone photolysis is actually well-studied! 
-    This adds some complications for processing." - Mike
-    =#
-    if lambda < 306. || lambda > 328.
-        return 0.
-    end
-    temp=clamp(temp, 200, 320)#expression is only valid in this T range
-
-    X = [304.225, 314.957, 310.737];
-    w = [5.576, 6.601, 2.187];
-    A = [0.8036, 8.9061, 0.1192];
-    v = [0.,825.518];
-    c = 0.0765;
-    R = 0.695;
-    q = exp.(-v/(R*temp))
-    qrat = q[1]/(q[1]+q[2])
-
-    (q[1]/sum(q)*A[1]*exp.(-((X[1]-lambda)/w[1])^4.)
-     +q[2]/sum(q)*A[2]*(temp/300.)^2 .* exp.(-((X[2]-lambda)/w[2])^2.)
-     +A[3]*(temp/300.)^1.5*exp.(-((X[3]-lambda)/w[3])^2.)
-     +c)
-end
-
-function padtosolar(solarflux, crosssection::Array{Float64, 2}) 
-    #=
-    a function to take an Nx2 array crosssection and pad it with zeroes until it's the
-    same length as the solarflux array. Returns the cross sections only, as
-    the wavelengths are shared by solarflux 
-    =#
-    positions = map(x->something(findfirst(isequal(x), solarflux[:,1]), 0), crosssection[:,1])
-    retxsec = fill(0.,length(solarflux[:,1]))
-    retxsec[positions] = crosssection[:,2]
-    return retxsec
-end
-
-function populate_xsect_dict(pd_dataf; ion_xsects=true, globvars...)
+function populate_xsect_dict(pd_dataf, xsecfolder; ion_xsects=true, globvars...)
     #=
     Creates a dictionary of the 1-nm photodissociation or photoionization
     cross-sections important in the atmosphere. keys are symbols found in
@@ -426,6 +246,194 @@ function populate_xsect_dict(pd_dataf; ion_xsects=true, globvars...)
     end
 
     return xsect_dict
+end
+
+function binupO2(list)
+    #=
+    Mike originally wrote this
+    =#
+    ret = Float64[];
+    for i in [176:203;]
+        posss = getpos(list[:,1],x->i<x<i+1)
+        dl = diff([map(x->list[x[1],1],posss); i])
+        x0 = map(x->list[x[1],2], posss)
+        x1 = map(x->list[x[1],3], posss)
+        x2 = map(x->list[x[1],4], posss)
+        ax0 = reduce(+,map(*,x0, dl))/reduce(+, dl)
+        ax1 = reduce(+,map(*,x1, dl))/reduce(+, dl)
+        ax2 = reduce(+,map(*,x2, dl))/reduce(+, dl)
+        append!(ret,[i+0.5, ax0, ax1, ax2])
+    end
+    return transpose(reshape(ret, 4, 203-176+1))
+end
+
+function co2xsect(co2xdata, T)
+    #=
+    Makes an array of CO2 cross sections at temperature T, of format 
+    [wavelength in nm, xsect]. 
+
+    Data are available at 195K and 295K, so crosssections at temperatures between 
+    these are created by first calculating the fraction that T is along the 
+    line from 195 to 295, and then calculating a sort of weighted average of 
+    the crosssections at 195 and 295K based on that information. 
+    =#
+    clamp(T, 195, 295)
+    Tfrac = (T-195)/(295-195)
+
+    arr = [co2xdata[:,1]; (1-Tfrac)*co2xdata[:,2] + Tfrac*co2xdata[:,3]]
+    reshape(arr, length(co2xdata[:,1]),2)
+end
+
+function h2o2xsect_l(l, T) 
+    #=
+    from 260-350 the following analytic calculation fitting the
+    temperature dependence is recommended by Sander 2011.
+
+    Analytic calculation of H2O2 cross section using temperature dependencies
+    l: wavelength in nm
+    T: temperature in K
+    =#
+    l = clamp(l, 260, 350)
+    T = clamp(T, 200, 400)
+
+    A = [64761., -921.70972, 4.535649,
+         -0.0044589016, -0.00004035101,
+         1.6878206e-7, -2.652014e-10, 1.5534675e-13]
+    B = [6812.3, -51.351, 0.11522, -0.000030493, -1.0924e-7]
+
+    lpowA = map(n->l^n,[0:7;])
+    lpowB = map(n->l^n,[0:4;])
+
+    expfac = 1.0/(1+exp(-1265/T))
+
+    return 1e-21*(expfac*reduce(+, map(*, A, lpowA))+(1-expfac)*reduce(+, map(*, B, lpowB)))
+end
+
+function h2o2xsect(h2o2xdata, T) 
+    #=
+    stitches together H2O2 cross sections, some from Sander 2011 table and some
+    from the analytical calculation recommended for 260-350nm recommended by the
+    same.
+    T: temperature in K
+    =#
+    retl = h2o2xdata[:,1]
+    retx = 1e4*h2o2xdata[:,2] # factor of 1e4 b/c file is in 1/m2
+    addl = [260.5:349.5;]
+    retl = [retl; addl]
+    retx = [retx; map(x->h2o2xsect_l(x, T),addl)]
+    return reshape([retl; retx], length(retl), 2)
+end
+
+function hdo2xsect(hdo2xdata, T) 
+    #=
+    Currently this is a direct copy of h2o2xsect because no HDO2 crosssections
+    exist. In the future this could be expanded if anyone ever makes those
+    measurements.
+    =#
+    retl = hdo2xdata[:,1]
+    retx = 1e4*hdo2xdata[:,2] # factor of 1e4 b/c file is in 1/m2
+    addl = [260.5:349.5;]
+    retl = [retl; addl]
+    retx = [retx; map(x->h2o2xsect_l(x, T),addl)]
+    reshape([retl; retx], length(retl), 2)
+end
+
+function ho2xsect_l(l) 
+    #= 
+    compute HO2 cross-section as a function of wavelength l in nm, as given by 
+    Sander 2011 JPL Compilation 
+    =#
+    a = 4.91
+    b = 30612.0
+    sigmamed = 1.64e-18
+    vmed = 50260.0
+    v = 1e7/l;
+    if 190<=l<=250
+        return HO2absx = sigmamed / ( 1 - b/v ) * exp( -a * log( (v-b)/(vmed-b) )^2 )
+    else
+        return 0.0
+    end
+end
+
+function o2xsect(o2xdata, o2schr130K, o2schr190K, o2schr280K, T)
+    #=
+    For O2, used in quantum yield calculations,
+    including temperature-dependent Schumann-Runge bands.
+
+    ...details missing
+    =# 
+    
+    o2x = deepcopy(o2xdata);
+    # fill in the schumann-runge bands according to Minschwaner 1992
+    T = clamp(T, 130, 500)
+    if 130<=T<190
+        o2schr = o2schr130K
+    elseif 190<=T<280
+        o2schr = o2schr190K
+    else
+        o2schr = o2schr280K
+    end
+
+    del = ((T-100)/10)^2
+
+    for i in [176.5:203.5;]
+        posO2 = something(findfirst(isequal(i), o2x[:, 1]), 0)
+        posschr = something(findfirst(isequal(i), o2schr[:, 1]), 0)
+        o2x[posO2, 2] += 1e-20*(o2schr[posschr, 2]*del^2
+                                + o2schr[posschr, 3]*del
+                                + o2schr[posschr, 4])
+    end
+
+    # add in the herzberg continuum (though tiny)
+    # measured by yoshino 1992
+    for l in [192.5:244.5;]
+        posO2 = something(findfirst(isequal(l), o2x[:, 1]), 0)
+        o2x[posO2, 2] += 1e-24*(-2.3837947e4
+                            +4.1973085e2*l
+                            -2.7640139e0*l^2
+                            +8.0723193e-3*l^3
+                            -8.8255447e-6*l^4)
+    end
+
+    return o2x
+end
+
+function O3O1Dquantumyield(lambda, temp) 
+    #=
+    Quantum yield for O(1D) from O3 photodissociation. 
+    "The quantum yield of O1D from ozone photolysis is actually well-studied! 
+    This adds some complications for processing." - Mike
+    =#
+    if lambda < 306. || lambda > 328.
+        return 0.
+    end
+    temp=clamp(temp, 200, 320)#expression is only valid in this T range
+
+    X = [304.225, 314.957, 310.737];
+    w = [5.576, 6.601, 2.187];
+    A = [0.8036, 8.9061, 0.1192];
+    v = [0.,825.518];
+    c = 0.0765;
+    R = 0.695;
+    q = exp.(-v/(R*temp))
+    qrat = q[1]/(q[1]+q[2])
+
+    (q[1]/sum(q)*A[1]*exp.(-((X[1]-lambda)/w[1])^4.)
+     +q[2]/sum(q)*A[2]*(temp/300.)^2 .* exp.(-((X[2]-lambda)/w[2])^2.)
+     +A[3]*(temp/300.)^1.5*exp.(-((X[3]-lambda)/w[3])^2.)
+     +c)
+end
+
+function padtosolar(solarflux, crosssection::Array{Float64, 2}) 
+    #=
+    a function to take an Nx2 array crosssection and pad it with zeroes until it's the
+    same length as the solarflux array. Returns the cross sections only, as
+    the wavelengths are shared by solarflux 
+    =#
+    positions = map(x->something(findfirst(isequal(x), solarflux[:,1]), 0), crosssection[:,1])
+    retxsec = fill(0.,length(solarflux[:,1]))
+    retxsec[positions] = crosssection[:,2]
+    return retxsec
 end
 
 function quantumyield(xsect, arr)

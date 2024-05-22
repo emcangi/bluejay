@@ -1414,14 +1414,14 @@ end
 # **************************************************************************** #
 println("$(Dates.format(now(), "(HH:MM:SS)")) Populating cross section dictionary...")
 
-const crosssection = populate_xsect_dict(photochem_data_files; ion_xsects=ions_included, Tn=Tn_arr, n_all_layers)
+const crosssection = populate_xsect_dict(photochem_data_files, xsecfolder; ion_xsects=ions_included, Tn=Tn_arr, n_all_layers)
 
 # **************************************************************************** #
 #                                                                              #
 #                                SOLAR INPUT                                   #
 #                                                                              #
 # **************************************************************************** #
-solarflux = readdlm(code_dir*solarfile,'\t', Float64, comments=true, comment_char='#')[1:2000,:] # 2000
+solarflux = readdlm(code_dir*solarfile,'\t', Float64, comments=true, comment_char='#')[1:2000,:]
 solarflux[:,2] = solarflux[:,2] * cosd(SZA)  # Adjust the flux according to specified SZA
 
 lambdas = Float64[]
