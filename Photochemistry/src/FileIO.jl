@@ -245,6 +245,7 @@ function load_from_paramlog(folder; quiet=true, globvars...)
     hrshortcode = get_param("RSHORTCODE", df_gen)
     rshortcode = get_param("HRSHORTCODE", df_gen)
     rxn_spreadsheet = get_param("RXN_SOURCE", df_gen)
+    DH = get_param("DH", df_gen)
 
 
     if ~(:alt in keys(GV))
@@ -290,14 +291,19 @@ function load_from_paramlog(folder; quiet=true, globvars...)
     Tplasma_arr = Ti_arr .+ Te_arr;
     Tprof_for_Hs = Dict("neutral"=>Tn_arr, "ion"=>Ti_arr);
     Tprof_for_diffusion = Dict("neutral"=>Tn_arr, "ion"=>Tplasma_arr)
-    Hs_dict = Dict{Symbol, Vector{Float64}}([sp=>scaleH(alt, sp, Tprof_for_Hs[charge_type(sp)]; M_P, R_P, globvars...) for sp in all_species]); 
+    try
+        global Hs_dict = Dict{Symbol, Vector{Float64}}([sp=>scaleH(alt, sp, Tprof_for_Hs[charge_type(sp)]; M_P, R_P, globvars...) for sp in all_species]); 
+    catch UndefVarError
+        # hope the user has passed it in
+        global Hs_dict = Dict{Symbol, Vector{Float64}}([sp=>scaleH(GV.alt, sp, Tprof_for_Hs[charge_type(sp)]; GV.M_P, GV.R_P, globvars...) for sp in all_species]); 
+    end
     water_bdy = get_param("WATER_BDY", df_atmcond) * 1e5 # It's stored in km but we want it in cm
 
     # Boundary conditions
     df_bcs = DataFrame(XLSX.readtable("$(folder)PARAMETERS.xlsx", "BoundaryConditions"));
     speciesbclist = load_bcdict_from_paramdf(df_bcs);
     
-    vardict = Dict("alt"=>alt,
+    vardict = Dict("DH"=>DH, 
                    "ions_included"=>ions_included,
                    "hrshortcode"=>hrshortcode,
                    "rshortcode"=>rshortcode,
@@ -306,9 +312,6 @@ function load_from_paramlog(folder; quiet=true, globvars...)
                    "all_species"=>all_species,
                    "transport_species"=>transport_species,
                    "chem_species"=>chem_species,
-                   "planet"=>planet,
-                   "M_P"=>M_P,
-                   "R_P"=>R_P,
                    "Tn_arr"=>Tn_arr,
                    "Ti_arr"=>Ti_arr,
                    "Te_arr"=>Te_arr,
@@ -320,6 +323,17 @@ function load_from_paramlog(folder; quiet=true, globvars...)
                    "rxn_spreadsheet"=>rxn_spreadsheet,
                    "water_bdy"=>water_bdy)
 
+    try
+        vardict["alt"] = alt
+        vardict["M_P"] = M_P
+        vardict["R_P"] = R_P
+        vardict["planet"] = planet
+    catch UndefVarError
+        vardict["alt"] = GV.alt
+        vardict["M_P"] = GV.M_P
+        vardict["R_P"] = GV.R_P
+        vardict["planet"] = GV.planet
+    end 
     return vardict
 end
 
