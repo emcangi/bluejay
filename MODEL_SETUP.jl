@@ -1,14 +1,13 @@
 ################################################################################
-# PARAMETERS.jl
-# TYPE: (1) Model files - required
+# MODEL_SETUP.jl
 # DESCRIPTION: Sets up variables, constants, etc. that typically don't require
 # checking by the user before each run but change depending on the type of 
 # model being run.
 # 
 # Eryn Cangi
-# Created December 2019
-# Last edited: April 2024
-# Currently tested for Julia: 1.85
+# Created April 2024
+# Last edited: May 2024
+# Currently tested for Julia: 1.8.5
 ################################################################################
 
 using DataFrames

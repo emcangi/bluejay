@@ -1,14 +1,13 @@
 ################################################################################
 # PLOT_STYLES.jl
-# TYPE: (1) Model files - required
 # DESCRIPTION: Sets some style items for plotting. This is a separate file from 
 # MODEL_SETUP.jl because this file also has to be frequently loaded separately 
 # in analysis notebooks.
 # 
 # Eryn Cangi
 # Created April 2024
-# Last edited: April 2024
-# Currently tested for Julia: 1.85
+# Last edited: May 2024
+# Currently tested for Julia: 1.8.5
 ################################################################################
 
 # ***************************************************************************************************** #
@@ -66,10 +65,16 @@ const speciescolor = Dict( # PRIMARY NEUTRALS + IONS
                     :N2Hpl=>"#611115",:N2Dpl=>"#611115", 
                     );
 
+# NOTE: Some code is repeated here below, also occurring in get_deuterated, to figure out which species are deuterated. 
+# This is because this file needs to be called by Photochemistry.jl, and I couldn't bear to not have a plot style variable
+# somewhere other than PLOT_STYLES.jl. --Eryn
+# TODO: This needs to be modified if you add new deuterated species! But, it's only plot styles, so I figured it was ok to 
+# be a little lax about this.
 known_species = keys(speciescolor)
+Dspc = [s for s in setdiff(known_species, [:Nup2D, :O1D]) if occursin('D', string(s))]
 
 # D group will have dashed lines; neutrals, solid (default)
-const speciesstyle = Dict(vcat([s=>"--" for s in setdiff(get_deuterated(known_species), [:HD2pl])], [:HD2pl=>":", :Nup2D=>"-."]) )
+const speciesstyle = Dict(vcat([s=>"--" for s in Dspc], [:HD2pl=>":", :Nup2D=>"-."]) )
 
 
 const medgray = "#444444"

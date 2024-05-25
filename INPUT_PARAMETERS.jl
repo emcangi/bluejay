@@ -1,12 +1,11 @@
 ################################################################################
 # INPUT_PARAMETERS.jl
-# TYPE: (1) Model files - required
-# DESCRIPTION: Variables to be modified for each simulation run. 
+# DESCRIPTION: Variables to be modified by the user for each simulation run. 
 # 
 # Eryn Cangi
 # Created April 2024
-# Last edited: 2024
-# Currently tested for Julia: 1.85
+# Last edited: May 2024
+# Currently tested for Julia: 1.8.5
 ################################################################################
 
 # Set the planet 

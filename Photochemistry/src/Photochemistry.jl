@@ -1,21 +1,23 @@
 __precompile__()
 
 module Photochemistry
-using Interpolations
-using PyPlot
-using PyCall
-using HDF5, JLD
-using LaTeXStrings
+
+using DataFrames
 using DelimitedFiles
-using SparseArrays
+using GeneralizedGenerated
+using HDF5, JLD
+using IncompleteLU 
+using Interpolations
+using LaTeXStrings
 using LinearAlgebra
 using PlotUtils
-using GeneralizedGenerated
-using DataFrames
-using XLSX
-using Random
 using Printf
-using IncompleteLU 
+using PyPlot # Do not change the order of PyPlot and PyCall, it causes problems.
+using PyCall
+using Random
+using SparseArrays
+using XLSX
+
 
 export 
 
@@ -216,6 +218,7 @@ prum_to_ppm
 code_loc = "$(@__DIR__)/../../"
 # println("Photochemistry.jl code_loc = $code_loc")
 include(code_loc*"CONSTANTS.jl")
+include(code_loc*"PLOT_STYLES.jl")
 
 include("AnalyzeChemAndTransport.jl")                                                                                
 include("BasicUtilities.jl")

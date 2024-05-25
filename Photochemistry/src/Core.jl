@@ -2,13 +2,15 @@
 #                                                                              #
 #                             PHOTOCHEMICAL CORE                               #
 #                                                                              #
-# Everything necessary to run the model should be in this file with a few      #
-# exceptions:
+# This file forms the logical core of the photochemical model. Some things     #
+# not included in this file are:                                               #
 # 1. Anything related to file input/output/writing is in FileIO.jl.            #
 # 2. Everything related to photochemical cross sections is in Crosssections.jl.#
 # 3. Everything related to building the chemical network object from the       #
-#    provided spreadsheet is in ReactionNetwork.jl.
-# 
+#    provided spreadsheet is in ReactionNetwork.jl.                            #
+# 4. Really small functions necessary to the model but that are not as         #
+#    "complicated" as these core functions are in BasicUtilities.jl.           #
+#                                                                              #
 # **************************************************************************** #
 
 # Special Exception for this model.
