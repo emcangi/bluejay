@@ -35,7 +35,7 @@ parent_folders_from_full_path, draw_DH_lines, collect_atmospheres
 code_loc = "$(@__DIR__)/../../"
 
 # Basic files
-include(code_loc*"CUSTOMIZATIONS.jl") 
+include(code_loc*"PLOT_STYLES.jl") 
 include(code_loc*"CONSTANTS.jl")
 
 # Submodules
