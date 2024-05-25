@@ -1,10 +1,5 @@
-# **************************************************************************** #
-#                                                                              #
-#         Functions for atmospheric dictionary object or its constituents      #
-#                                                                              #
-# **************************************************************************** #
 
-function column_density(n::Vector; start_alt=1, end_alt=9999)
+function column_density(n::Vector; start_alt=1, end_alt=9999, globvars...)
     #=
     Returns column density of n above ONE atmospheric layer defined by start_alt.
 
@@ -16,12 +11,15 @@ function column_density(n::Vector; start_alt=1, end_alt=9999)
     Output
         Column density (#/cm²)
     =#
+    GV = values(globvars)
+    required =  [:dz]
+    check_requirements(keys(GV), required)
 
     end_alt = end_alt==9999 ? length(n) : end_alt 
-    return sum(n[start_alt:end_alt] .* dz)
+    return sum(n[start_alt:end_alt] .* GV.dz)
 end
 
-function column_density_above(n_tot_by_alt::Vector)
+function column_density_above(n_tot_by_alt::Vector; globvars...)
     #=
     Returns an array where entries are the total integrated column density above
     that level of the atmosphere. e.g. the value at the topmost altitude is 
@@ -31,10 +29,14 @@ function column_density_above(n_tot_by_alt::Vector)
     
     n_tot_by_alt: Total atmospheric density at each altitude layer.
     =#
+    GV = values(globvars)
+    required =  [:dz, :num_layers]
+    check_requirements(keys(GV), required)
+
     col_above = zeros(size(n_tot_by_alt))
 
-    for i in 1:num_layers
-        col_above[i] = column_density(n_tot_by_alt; start_alt=i+1)
+    for i in 1:GV.num_layers
+        col_above[i] = column_density(n_tot_by_alt; start_alt=i+1, globvars...)
     end
 
     return col_above
@@ -48,7 +50,7 @@ function column_density_species(atmdict, sp; start_alt=0., end_alt=250e5, globva
     required = [:n_alt_index, :dz]
     check_requirements(keys(GV), required)
 
-    return column_density(atmdict[sp]; start_alt=n_alt_index[start_alt], end_alt=n_alt_index[end_alt])
+    return column_density(atmdict[sp]; start_alt=GV.n_alt_index[start_alt], end_alt=GV.n_alt_index[end_alt], globvars...)
 end 
 
 function electron_density(atmdict; globvars...)
@@ -79,6 +81,7 @@ end
 function find_exobase(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}; returntype="index", verbose=false, globvars...)
     #=
     Finds the exobase altitude, where mean free path is equal to a scale height.
+    ONLY VALID FOR H AND D (because collision_xsect only includes xsects for those, and they're H and D on O)
 
     Inputs:
         s: species 
@@ -88,8 +91,12 @@ function find_exobase(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}; ret
         Altitude of exobase in cm
     =#
 
+    if (sp != :H) || (sp != :D)
+        throw("find_exobase is not defined for species other than H and D at this time.")
+    end
+
     GV = values(globvars)
-    required =  [:non_bdy_layers, :all_species, :Tn, :molmass, :alt, :collision_xsect, :n_alt_index, :zmax]
+    required =  [:all_species, :alt, :collision_xsect, :M_P, :molmass, :non_bdy_layers, :n_alt_index, :R_P, :Tn, :zmax]
     check_requirements(keys(GV), required)
 
     H_s = scaleH(GV.non_bdy_layers, sp, GV.Tn[2:end-1]; globvars...)
@@ -105,27 +112,6 @@ function find_exobase(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}; ret
         returnme = Dict("altitude"=>GV.alt[exobase_alt], "index"=>exobase_alt)
     end
     return returnme[returntype]
-end
-
-function meanmass(atmdict::Dict{Symbol, Vector{ftype_ncur}}, z; globvars...)
-    #= 
-    find the mean molecular mass at a given altitude z
-
-    atmdict: species number density by altitude
-    z: float; altitude in atmosphere in cm
-
-    return: mean molecular mass in amu
-    =#
-    GV = values(globvars)
-    required =  [:all_species, :molmass, :n_alt_index]
-    check_requirements(keys(GV), required)
-
-    counted_species = setdiff(GV.all_species, ignore)
-
-    thisaltindex = GV.n_alt_index[z]
-    c = [atmdict[sp][thisaltindex] for sp in counted_species]
-    m = [GV.molmass[sp] for sp in counted_species]
-    return sum(c.*m)/sum(c)
 end
 
 function meanmass(atmdict::Dict{Symbol, Vector{ftype_ncur}}; ignore=[], globvars...)
@@ -327,10 +313,10 @@ function scaleH(z, sp::Symbol, T; globvars...)
         species-specific scale height at all altitudes (in cm)
     =#  
     GV = values(globvars)
-    required = [:molmass]
+    required = [:molmass, :M_P, :R_P]
     check_requirements(keys(GV), required)
 
-    return @. kB*T/(GV.molmass[sp]*mH*marsM*bigG)*(((z+radiusM))^2)
+    return @. kB*T/(GV.molmass[sp]*mH*GV.M_P*bigG)*(((z+GV.R_P))^2)
 end
 
 function scaleH(atmdict::Dict{Symbol, Vector{ftype_ncur}}, T::Vector; ignore=[], globvars...)
@@ -344,12 +330,33 @@ function scaleH(atmdict::Dict{Symbol, Vector{ftype_ncur}}, T::Vector; ignore=[],
     =#
 
     GV = values(globvars)
-    required = [:all_species, :alt, :molmass, :n_alt_index]
+    required = [:all_species, :alt, :M_P, :molmass, :n_alt_index, :R_P]
     check_requirements(keys(GV), required)
 
     counted_species = setdiff(GV.all_species, ignore)
 
-    mm_vec = meanmass(atmdict; ignore=ignore, globvars...)#, all_species, mmass) # vector version.
-    return @. kB*T/(mm_vec*mH*marsM*bigG)*(((GV.alt+radiusM))^2)
+    mm_vec = meanmass(atmdict; ignore=ignore, globvars...)
+    return @. kB*T/(mm_vec*mH*GV.M_P*bigG)*(((GV.alt+GV.R_P))^2)
 end
 
+function scaleH_lowerboundary(z::Float64, T::Float64; globvars...)
+    #= 
+    Input:
+        z: Some altitude (in cm)
+        atmdict: atmospheric state dictionary, needed to calculate over other species
+        T: Temperature at altitude z
+    Output:
+        Special case of mean atmospheric scale height at one altitude in cm, relevant for
+        lower boundary condition. Here we will assume the mean mass at the lower boundary is constant,
+        since we are assuming a density boundary condition for CO2, this will be a pretty ok assumption.
+        By using this function, we don't have to make the lower bc for velocities a function of 
+        the present atmosphere like we do for non-thermal escape (which would require a big rewrite of 
+        the boundaryconditions() velocity section). 
+    =#
+    GV = values(globvars)
+    @assert all(x->x in keys(GV), [:M_P, :molmass, :R_P, :zmin])
+    @assert z==GV.zmin
+
+    mm = GV.molmass[:CO2]
+    return kB*T/(mm*mH*GV.M_P*bigG)*(((z+GV.R_P))^2)
+end 

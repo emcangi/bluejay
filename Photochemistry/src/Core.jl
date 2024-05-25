@@ -2,10 +2,17 @@
 #                                                                              #
 #                             PHOTOCHEMICAL CORE                               #
 #                                                                              #
+# Everything necessary to run the model should be in this file with a few      #
+# exceptions:
+# 1. Anything related to file input/output/writing is in FileIO.jl.            #
+# 2. Everything related to photochemical cross sections is in Crosssections.jl.#
+# 3. Everything related to building the chemical network object from the       #
+#    provided spreadsheet is in ReactionNetwork.jl.
+# 
 # **************************************************************************** #
 
 #===============================================================================#
-#                        Basic model mechanical functions                       #
+#                      Atmospheric attribute calculations                       #
 #===============================================================================#
 
 function atm_dict_to_matrix(atmdict::Dict{Symbol, Vector{ftype_ncur}}, species_list)
@@ -632,12 +639,12 @@ function effusion_velocity(Texo, m; globvars...)
     =#
 
     GV = values(globvars)
-    required =  [:zmax]
+    required =  [:zmax, :M_P, :R_P]
     check_requirements(keys(GV), required)
     
     # lambda is the Jeans parameter (Gronoff 2020), basically the ratio of the 
     # escape velocity GmM/z to the thermal energy, kT.
-    lambda = (m*mH*bigG*marsM)/(kB*Texo*(radiusM+GV.zmax))
+    lambda = (m*mH*bigG*GV.M_P)/(kB*Texo*(GV.R_P+GV.zmax))
     vth = sqrt(2*kB*Texo/(m*mH))
     v = exp(-lambda)*vth*(lambda+1)/(2*pi^0.5)
 
@@ -656,13 +663,17 @@ function escape_probability(sp, atmdict; globvars...)::Array
         Array by altitude of escape probabilities for hot atoms. 0-1.
     =#
     GV = values(globvars)
-    required = [:all_species, :collision_xsect]
+    required = [:all_species, :collision_xsect, :dz, :planet]
     check_requirements(keys(GV), required)
     
-    A = 0.916 # escape probability at altitude where above column = 0, for high energy particles. upper limit
-    a = 0.039 # how "transparent" the atmosphere is to an escaping atom. smaller for higher energy so this is for an upper limit.
-    
-    return A .* exp.(-a .* GV.collision_xsect[sp] .* column_density_above(n_tot(atmdict; GV.all_species))) 
+    # Parameters determined through Bethan's Monte Carlo model. 
+    # [1] = A = escape probability at altitude where above column = 0, for high energy particles. upper limit
+    # [2] = a = how "transparent" the atmosphere is to an escaping atom. smaller for higher energy so this is for an upper limit.
+    params = Dict("Mars"=>[0.916, 0.39],
+                  "Venus"=>[0.868, 0.058]
+                 )[GV.planet]
+
+    return params[1] .* exp.(-params[2] .* GV.collision_xsect[sp] .* column_density_above(n_tot(atmdict; GV.all_species, GV.dz); globvars...) ) 
 end
 
 function escaping_hot_atom_production(sp, source_rxns, source_rxn_rc_funcs, atmdict, Mtot; returntype="array", globvars...)
@@ -1157,10 +1168,15 @@ function boundaryconditions(fluxcoef_dict, atmdict, M; nonthermal=true, globvars
         element in each row will eventually be multiplied by a density taken from the atmospheric 
         state dictionary, and the second element will be used as-is. That way, eventually the total
         change recorded in other functions is always #/cm³/s. 
+
+        FROM VENUS VERSION, MIKE:
+        Sign convention: The density-dependent terms (bc_dict[sp][:, 1]) are multiplied by -1 when the
+                         transport rates are computed in get_transport_PandL_rate. Density independent 
+                         terms (bc_dict[sp][:, 2]) are not.
     =#
     
     GV = values(globvars)
-    required = [:all_species, :speciesbclist, :dz]
+    required = [:all_species, :speciesbclist, :dz, :planet]
     check_requirements(keys(GV), required)
     
     bc_dict = Dict{Symbol, Array{ftype_ncur}}([s=>[0 0; 0 0] for s in GV.all_species])
@@ -1175,8 +1191,22 @@ function boundaryconditions(fluxcoef_dict, atmdict, M; nonthermal=true, globvars
  
         # DENSITY
         try 
-            n_lower = [fluxcoef_dict[sp][2, :][1], fluxcoef_dict[sp][1, :][2]*these_bcs["n"][1]]
+            # lower boundary...
+            if GV.planet=="Mars"
+                n_lower = [fluxcoef_dict[sp][2, :][1], fluxcoef_dict[sp][1, :][2]*these_bcs["n"][1]]
+            elseif GV.planet=="Venus"
+                # get the eddy+molecular mixing velocities at the lower boundary of the atmosphere
+                v_lower_boundary_up = fluxcoef_dict[sp][1, # lower boundary cell, outside atmosphere
+                                                        2] # upward mixing velocity
+                v_lower_boundary_dn = fluxcoef_dict[sp][2, # bottom cell of atmosphere
+                                                        1] # downward mixing velocity
+
+                n_lower = [v_lower_boundary_dn, v_lower_boundary_up*these_bcs["n"][1]]
+            end
             try
+                # TODO for Venus only, this note from Mike originally: 
+                # throw an error if density boundary condition
+                # is specified simultaneous with any flux or velocity condition
                 @assert all(x->!isnan(x), n_lower)
                 bc_dict[sp][1, :] .+= n_lower
             catch y
@@ -1184,8 +1214,25 @@ function boundaryconditions(fluxcoef_dict, atmdict, M; nonthermal=true, globvars
                     throw("Unhandled exception in lower density bc: $(y)")
                 end
             end
+
+            # upper boundary...
             try 
-                n_upper = [fluxcoef_dict[sp][end-1, :][2], fluxcoef_dict[sp][end, :][1]*these_bcs["n"][2]]
+                if GV.planet=="Mars"
+                    n_upper = [fluxcoef_dict[sp][end-1, :][2], fluxcoef_dict[sp][end, :][1]*these_bcs["n"][2]]
+                elseif GV.planet=="Venus"
+                    # get the eddy+molecular mixing velocities at the upper boundary of the atmosphere
+                    v_upper_boundary_up = fluxcoef_dict[sp][end-1, # top cell of atmosphere
+                                                            2]     # upward mixing velocity
+                    v_upper_boundary_dn = fluxcoef_dict[sp][end, # upper boundary cell, outside atmosphere
+                                                            1]   # downward mixing velocity
+
+                    n_upper = [v_upper_boundary_up, v_upper_boundary_dn*these_bcs["n"][2]]
+                    
+                end
+
+                # TODO for Venus only, this note from Mike originally: 
+                # throw an error if density boundary condition
+                # is specified simultaneous with any flux or velocity condition
                 @assert all(x->!isnan(x), n_upper)
                 bc_dict[sp][2, :] .+= n_upper
             catch y
@@ -1201,7 +1248,13 @@ function boundaryconditions(fluxcoef_dict, atmdict, M; nonthermal=true, globvars
     
         # FLUX 
         try 
-            f_lower = [0, -these_bcs["f"][1]/GV.dz]
+            # lower boundary...
+            if GV.planet=="Mars"
+                f_lower = [0, -these_bcs["f"][1]/GV.dz]
+            elseif GV.planet=="Venus"
+                f_lower = [0, these_bcs["f"][1]/GV.dz]
+                #             ^ no (-) sign, negative flux at lower boundary represents loss to surface
+            end
             try        
                 @assert all(x->!isnan(x), f_lower)
                 bc_dict[sp][1, :] .+= f_lower
@@ -1211,7 +1264,10 @@ function boundaryconditions(fluxcoef_dict, atmdict, M; nonthermal=true, globvars
                 end
             end
             try 
+                # upper boundary...
                 f_upper = [0, -these_bcs["f"][2]/GV.dz]
+                #             ^ (-) sign needed so that positive flux at upper boundary represents loss to space
+                #             (see "Sign convention" note above)
                 @assert all(x->!isnan(x), f_upper)
                 bc_dict[sp][2, :] .+= f_upper
             catch y
@@ -1227,7 +1283,14 @@ function boundaryconditions(fluxcoef_dict, atmdict, M; nonthermal=true, globvars
     
         # VELOCITY
         try 
-            v_lower = [these_bcs["v"][1]/GV.dz, 0]
+            # lower boundary...
+            if GV.planet=="Mars" 
+                v_lower = [these_bcs["v"][1]/GV.dz, 0]
+            elseif GV.planet=="Venus"
+                v_lower = [-these_bcs["v"][1]/GV.dz, 0]
+            #          ^ (-) sign needed so that negative velocity at lower boundary represents loss to surface
+            #          (see "Sign convention" note above)
+            end
 
             try
                 @assert all(x->!isnan(x), v_lower)
@@ -1239,7 +1302,10 @@ function boundaryconditions(fluxcoef_dict, atmdict, M; nonthermal=true, globvars
             end
 
             try 
+                # upper boundary...
                 v_upper = [these_bcs["v"][2]/GV.dz, 0]
+                #          ^ no (-) sign needed,  positive velocity at upper boundary represents loss to space
+                #          (see "Sign convention" note above)
                 @assert all(x->!isnan(x), v_upper)
                 bc_dict[sp][2, :] .+= v_upper
             catch y
@@ -1430,7 +1496,7 @@ function fluxcoefs(sp::Symbol, Kv, Dv, H0v; globvars...)
     =#
 
     GV = values(globvars)
-    required = [:Tn, :Tp, :Hs_dict, :n_all_layers, :dz]
+    required = [:Tn, :Tp, :Hs_dict, :n_all_layers, :dz, :planet]
     check_requirements(keys(GV), required)
 
     # Initialize arrays for downward (i to i-1) and upward (i to i+1) coefficients
@@ -1462,17 +1528,30 @@ function fluxcoefs(sp::Symbol, Kv, Dv, H0v; globvars...)
     Hsl[2:end] = @. (GV.Hs_dict[sp][1:end-1] + GV.Hs_dict[sp][2:end]) / 2.0
     H0l[2:end] = @. (H0v[charge_type(sp)][1:end-1] + H0v[charge_type(sp)][2:end]) / 2.0
 
-    # Handle the lower boundary layer:
-    Dl[1] = @. (1 + Dv[sp][1]) /  2.0
-    Kl[1] = @. (1 + Kv[1]) / 2.0
-    Tl_n[1] = @. (1 + GV.Tn[1]) / 2.0
-    Tl_p[1] = @. (1 + GV.Tp[1]) / 2.0
-    dTdzl_n[1] = @. (GV.Tn[1] - 1) / GV.dz
-    dTdzl_p[1] = @. (GV.Tp[1] - 1) / GV.dz
-    Hsl[1] = @. (1 + GV.Hs_dict[sp][1]) / 2.0
-    H0l[1] = @. (1 + H0v[charge_type(sp)][1]) / 2.0
+    if GV.planet=="Mars"
+        # Handle the lower boundary layer:
+        Dl[1] = @. (1 + Dv[sp][1]) /  2.0
+        Kl[1] = @. (1 + Kv[1]) / 2.0
+        Tl_n[1] = @. (1 + GV.Tn[1]) / 2.0
+        Tl_p[1] = @. (1 + GV.Tp[1]) / 2.0
+        dTdzl_n[1] = @. (GV.Tn[1] - 1) / GV.dz
+        dTdzl_p[1] = @. (GV.Tp[1] - 1) / GV.dz
+        Hsl[1] = @. (1 + GV.Hs_dict[sp][1]) / 2.0
+        H0l[1] = @. (1 + H0v[charge_type(sp)][1]) / 2.0
+    elseif GV.planet=="Venus"
+        # Downward transport away from the lower boundary layer, which is outside the model
+        # These should never be used but we need to fill the array
+        Dl[1] = Float64(NaN)
+        Kl[1] = Float64(NaN)
+        Tl_n[1] = Float64(NaN)
+        Tl_p[1] = Float64(NaN)
+        dTdzl_n[1] = Float64(NaN)
+        dTdzl_p[1] = Float64(NaN)
+        Hsl[1] = Float64(NaN)
+        H0l[1] = Float64(NaN)
+    end
 
-    # Now the coefficients between this layer and upper layer
+    # Upward transport from each altitude to the cell above
     Du[1:end-1] = @. (Dv[sp][1:end-1] + Dv[sp][2:end]) /  2.0
     Ku[1:end-1] = @. (Kv[1:end-1] + Kv[2:end]) / 2.0
     Tu_n[1:end-1] = @. (GV.Tn[1:end-1] + GV.Tn[2:end]) / 2.0
@@ -1482,15 +1561,28 @@ function fluxcoefs(sp::Symbol, Kv, Dv, H0v; globvars...)
     Hsu[1:end-1] = @. (GV.Hs_dict[sp][1:end-1] + GV.Hs_dict[sp][2:end]) / 2.0
     H0u[1:end-1] = @. (H0v[charge_type(sp)][1:end-1] + H0v[charge_type(sp)][2:end]) / 2.0
 
-    # Handle upper boundary layer:
-    Du[end] = @. (Dv[sp][end] + 1) /  2.0
-    Ku[end] = @. (Kv[end] + 1) / 2.0
-    Tu_n[end] = @. (GV.Tn[end] + 1) / 2.0
-    Tu_p[end] = @. (GV.Tp[end] + 1) / 2.0
-    dTdzu_n[end] = @. (1 - GV.Tn[end]) / GV.dz
-    dTdzu_p[end] = @. (1 - GV.Tp[end]) / GV.dz
-    Hsu[end] = @. (GV.Hs_dict[sp][end] + 1) / 2.0
-    H0u[end] = @. (H0v[charge_type(sp)][end] + 1) / 2.0
+    if GV.planet=="Mars"
+        # Handle upper boundary layer:
+        Du[end] = @. (Dv[sp][end] + 1) /  2.0
+        Ku[end] = @. (Kv[end] + 1) / 2.0
+        Tu_n[end] = @. (GV.Tn[end] + 1) / 2.0
+        Tu_p[end] = @. (GV.Tp[end] + 1) / 2.0
+        dTdzu_n[end] = @. (1 - GV.Tn[end]) / GV.dz
+        dTdzu_p[end] = @. (1 - GV.Tp[end]) / GV.dz
+        Hsu[end] = @. (GV.Hs_dict[sp][end] + 1) / 2.0
+        H0u[end] = @. (H0v[charge_type(sp)][end] + 1) / 2.0
+    elseif GV.planet=="Venus"
+        # Upwards flux from the upper boundary layer, which is outside the model
+        # These should never be used but we need to fill the array
+        Du[end] = Float64(NaN)
+        Ku[end] = Float64(NaN)
+        Tu_n[end] = Float64(NaN)
+        Tu_p[end] = Float64(NaN)
+        dTdzu_n[end] = Float64(NaN)
+        dTdzu_p[end] = Float64(NaN)
+        Hsu[end] = Float64(NaN)
+        H0u[end] = Float64(NaN)
+    end
 
 
     # two flux terms: eddy diffusion and gravity/thermal diffusion.
@@ -1569,7 +1661,7 @@ function fluxcoefs(species_list::Vector, K, D, H0; globvars...)
     return fluxcoef_dict
 end
 
-function Keddy(z::Vector, nt::Vector)
+function Keddy(z::Vector, nt::Vector; globvars...)
     #=
     Input:
         z: Altitude in cm
@@ -1578,10 +1670,18 @@ function Keddy(z::Vector, nt::Vector)
         k: eddy diffusion coefficients at all altitudes.
     =#
 
-    k = zeros(size(z))
-    upperatm = findall(i->i .> 60e5, z)
-    k[findall(i->i .<= 60e5, z)] .= 10. ^ 6
-    k[upperatm] .= 2e13 ./ sqrt.(nt[upperatm])
+    GV = values(globvars)
+    required = [:planet]
+    check_requirements(keys(GV), required)
+
+    k = zeros(size(z)) # Initialize array for eddy diffusion
+    if GV.planet=="Mars"
+        upperatm = findall(i->i .> 60e5, z)
+        k[findall(i->i .<= 60e5, z)] .= 10. ^ 6
+        k[upperatm] .= 2e13 ./ sqrt.(nt[upperatm])
+    elseif GV.planet=="Venus"
+        k = 8e12*(nt .^ -0.5)
+    end
 
     return k
 end
@@ -1609,13 +1709,13 @@ function update_diffusion_and_scaleH(species_list, atmdict::Dict{Symbol, Vector{
         H0: Dictionary of mean atmospheric scale height by altitude. Keys are "neutral" and "ion". 
     =#
     GV = values(globvars)
-    required = [:all_species, :alt, :speciesbclist, :molmass, :neutral_species, :n_alt_index, :polarizability, :q,
+    required = [:all_species, :alt, :speciesbclist, :M_P, :molmass, :neutral_species, :n_alt_index, :polarizability, :planet, :R_P, :q,
                :Tn, :Tp, :Tprof_for_diffusion, :use_ambipolar, :use_molec_diff]
     check_requirements(keys(GV), required)
 
     ncur_with_bdys = ncur_with_boundary_layers(atmdict; GV.n_alt_index, GV.all_species)
     
-    K = Keddy(GV.alt, n_tot(ncur_with_bdys; GV.all_species, GV.n_alt_index))
+    K = Keddy(GV.alt, n_tot(ncur_with_bdys; GV.all_species, GV.n_alt_index); GV.planet)
     H0_dict = Dict{String, Vector{ftype_ncur}}("neutral"=>scaleH(ncur_with_bdys, GV.Tn; globvars...),
                                                "ion"=>scaleH(ncur_with_bdys, GV.Tp; globvars...))
     
@@ -1650,9 +1750,9 @@ function update_transport_coefficients(species_list, atmdict::Dict{Symbol, Vecto
 
     GV = values(globvars)
     required = [:all_species, :alt, :speciesbclist, :dz, :hot_H_network, :hot_H_rc_funcs, :hot_D_network, :hot_D_rc_funcs, 
-               :hot_H2_network, :hot_H2_rc_funcs, :hot_HD_network, :hot_HD_rc_funcs,  
-               :Hs_dict, :ion_species, :molmass, :neutral_species, :non_bdy_layers, :num_layers, :n_all_layers, :n_alt_index, 
-               :polarizability, :q, :Tn, :Ti, :Te, :Tp, :Tprof_for_diffusion, :transport_species, :use_ambipolar, :use_molec_diff, :zmax]
+               :hot_H2_network, :hot_H2_rc_funcs, :hot_HD_network, :hot_HD_rc_funcs, :Hs_dict, 
+               :ion_species, :M_P, :molmass, :neutral_species, :non_bdy_layers, :num_layers, :n_all_layers, :n_alt_index, 
+               :polarizability, :q, :R_P, :Tn, :Ti, :Te, :Tp, :Tprof_for_diffusion, :transport_species, :use_ambipolar, :use_molec_diff, :zmax]
     check_requirements(keys(GV), required)
     
     # Update the diffusion coefficients and scale heights

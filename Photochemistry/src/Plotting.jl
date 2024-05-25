@@ -55,7 +55,7 @@ function get_grad_colors(L::Int64, cmap; strt=0, stp=1)
 end
 
 function plot_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, savepath::String, atol, E_prof; imgfmt="png", print_shortcodes=true, mixing_ratio=false,
-                  t="", showonly=false, xlab=L"Species concentration (cm$^{-3}$)", xlim_1=(1e-12, 1e18), xlim_2=(1e-5, 2.5e5), 
+                  t="", showonly=false, xlab=L"Species density (cm$^{-3}$)", xlim_1=(1e-12, 1e18), xlim_2=(1e-5, 2.5e5), ylims=[0, 250],
                   legloc=[0.8,1], globvars...)
     #=
     Makes a "spaghetti plot" of the species concentrations by altitude in the
@@ -78,7 +78,7 @@ function plot_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, savepath::String, a
     =#
 
     GV = values(globvars)
-    required =  [:neutral_species, :plot_grid, :speciescolor, :speciesstyle, :zmax]
+    required =  [:monospace_choice, :neutral_species, :plot_grid, :sansserif_choice, :speciescolor, :speciesstyle, :zmax]
     check_requirements(keys(GV), required)
 
     if print_shortcodes
@@ -86,7 +86,7 @@ function plot_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, savepath::String, a
         check_requirements(keys(GV), required)
     end 
 
-    set_rc_params(; fs=18, axlab=20, xtls=18, ytls=18, sansserif=sansserif_choice, monospace=monospace_choice)
+    set_rc_params(; fs=18, axlab=20, xtls=18, ytls=18, sansserif=GV.sansserif_choice, monospace=GV.monospace_choice)
 
     # Convert to mixing ratio if requested ====================================================
     if mixing_ratio==true 
@@ -100,6 +100,8 @@ function plot_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, savepath::String, a
 
         xlim_1 = [xlim_1[1]/ntot[1], 1]
         xlim_2 = [xlim_2[1]/ntot[1], 1]
+
+        xlab = L"Species mixing ratio (ppm)"
 
         E_prof = E_prof ./ ntot
 
@@ -198,6 +200,7 @@ function plot_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, savepath::String, a
             for c in 1:size(atm_ax)[2]
                 atm_ax[r,c].set_ylim(0, GV.zmax/1e5)
                 atm_ax[r,c].set_xscale("log")
+                atm_ax[r,c].set_ylim(ylims[1], ylims[2])
                 handles, labels = atm_ax[r,c].get_legend_handles_labels()
                 if isempty(handles) == false
                     x, y = legloc
@@ -239,8 +242,8 @@ function plot_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, savepath::String, a
 
     # Shortcodes as watermarks
     if print_shortcodes
-        text(0.9, 1.05, GV.hrshortcode, transform=gcf().transFigure, color="dimgrey", ha="right")
-        text(0.9, 1.02, GV.rshortcode, transform=gcf().transFigure, color="dimgrey", ha="right")
+        text(1, 1.05, GV.hrshortcode, transform=gcf().transFigure, color="dimgrey", ha="right")
+        text(1, 1.02, GV.rshortcode, transform=gcf().transFigure, color="dimgrey", ha="right")
     end
 
     if showonly==false  
@@ -415,11 +418,11 @@ function plot_Jrates(sp, atmdict::Dict{Symbol, Vector{ftype_ncur}}; savedir=noth
     =#
 
     GV = values(globvars)
-    required =  [:all_species, :ion_species, :num_layers, :plot_grid, :reaction_network, :speciesbclist, :Tn, :Ti, :Te]
+    required =  [:all_species, :ion_species, :monospace_choice, :num_layers, :plot_grid, :reaction_network, :sansserif_choice, :speciesbclist, :Tn, :Ti, :Te]
     check_requirements(keys(GV), required)
 
     # Plot setup
-    set_rc_params(; fs=12, axlab=16, xtls=16, ytls=16, sansserif=sansserif_choice, monospace=monospace_choice)
+    set_rc_params(; fs=12, axlab=16, xtls=16, ytls=16, sansserif=GV.sansserif_choice, monospace=GV.monospace_choice)
 
     # --------------------------------------------------------------------------------
     # make plot
@@ -556,15 +559,15 @@ function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, result
 
     GV = values(globvars)
     required =  [:all_species, :alt, :chem_species, :dz, :hrshortcode, :Hs_dict, :ion_species, 
-                 :molmass, :n_all_layers, :n_alt_index, :neutral_species, :num_layers, 
-                 :plot_grid, :polarizability, :q, :rshortcode, :reaction_network, :speciesbclist, 
+                 :molmass, :monospace_choice, :n_all_layers, :n_alt_index, :neutral_species, :num_layers, 
+                 :plot_grid, :polarizability, :q, :rshortcode, :reaction_network, :sansserif_choice, :speciesbclist, 
                  :Te, :Ti, :Tn, :Tp, :Tprof_for_Hs, :Tprof_for_diffusion, :transport_species, 
-                 :upper_lower_bdy, :upper_lower_bdy_i]
+                 :upper_lower_bdy, :upper_lower_bdy_i, :zmax]
     check_requirements(keys(GV), required)
  
     # ================================================================================
     # Plot setup stuff
-    set_rc_params(; fs=12, axlab=16, xtls=16, ytls=16, sansserif=sansserif_choice, monospace=monospace_choice)
+    set_rc_params(; fs=12, axlab=16, xtls=16, ytls=16, sansserif=GV.sansserif_choice, monospace=GV.monospace_choice)
 
     if plot_timescales==true
         total_ax = 4
@@ -778,7 +781,7 @@ function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, result
     for i in 1:length(ax)
         ax[i].set_title(titles[i])
         ax[i].set_xlim(minx[i], maxx[i])
-        ax[i].set_ylim(0, zmax/1e5)
+        ax[i].set_ylim(0, GV.zmax/1e5)
         if sp in [:H2O, :HDO]
             ax[i].text(2*minx[i], 5, notes[i])
         end
@@ -826,8 +829,8 @@ function plot_reaction_on_demand(atmdict, reactants; print_col_total=false, prod
 
     # Collect global variables
     GV = values(globvars)
-    required = [:all_species, :alt, :collision_xsect, :ion_species, :Jratedict, :molmass, :non_bdy_layers, :num_layers,  
-                           :n_alt_index, :reaction_network, :Tn, :Ti, :Te, :dz, :zmax]
+    required = [:all_species, :alt, :collision_xsect, :ion_species, :Jratedict, :molmass, :monospace_choice, :non_bdy_layers, :num_layers,  
+                           :n_alt_index, :reaction_network, :sansserif_choice, :Tn, :Ti, :Te, :dz, :zmax]
     check_requirements(keys(GV), required)
 
     # Build an evalutable network
@@ -873,7 +876,7 @@ function plot_reaction_on_demand(atmdict, reactants; print_col_total=false, prod
         fig, ax = subplots(figsize=(7.5, 5))
     end
 
-    set_rc_params(; fs=18, axlab=20, xtls=18, ytls=18, sansserif=sansserif_choice, monospace=monospace_choice)
+    set_rc_params(; fs=18, axlab=20, xtls=18, ytls=18, sansserif=GV.sansserif_choice, monospace=GV.monospace_choice)
     plot_bg(ax)
     ax.set_ylabel("Altitude (km)")
     if lowerlim!=nothing
@@ -936,12 +939,13 @@ function plot_species_on_demand(atmdict, spclist, filename; savepath=nothing, sh
         LL: legend location within the axes
     =#
 
-    rcParams = PyDict(matplotlib."rcParams")
-    set_rc_params(; fs=18, axlab=20, xtls=18, ytls=18, sansserif=sansserif_choice, monospace=monospace_choice)
-    
+    # Collect global variables
     GV = values(globvars)
-    required =  [:plot_grid, :speciescolor, :speciesstyle, :zmax]
-    check_requirements(keys(GV), required)
+    required = [:monospace_choice,  :sansserif_choice, :plot_grid, :speciescolor, :speciesstyle, :zmax]
+    check_requirements(keys(GV), required)    
+
+    rcParams = PyDict(matplotlib."rcParams")
+    set_rc_params(; fs=18, axlab=20, xtls=18, ytls=18, sansserif=GV.sansserif_choice, monospace=GV.monospace_choice)
     
     atm_fig, ax = subplots(figsize=figsz)
     plot_bg(ax)
@@ -1025,10 +1029,10 @@ function plot_temp_prof(Tprof_1; opt="", cols=[medgray, "xkcd:bright orange", "c
     =#
 
     GV = values(globvars)
-    required =  [:alt]
+    required =  [:alt, :monospace_choice, :sansserif_choice]
     check_requirements(keys(GV), required)
 
-    set_rc_params(; fs=18, axlab=20, xtls=18, ytls=18, sansserif=sansserif_choice, monospace=monospace_choice)
+    set_rc_params(; fs=18, axlab=20, xtls=18, ytls=18, sansserif=GV.sansserif_choice, monospace=GV.monospace_choice)
 
     fig, ax = subplots(figsize=(4,6))
     plot_bg(ax)
@@ -1095,10 +1099,10 @@ function plot_water_profile(atmdict, savepath::String; showonly=false, watersat=
     =#
 
     GV = values(globvars)
-    required = [:plot_grid, :all_species, :non_bdy_layers, :speciescolor, :speciesstyle]
+    required = [:plot_grid, :all_species, :monospace_choice, :non_bdy_layers, :sansserif_choice, :speciescolor, :speciesstyle]
     check_requirements(keys(GV), required)
 
-    set_rc_params(; fs=16, axlab=18, xtls=14, ytls=14, sansserif=sansserif_choice, monospace=monospace_choice)
+    set_rc_params(; fs=16, axlab=18, xtls=14, ytls=14, sansserif=GV.sansserif_choice, monospace=GV.monospace_choice)
 
     fig, ax = subplots(1, 3, sharey=true, figsize=(14,6))
     for a in ax
@@ -1219,8 +1223,8 @@ function top_mechanisms(x, sp, atmdict, p_or_r; savepath=nothing, filename_extra
     
     # Collect global variables
     GV = values(globvars)
-    required = [:all_species, :alt, :collision_xsect, :ion_species, :Jratedict, :molmass, :non_bdy_layers, :num_layers,  
-                :n_alt_index, :reaction_network, :Tn, :Ti, :Te, :dz, :zmax]
+    required = [:all_species, :alt, :collision_xsect, :ion_species, :Jratedict, :molmass, :monospace_choice, :non_bdy_layers, :num_layers,  
+                :n_alt_index, :reaction_network, :sansserif_choice, :Tn, :Ti, :Te, :dz, :zmax]
     check_requirements(keys(GV), required)
     
     # String used for various labels
@@ -1254,7 +1258,7 @@ function top_mechanisms(x, sp, atmdict, p_or_r; savepath=nothing, filename_extra
 
     println("Top $(L) $(rxntype) reactions above $(non_bdy_layers[count_above] / 1e5) km sorted by highest column value: $(sorted_column_val[1:L, :])")
 
-    set_rc_params(; fs=18, axlab=20, xtls=18, ytls=18, sansserif=sansserif_choice, monospace=monospace_choice)
+    set_rc_params(; fs=18, axlab=20, xtls=18, ytls=18, sansserif=GV.sansserif_choice, monospace=GV.monospace_choice)
     
     
     # PLOT -----------------------------------------------------

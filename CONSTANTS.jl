@@ -5,24 +5,19 @@
 # 
 # Eryn Cangi
 # Created November 2021
-# Currently tested for Julia: 1.6.1
+# Currently tested for Julia: 1.8.5
 ################################################################################
 
+#                              Universal constants
+# ===============================================================================
 const kB_MKS = 1.38e-23;        # J/K - needed for saturation vapor pressure empirical equation.
 const kB = 1.38e-16;            # erg/K
 const bigG = 6.67e-8;           # dyne-cm^2/g^2
 const mH = 1.67e-24;            # g 
-const marsM = 0.1075*5.972e27;  # g 
-const radiusM = 3396e5;         # cm
-const g = bigG * marsM / (radiusM^2);
 const q = -4.8032e-10            # statcoulomb (cm^1.5 g^0.5 s^-1)
-const DH = 5.5 * 1.6e-4         # SMOW value, Yung 1988
-const density_water_cgs = 0.997408
-const SA_Mars = 4*pi*(radiusM)^2 # cm^2
-
-#time 
-const sol_in_sec = 88775.2438   # One Mars sol in seconds
+const density_water_cgs = 0.997408  # used mostly for conversions
 const s_per_yr = 3.154e7
+
 
 # Polarizability from NIST. Experimental values from: https://cccbdb.nist.gov/pollistx.asp
 # Calculations for species not available in experiment from: https://cccbdb.nist.gov/polcalc2x.asp
@@ -90,3 +85,18 @@ const collision_xsect = Dict(:H=>4e-15, # Zhang 2009
                              :HD=>5e-15 # assumption that adding a proton or neutron adds 0.5e-15 to the cross section...
                             ) # Units of cm^2; Bohr radius 8.79e-17
 
+
+#                                 Float types
+# ===============================================================================
+# This section was introduced by Mike to attempt to solve issues with convergence. 
+# However, the model is now running without use of doubles, so this may be removable,
+# but has been left just in case it's ever needed again. Use of Doubles increases
+# model run time but potentially delivers higher stability in complex simulations. 
+# This is probably NOT the best place for it, but is the minimally annoying thing to 
+# do after a major reorganization April 2024 by Eryn. This way it can be shared between
+# the photochemistry module and the converge_new_file.jl code. 
+
+ftype_ncur = Float64  # used to store n_current values
+    # OPTIONS: Float64, Double64   
+ftype_chem = Float64 #Double64 #  used to compute chemical reaction rates and chemical jacobian
+    # OPTIONS: Float64, Double64   

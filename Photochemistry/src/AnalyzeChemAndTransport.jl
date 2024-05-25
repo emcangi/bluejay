@@ -2,6 +2,10 @@
 #                                                                              #
 #          Non-core functions for analyzing the chemistry and transport        #
 #                                                                              #
+# These functions are generally used after the model has run and you want to   #
+# Do some analysis on the output. I don't believe any of them are called       #
+# inside of the core of the model (Core.jl). If so, they should be in there.   #
+# If such functions are found, please open an issue on Github.                 #
 # **************************************************************************** #
 
 #===============================================================================#
@@ -303,7 +307,7 @@ function diffusion_timescale(s::Symbol, T_arr::Array, atmdict; globvars...)
     =#
     
     GV = values(globvars)
-    required = [:all_species, :alt, :molmass, :n_alt_index, :neutral_species, :polarizability, :q, :speciesbclist, :use_ambipolar, :use_molec_diff]
+    required = [:all_species, :alt, :molmass, :n_alt_index, :neutral_species, :polarizability, :planet, :q, :speciesbclist, :use_ambipolar, :use_molec_diff]
     check_requirements(keys(GV), required)
 
     # Get diffusion coefficient array template
@@ -318,7 +322,7 @@ function diffusion_timescale(s::Symbol, T_arr::Array, atmdict; globvars...)
     molec_or_ambi_timescale = (Hs .^ 2) ./ D
    
     # Eddy timescale... this was in here only as scale H... 
-    K = Keddy(alt, n_tot(ncur_with_bdys; GV.all_species, GV.molmass)) 
+    K = Keddy(alt, n_tot(ncur_with_bdys; GV.all_species, GV.molmass); GV.planet) 
     eddy_timescale = (Hs .^ 2) ./ K
 
     # Combined timescale?!??
@@ -345,7 +349,7 @@ function final_escape(thefolder, thefile; globvars...)
     # First load the atmosphere and associated variables.
     atmdict = get_ncurrent(thefolder*thefile);
 
-    vardict = load_from_paramlog(thefolder; alt);
+    vardict = load_from_paramlog(thefolder; globvars...);
     
     # Get Jrate list 
     Jratelist = format_Jrates(thefolder*"active_rxns.xlsx", GV.all_species, "Jratelist"; hot_atoms=true, ions_on=true)[1];
@@ -605,60 +609,8 @@ function flux_pos_and_neg(fluxarr)
     return pos, abs_val_neg
 end
 
-# Not used, but leaving it here just in case:
-# function get_flux(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}; nonthermal=true, globvars...)
-#     #=
-#     NEW VERSION : THIS IS THE BETTER VERSION NOW! But only for fluxes.
-    
-#     Input:
-#         atmdict: Array; species number density by altitude
-#         sp: Symbol
-#         Tn, Ti, Te, Tp: Temperature arrays (neutral, ion, electron, plasma)
-#         bcdict: the boundary condition dictionary.
-
-#     Output: 
-#         Array of flux values (#/cm²/s) at each atmospheric layer boundary.
-#         i = 1 in the net_bulk_flow array corresponds to the boundary at 1 km,
-#         and the end of the array is the boundary at 249 km.
-#     =#
-
-#     GV = values(globvars)
-#     required = [:all_species, :alt, :speciesbclist, :dz, :Hs_dict, :molmass, :neutral_species, :num_layers, :n_all_layers, :n_alt_index, 
-#                                     :polarizability, :q, :Tn, :Ti, :Te, :Tp, :Tprof_for_Hs, :Tprof_for_diffusion, :transport_species])
-    
-#     # Generate the fluxcoefs dictionary and boundary conditions dictionary
-#     D_arr = zeros(size(GV.Tn))
-#     Keddy_arr, H0_dict, Dcoef_dict = update_diffusion_and_scaleH(GV.all_species, atmdict, D_arr; globvars...)
-#     fluxcoefs_all = fluxcoefs(GV.all_species, Keddy_arr, Dcoef_dict, H0_dict; globvars...)
-#     bc_dict = boundaryconditions(fluxcoefs_all, atmdict, sum([atmdict[sp] for sp in GV.all_species]); nonthermal=nonthermal, globvars...)
-
-#     # each element in bulk_layer_coefs has the format [downward flow (i to i-1), upward flow (i to i+1)].  units 1/s
-#     bulk_layer_coefs = fluxcoefs_all[sp][2:end-1, :]
-
-#     bcs = bc_dict[sp]
-    
-#     net_bulk_flow = fill(convert(ftype_ncur, NaN), GV.n_all_layers-1)  # units #/cm^3/s; tracks the cell boundaries, of which there are length(alt)-1
-
-#     # We will calculate the net flux across each boundary, with sign indicating direction of travel.
-#     # Units for net bulk flow are always: #/cm³/s. 
-#     # NOTE: This might not actually represent the flow correctly, because I was assuming 
-#     # that the 1st bc was into the layer, and the 2nd was out, but it's actually just about in/dependence on density.
-#     net_bulk_flow[1] = (bcs[1, 2]                  # increase of the lowest atmospheric layer's density. 0 unless the species has a density or flux condition
-#                        - atmdict[sp][1]*bcs[1, 1]) # lowest atmospheric layer --> surface ("depositional" term). UNITS: #/cm³/s. 
-                        
-#     for ialt in 2:GV.num_layers  # now iterate through every cell boundary within the atmosphere. boundaries at 3 km, 5...247. 123 elements.
-#         # UNITS for both of these terms:  #/cm³/s. 
-#         net_bulk_flow[ialt] = (atmdict[sp][ialt-1]*bulk_layer_coefs[ialt-1, 2]   # coming up from below: cell i-1 to cell i. Should be positive * positive
-#                               - atmdict[sp][ialt]*bulk_layer_coefs[ialt, 1])     # leaving to the layer below: downwards: cell i to cell i-1
-#     end
-
-#     # now the top boundary - between 124th atmospheric cell (alt = 249 km)
-#     net_bulk_flow[end] = (atmdict[sp][end]*bcs[2, 1] # into exosphere from the cell. UNITS: #/cm³/s. 
-#                          - bcs[2, 2]) # into top layer from exosphere. negative because the value in bcs is negative. do not question this. UNITS: #/cm³/s. 
-                
-#     return net_bulk_flow .* GV.dz # now it is a flux. hurrah.
-# end
-
+# Note: These functions are probably misleading. They were used to create plots that never made it 
+# to publication.
 function limiting_flux(sp, atmdict, T_arr; treat_H_as_rare=false, full_equation=true, globvars...)
     #=
     Calculate the limiting upward flux (Hunten, 1973; Zahnle, 2008). 

@@ -130,7 +130,7 @@ function get_paramfile(working_dir; use_default=false)
         println("Using the only file available, $(paramfile)")
     else 
         if use_default == true
-            paramfile = "PARAMETERS.jl"
+            paramfile = "INPUT_PARAMETERS.jl"
         else
             println("Available parameter files: ")
             [println("[$(i)] $(available_paramfiles[i])") for i in 1:length(available_paramfiles)]

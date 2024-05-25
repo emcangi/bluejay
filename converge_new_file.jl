@@ -19,7 +19,7 @@
 using Dates
 
 t1 = time()
-println("$(Dates.format(now(), "(HH:MM:SS)")) Start")
+println("$(Dates.format(now(), "(HH:MM:SS)")) Start! Loading modules takes about 30 seconds, please sit tight.")
 
 using Revise
 using PyPlot
@@ -42,6 +42,17 @@ using XLSX
 
 t2 = time()
 println("$(Dates.format(now(), "(HH:MM:SS)")) Loaded modules in $(format_sec_or_min(t2-t1))")
+t3 = time()
+
+# **************************************************************************** #
+#                                                                              #
+#                          IMPORTANT DIRECTORIES                               #
+#                                                                              #
+# **************************************************************************** #
+
+# Set the directory variables
+const code_dir = "$(@__DIR__)/"
+const xsecfolder = code_dir*"uvxsect/";
 
 # **************************************************************************** #
 #                                                                              #
@@ -50,15 +61,15 @@ println("$(Dates.format(now(), "(HH:MM:SS)")) Loaded modules in $(format_sec_or_
 # **************************************************************************** #
 
 include("CONSTANTS.jl")
-include("CUSTOMIZATIONS.jl")
 
 paramfile = get_paramfile(code_dir; use_default=true) # Set use_default to false to select from available files
 include(paramfile)
 
-t3 = time()
-println("$(Dates.format(now(), "(HH:MM:SS)")) Loaded parameters in $(format_sec_or_min(t3-t2))")
+# Perform the rest of the model set up
+include("MODEL_SETUP.jl")
 
-t4 = time()
+# Plot styles
+include("PLOT_STYLES.jl")
 
 # **************************************************************************** #
 #                                                                              #
@@ -104,8 +115,8 @@ function evolve_atmosphere(atm_init::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_s
                                    :e_profile_type, :error_checking_scheme, :timestep_type, :H2Oi, :HDOi, 
                                    :hot_H_network, :hot_H_rc_funcs, :hot_D_network, :hot_D_rc_funcs, 
                                    :hot_H2_network, :hot_H2_rc_funcs, :hot_HD_network, :hot_HD_rc_funcs, :Hs_dict, 
-                                   :inactive_species, :ion_species, :Jratelist, :logfile, :molmass, :n_all_layers, :n_alt_index, :n_inactive, :n_steps, 
-                                   :neutral_species, :non_bdy_layers, :num_layers, :plot_grid, :polarizability, :q, :reaction_network, 
+                                   :inactive_species, :ion_species, :Jratelist, :logfile, :M_P, :molmass, :n_all_layers, :n_alt_index, :n_inactive, :n_steps, 
+                                   :neutral_species, :non_bdy_layers, :num_layers, :plot_grid, :polarizability, :q, :R_P, :reaction_network, 
                                    :season_length_in_sec, :sol_in_sec, :solarflux, :speciesbclist, :speciescolor, :speciesstyle, 
                                    :Te, :Ti, :Tn, :Tp, :Tprof_for_diffusion, :transport_species, 
                                    :upper_lower_bdy_i, :zmax])
@@ -309,17 +320,22 @@ function chemJmat(n_active_longlived, n_active_shortlived, n_inactive, Jrates, t
     # This only runs if water is designated as an active species; if it's in inactive_species, this won't run,
     # When it is active, this finds all the H2O and HDO indices for the lower atmosphere. 
     # It's like above where we add (ialt-1)*length(active_species), but this way it's outside the loop.
-    if in(:H2O, GV.active_longlived) && in(:HDO, GV.active_longlived)
-        H2Opositions = GV.H2Oi .+ length(GV.active_longlived)*collect(0:GV.upper_lower_bdy_i-1)
-        HDOpositions = GV.HDOi .+ length(GV.active_longlived)*collect(0:GV.upper_lower_bdy_i-1)
-        water_positions = sort(union(H2Opositions, HDOpositions))
+    if remove_rates_flag == true 
+        if planet=="Venus"
+            throw("Not supposed to delete things from water rates for Venus")
+        end
+        if in(:H2O, GV.active_longlived) && in(:HDO, GV.active_longlived)
+            H2Opositions = GV.H2Oi .+ length(GV.active_longlived)*collect(0:GV.upper_lower_bdy_i-1)
+            HDOpositions = GV.HDOi .+ length(GV.active_longlived)*collect(0:GV.upper_lower_bdy_i-1)
+            water_positions = sort(union(H2Opositions, HDOpositions))
 
-        i_remove = findall(x->in(x, water_positions), chemJi)
-        j_remove = findall(x->in(x, water_positions), chemJj) # these are removed because if a species is inert, a derivative with respect to it is a derivative of a constant 
-        remove_these = sort(union(i_remove, j_remove)) # This makes a set, since it describes the locations where the H2O and HDO indices are.
-                                                       # Kinda confusing since we're talking about indices of indices.
-        chemJval[remove_these] .= 0 
-    end
+            i_remove = findall(x->in(x, water_positions), chemJi)
+            j_remove = findall(x->in(x, water_positions), chemJj) # these are removed because if a species is inert, a derivative with respect to it is a derivative of a constant 
+            remove_these = sort(union(i_remove, j_remove)) # This makes a set, since it describes the locations where the H2O and HDO indices are.
+                                                           # Kinda confusing since we're talking about indices of indices.
+            chemJval[remove_these] .= 0 
+        end
+    end 
 
     # Uncomment the following to check the eigenvalues of the jacobian. Requires a global variable called stiffness.
     # J = sparse(chemJi, chemJj, chemJval, length(nthis), length(nthis), +) 
@@ -399,9 +415,14 @@ function ratefn(n_active_longlived, n_active_shortlived, n_inactive, Jrates, tup
 
     # NEW: Overwrite the entries for water in the lower atmosphere with 0s so that it will behave as fixed.
     # Only runs when water is in the active_species list. If neutrals are set to inactive, it will be taken care of already.
-    if in(:H2O, GV.active_longlived) && in(:HDO, GV.active_longlived)
-        returnrates[GV.H2Oi, 1:GV.upper_lower_bdy_i] .= 0
-        returnrates[GV.HDOi, 1:GV.upper_lower_bdy_i] .= 0
+    if remove_rates_flag == true # This won't run for Venus
+        if planet=="Venus"
+            throw("Not supposed to run for Venus")
+        end
+        if in(:H2O, GV.active_longlived) && in(:HDO, GV.active_longlived)
+            returnrates[GV.H2Oi, 1:GV.upper_lower_bdy_i] .= 0
+            returnrates[GV.HDOi, 1:GV.upper_lower_bdy_i] .= 0
+        end
     end
 
     return [returnrates...;]
@@ -1088,11 +1109,12 @@ if reinitialize_water_profile
     println("Initializing the water profile anew (reinitialize_water_profile=true)")
     # hygropause_alt is an optional argument. If using, must be a unit of length in cm i.e. 40e5 = 40 km.
     println("$(Dates.format(now(), "(HH:MM:SS)")) Setting up the water profile...")
-    setup_water_profile!(n_current; dust_storm_on=dust_storm_on, water_amt=water_case, ffac=f_fac_opts[water_case], ealt=add_water_alt_opts[water_case], 
+    cf = planet == "Venus" ? water_mixing_ratio : 1
+    setup_water_profile!(n_current; constfrac=cf, dust_storm_on=dust_storm_on, water_amt=water_case, ffac=f_fac_opts[water_case], ealt=add_water_alt_opts[water_case], 
                                     hygropause_alt=hygropause_alt, excess_water_in=water_loc, 
-                                    all_species, alt, DH, num_layers, non_bdy_layers, n_alt_index, plot_grid,
+                                    all_species, alt, DH, num_layers, non_bdy_layers, n_alt_index, planet, plot_grid,
                                     H2O_excess, HDO_excess,  H2Osat, water_mixing_ratio,  results_dir, 
-                                    sim_folder_name, speciescolor, speciesstyle, upper_lower_bdy_i)
+                                    sim_folder_name, speciescolor, speciesstyle, upper_lower_bdy_i, monospace_choice, sansserif_choice)
 end
 
 # If you want to just modify the water profile, i.e. when running several simulations
@@ -1128,7 +1150,8 @@ if update_water_profile
         end
 
         # Make the plot
-        plot_water_profile(n_current, results_dir*sim_folder_name; prev_profs=[prevh2o, prevhdo], plot_grid, all_species, non_bdy_layers, speciescolor, speciesstyle) 
+        plot_water_profile(n_current, results_dir*sim_folder_name; prev_profs=[prevh2o, prevhdo], plot_grid, all_species, non_bdy_layers, speciescolor, speciesstyle,
+                                                                   monospace_choice, sansserif_choice) 
     else
         # Recalculate the initialization fraction for H2O 
         H2Oinitfrac, H2Osatfrac = set_h2oinitfrac_bySVP(n_current, hygropause_alt; all_species, alt, num_layers, n_alt_index, H2Osat, water_mixing_ratio)
@@ -1148,14 +1171,15 @@ if update_water_profile
         end
 
         # Now plot it
-        plot_water_profile(n_current, results_dir*sim_folder_name; prev_profs=[prevh2o, prevhdo], plot_grid, all_species, non_bdy_layers, speciescolor, speciesstyle) 
+        plot_water_profile(n_current, results_dir*sim_folder_name; prev_profs=[prevh2o, prevhdo], plot_grid, all_species, non_bdy_layers, speciescolor, speciesstyle,
+                                                                   monospace_choice, sansserif_choice) 
         println("I have reset the water profile to the standard initial mixing fraction $(modified_water_alts)")
     end
 end
 
 # Calculate precipitable microns, including boundary layers (assumed same as nearest bulk layer)
-H2Oprum = precip_microns(:H2O, [n_current[:H2O][1]; n_current[:H2O]; n_current[:H2O][end]]; molmass)
-HDOprum = precip_microns(:HDO, [n_current[:HDO][1]; n_current[:HDO]; n_current[:HDO][end]]; molmass)
+H2Oprum = precip_microns(:H2O, [n_current[:H2O][1]; n_current[:H2O]; n_current[:H2O][end]]; molmass, dz)
+HDOprum = precip_microns(:HDO, [n_current[:HDO][1]; n_current[:HDO]; n_current[:HDO][end]]; molmass, dz)
 
 #           Define storage for species/Jrates not solved for actively           #
 #===============================================================================#
@@ -1483,7 +1507,7 @@ write_to_log(logfile, ["Description: $(optional_logging_note)"], mode="w")
 write_atmosphere(n_current, results_dir*sim_folder_name*"/initial_atmosphere.h5"; alt, num_layers, hrshortcode, rshortcode)
 
 # Plot initial temperature and water profiles ==================================
-plot_temp_prof(Tn_arr; savepath=results_dir*sim_folder_name, Tprof_2=Ti_arr, Tprof_3=Te_arr, alt)
+plot_temp_prof(Tn_arr; savepath=results_dir*sim_folder_name, Tprof_2=Ti_arr, Tprof_3=Te_arr, alt, monospace_choice, sansserif_choice)
 
 # Absolute tolerance
 if problem_type == "Gear"
@@ -1498,10 +1522,11 @@ end
 # Plot initial atmosphere condition  ===========================================
 println("$(Dates.format(now(), "(HH:MM:SS)")) Plotting the initial condition")
 plot_atm(n_current, results_dir*sim_folder_name*"/initial_atmosphere.png", abs_tol_for_plot, E; # initial electron profile
-         t="initial state", neutral_species, ion_species, plot_grid, speciescolor, speciesstyle, zmax, hrshortcode, rshortcode) 
+         t="initial state", neutral_species, ion_species, plot_grid, speciescolor, speciesstyle, zmax, hrshortcode, rshortcode,
+         monospace_choice, sansserif_choice) 
 
 # Create a list to keep track of stiffness ratio ===============================
-# const stiffness = [] # Tirn this on if you are trying to check Jacobian eigenvalues.
+# const stiffness = [] # Turn this on if you are trying to check Jacobian eigenvalues.
 
 # Simulation time range and when to save a snapshot 
 const mindt = dt_min_and_max[converge_which][1]
@@ -1521,8 +1546,8 @@ checkpoint = times_to_save[t_i]  # This variable lets us save the atmospheric st
 plotnum = 1 # To order the plots for each timestep correctly in the folder so it's easy to page through them.
 
 # Record setup time
-t5 = time()
-write_to_log(logfile, ["\nRequesting timesteps $(join(times_to_save, ", "))", "\n$(Dates.format(now(), "(HH:MM:SS)")) Setup time $(format_sec_or_min(t5-t4))"], mode="a")
+t4 = time()
+write_to_log(logfile, ["\nRequesting timesteps $(join(times_to_save, ", "))", "\n$(Dates.format(now(), "(HH:MM:SS)")) Setup time $(format_sec_or_min(t4-t3))"], mode="a")
 
 # **************************************************************************** #
 #                                                                              #
@@ -1584,9 +1609,10 @@ try
                                  e_profile_type, error_checking_scheme, timestep_type, H2Oi, HDOi, 
                                  hot_H_network, hot_H_rc_funcs, hot_D_network, hot_D_rc_funcs, hot_H2_network, hot_H2_rc_funcs, hot_HD_network, hot_HD_rc_funcs,
                                  hrshortcode, Hs_dict,
-                                 ion_species, inactive_species, Jratelist, logfile, molmass, 
+                                 ion_species, inactive_species, Jratelist, logfile, M_P, molmass, monospace_choice, sansserif_choice,
                                  neutral_species, non_bdy_layers, num_layers, n_all_layers, n_alt_index, n_inactive, n_steps, 
-                                 polarizability, plot_grid, q, reaction_network, rshortcode, season_length_in_sec, sol_in_sec, solarflux, speciesbclist, speciescolor, speciesstyle, 
+                                 polarizability, planet, plot_grid, q, R_P, reaction_network, rshortcode, 
+                                 season_length_in_sec, sol_in_sec, solarflux, speciesbclist, speciescolor, speciesstyle, 
                                  Tn=Tn_arr, Ti=Ti_arr, Te=Te_arr, Tp=Tplasma_arr, Tprof_for_diffusion, transport_species, opt="",
                                  upper_lower_bdy_i, use_ambipolar, use_molec_diff, zmax)
 catch y
@@ -1621,7 +1647,7 @@ if problem_type == "SS"
     println("Plotting final atmosphere, writing out state")
     # Make final atmosphere plot
     plot_atm(nc_all, [neutral_species, ion_species], results_dir*sim_folder_name*"/final_atmosphere.png", t="final converged state", plot_grid, 
-                      speciescolor, speciesstyle, zmax, abs_tol_for_plot)
+                      speciescolor, speciesstyle, monospace_choice, sansserif_choice, zmax, abs_tol_for_plot)
 
 
     write_final_state(nc_all, results_dir, sim_folder_name, final_atm_file; alt, num_layers, hrshortcode, Jratedict=Jrates, rshortcode, external_storage)
@@ -1659,7 +1685,7 @@ elseif problem_type == "ODE"
             # Make final atmosphere plot
             println("Plotting final atmosphere, writing out state")
             plot_atm(nc_all, results_dir*sim_folder_name*"/final_atmosphere.png", t="final converged state", abs_tol_for_plot; neutral_species, ion_species, 
-                     plot_grid, speciescolor, speciesstyle, zmax)
+                     plot_grid, speciescolor, speciesstyle, zmax, monospace_choice, sansserif_choice)
 
             write_final_state(nc_all, results_dir, sim_folder_name, final_atm_file; alt, num_layers, hrshortcode, Jratedict=Jrates, rshortcode, external_storage)
             write_to_log(logfile, "$(Dates.format(now(), "(HH:MM:SS)")) Making production/loss plots", mode="a")
@@ -1679,7 +1705,8 @@ elseif problem_type == "Gear"
     println("Plotting final atmosphere, writing out state")
     final_E_profile = electron_density(atm_soln; e_profile_type, non_bdy_layers, ion_species)   
     plot_atm(atm_soln, results_dir*sim_folder_name*"/final_atmosphere.png", abs_tol_for_plot, final_E_profile; 
-             t="final converged state, total time = $(sim_time)", neutral_species, ion_species, plot_grid, speciescolor, speciesstyle, zmax, hrshortcode, rshortcode)
+             t="final converged state, total time = $(sim_time)", neutral_species, ion_species, plot_grid, speciescolor, speciesstyle, zmax, hrshortcode, rshortcode,
+             monospace_choice, sansserif_choice)
 
     # Collect the J rates
     Jratedict = Dict{Symbol, Vector{Float64}}([j=>external_storage[j] for j in keys(external_storage) if occursin("J", string(j))])
@@ -1697,9 +1724,9 @@ elseif problem_type == "Gear"
     if make_P_and_L_plots
         plot_production_and_loss(atm_soln, results_dir, sim_folder_name; nonthermal=nontherm, all_species, alt, chem_species, collision_xsect, 
                                   dz, hot_D_rc_funcs, hot_H_rc_funcs, hot_H2_rc_funcs, hot_HD_rc_funcs, Hs_dict, 
-                                  hot_H_network, hot_D_network, hot_H2_network, hot_HD_network, hrshortcode, ion_species, Jratedict,
-                                  molmass, neutral_species, non_bdy_layers, num_layers, n_all_layers, n_alt_index, polarizability, 
-                                  plot_grid, q, rshortcode, reaction_network, speciesbclist, Tn=Tn_arr, Ti=Ti_arr, Te=Te_arr, Tp=Tplasma_arr, 
+                                  hot_H_network, hot_D_network, hot_H2_network, hot_HD_network, hrshortcode, ion_species, Jratedict, M_P, 
+                                  molmass, monospace_choice, neutral_species, non_bdy_layers, num_layers, n_all_layers, n_alt_index, polarizability, planet,
+                                  plot_grid, q, R_P, rshortcode, reaction_network, sansserif_choice, speciesbclist, Tn=Tn_arr, Ti=Ti_arr, Te=Te_arr, Tp=Tplasma_arr, 
                                   Tprof_for_Hs, Tprof_for_diffusion, transport_species, upper_lower_bdy_i, upper_lower_bdy, use_ambipolar, use_molec_diff, zmax)
     end
 
@@ -1711,8 +1738,14 @@ t7 = time()
 
 # Write out the parameters as the final step 
 
-XLSX.writetable("$(results_dir)$(sim_folder_name)/PARAMETERS.xlsx", "General"=>PARAMETERS_GEN, "AtmosphericConditions"=>PARAMETERS_CONDITIONS, "SpeciesLists"=>PARAMETERS_SPLISTS,
-                "Solver"=>PARAMETERS_SOLVER, "Crosssections"=>PARAMETERS_XSECTS, "BoundaryConditions"=>PARAMETERS_BCS, "TemperatureArrays"=>PARAMETERS_TEMPERATURE_ARRAYS)
+XLSX.writetable("$(results_dir)$(sim_folder_name)/PARAMETERS.xlsx", "General"=>PARAMETERS_GEN, 
+                                                                    "AltGrid"=>PARAMETERS_ALTGRID, 
+                                                                    "AtmosphericConditions"=>PARAMETERS_CONDITIONS, 
+                                                                    "SpeciesLists"=>PARAMETERS_SPLISTS,
+                                                                    "Solver"=>PARAMETERS_SOLVER, 
+                                                                    "Crosssections"=>PARAMETERS_XSECTS, 
+                                                                    "BoundaryConditions"=>PARAMETERS_BCS, 
+                                                                    "TemperatureArrays"=>PARAMETERS_TEMPERATURE_ARRAYS)
 println("Saved parameter spreadsheet")
 write_to_log(logfile, "Simulation total runtime $(format_sec_or_min(t7-t1))", mode="a")
 println("Simulation finished!")

@@ -1,8 +1,6 @@
-# **************************************************************************** #
-#                                                                              #
-#                       Functions related to water profile                     #
-#                                                                              #
-# **************************************************************************** #
+#===============================================================================#
+#                    Water profile setup and SVP functions                      #   
+#===============================================================================#
 
 function precip_microns(sp, sp_profile; globvars...)
     #=
@@ -17,10 +15,10 @@ function precip_microns(sp, sp_profile; globvars...)
         Total precipitable micrometers of species sp
     =#
     GV = values(globvars)
-    required =  [:molmass]
+    required =  [:molmass, :dz]
     check_requirements(keys(GV), required)
 
-    col_abundance = column_density(sp_profile)
+    col_abundance = column_density(sp_profile; GV.dz)
     cc_per_g = GV.molmass[sp] / GV.molmass[:H2O] # Water is 1 g/cm^3. Scale appropriately.
 
     #pr μm = (#/cm²) * (1 mol/molecules) * (g/1 mol) * (1 cm^3/g) * (10^4 μm/cm)
@@ -76,6 +74,7 @@ function set_h2oinitfrac_bySVP(atmdict, h_alt; globvars...)
     check_requirements(keys(GV), required)
 
     H2Osatfrac = GV.H2Osat ./ map(z->n_tot(atmdict, z; GV.all_species, GV.n_alt_index), GV.alt)  # get SVP as fraction of total atmo
+
     # set H2O SVP fraction to minimum for all alts above first time min is reached
     H2Oinitfrac = H2Osatfrac[1:something(findfirst(isequal(minimum(H2Osatfrac)), H2Osatfrac), 0)]
     H2Oinitfrac = [H2Oinitfrac;   # ensures no supersaturation
@@ -90,13 +89,14 @@ function set_h2oinitfrac_bySVP(atmdict, h_alt; globvars...)
     return H2Oinitfrac, H2Osatfrac
 end
 
-function setup_water_profile!(atmdict; dust_storm_on=false, make_sat_curve=false, water_amt="standard", excess_water_in="mesosphere", 
+function setup_water_profile!(atmdict; constfrac=1, dust_storm_on=false, make_sat_curve=false, water_amt="standard", excess_water_in="mesosphere", 
                                        showonly=false, hygropause_alt=40e5, globvars...)
     #=
     Sets up the water profile as a fraction of the initial atmosphere. 
     Input:
         atmdict: dictionary of atmospheric density profiles by altitude
         Optional:
+            constfrac: Fraction of total density to use for the water profile. Currently only applied to Venus runs.
             dust_storm_on: whether to add an extra parcel of water at a certain altitude.
             tanh_prof: "low", "standard", or "high" to choose 1/10, mean, or 10x as much water in the atmosphere.
             hygropause_alt: altitude at which the water will switch from well-mixed to following the saturation vapor pressure curve.
@@ -105,46 +105,58 @@ function setup_water_profile!(atmdict; dust_storm_on=false, make_sat_curve=false
     =#
 
     GV = values(globvars)
-    required = [:all_species, :num_layers, :DH, :alt, :plot_grid, :n_alt_index,
-                :non_bdy_layers, :H2Osat, :water_mixing_ratio,
-                :results_dir, :sim_folder_name, :speciescolor, :speciesstyle, :upper_lower_bdy_i]
-    check_requirements(keys(GV), required)
+    check_requirements(keys(GV), [:all_species, :DH, :n_alt_index, :planet, :plot_grid, :results_dir, :sim_folder_name])
 
-    # H2O Water Profile ================================================================================================================
+    # Set the initial fraction of the atmosphere for water to take up, plus the saturation fraction
+    # ================================================================================================================
+    # Currently this doesn't change behavior based on planet. 5/15/24
     H2Oinitfrac, H2Osatfrac = set_h2oinitfrac_bySVP(atmdict, hygropause_alt; globvars...)
 
-    # For doing high and low water cases ================================================================================================
-    if (water_amt=="standard") | (excess_water_in=="loweratmo")
-        println("Standard profile: water case = $(water_amt), loc = $(excess_water_in), MR = $(GV.water_mixing_ratio)")
-    else # low or high in mesosphere and above - special code for paper 3
-        println("$(water_amt) in $(excess_water_in)")
+    if GV.planet=="Mars"
+        required = [:alt, :H2Osat, :n_alt_index, :non_bdy_layers, :num_layers, :speciescolor, :speciesstyle, :upper_lower_bdy_i, :water_mixing_ratio,]
+        check_requirements(keys(GV), required)
 
-        toplim_dict = Dict("mesosphere"=>GV.upper_lower_bdy_i, "everywhere"=>GV.n_alt_index[GV.alt[end]])
-        a = 1
-        b = toplim_dict[excess_water_in]
-        H2Oinitfrac[a:b] = H2Oinitfrac[a:b] .* water_tanh_prof(GV.non_bdy_layers./1e5; z0=GV.ealt, f=GV.ffac)[a:b]
+        # For doing high and low water cases 
+        # ================================================================================================
+        if (water_amt=="standard") | (excess_water_in=="loweratmo")
+            println("Standard profile: water case = $(water_amt), loc = $(excess_water_in), MR = $(GV.water_mixing_ratio)")
+        else # low or high in mesosphere and above - special code for paper 3
+            println("$(water_amt) in $(excess_water_in)")
 
-        # Set the upper atmo to be a constant mixing ratio, wherever the disturbance ends
-        if excess_water_in=="everywhere"
-            H2Oinitfrac[GV.upper_lower_bdy_i:end] .= H2Oinitfrac[GV.upper_lower_bdy_i]
+            toplim_dict = Dict("mesosphere"=>GV.upper_lower_bdy_i, "everywhere"=>GV.n_alt_index[GV.alt[end]])
+            a = 1
+            b = toplim_dict[excess_water_in]
+            H2Oinitfrac[a:b] = H2Oinitfrac[a:b] .* water_tanh_prof(GV.non_bdy_layers./1e5; z0=GV.ealt, f=GV.ffac)[a:b]
+
+            # Set the upper atmo to be a constant mixing ratio, wherever the disturbance ends
+            if excess_water_in=="everywhere"
+                H2Oinitfrac[GV.upper_lower_bdy_i:end] .= H2Oinitfrac[GV.upper_lower_bdy_i]
+            end
         end
+
+        # set the water profiles 
+        # ===========================================================================================================
+        atmdict[:H2O] = H2Oinitfrac.*n_tot(atmdict; GV.n_alt_index, GV.all_species)
+        atmdict[:HDO] = 2 * GV.DH * atmdict[:H2O] 
+        HDOinitfrac = atmdict[:HDO] ./ n_tot(atmdict; GV.n_alt_index, GV.all_species)  # Needed to make water plots.
+
+        # Add a gaussian parcel of water, to simulate the effect of a dust storm
+        # ===========================================================================================================
+        if dust_storm_on
+            sigma = 12.5
+            H2Oppm = 1e-6*map(z->GV.H2O_excess .* exp(-((z-GV.ealt)/sigma)^2), GV.non_bdy_layers/1e5) + H2Oinitfrac 
+            HDOppm = 1e-6*map(z->GV.HDO_excess .* exp(-((z-GV.ealt)/sigma)^2), GV.non_bdy_layers/1e5) + HDOinitfrac
+            atmdict[:H2O][1:GV.upper_lower_bdy_i] = (H2Oppm .* n_tot(atmdict; GV.n_alt_index, GV.all_species))[1:GV.upper_lower_bdy_i]
+            atmdict[:HDO][1:GV.upper_lower_bdy_i] = (HDOppm .* n_tot(atmdict; GV.all_species))[1:GV.upper_lower_bdy_i]
+        end
+    elseif GV.planet=="Venus"
+        # TODO: Add a more interesting implementation as needed.
+        atmdict[:H2O] = constfrac .* n_tot(atmdict; GV.n_alt_index, GV.all_species)
+        atmdict[:HDO] = 2 * GV.DH * atmdict[:H2O] 
     end
 
-    # set the water profiles ===========================================================================================================
-    atmdict[:H2O] = H2Oinitfrac.*n_tot(atmdict; GV.n_alt_index, GV.all_species)
-    atmdict[:HDO] = 2 * GV.DH * atmdict[:H2O] 
-    HDOinitfrac = atmdict[:HDO] ./ n_tot(atmdict; GV.n_alt_index, GV.all_species)  # Needed to make water plots.
-
-    # ADD EXCESS WATER AS FOR DUST STORMS.
-    if dust_storm_on
-        sigma = 12.5
-        H2Oppm = 1e-6*map(z->GV.H2O_excess .* exp(-((z-GV.ealt)/sigma)^2), GV.non_bdy_layers/1e5) + H2Oinitfrac 
-        HDOppm = 1e-6*map(z->GV.HDO_excess .* exp(-((z-GV.ealt)/sigma)^2), GV.non_bdy_layers/1e5) + HDOinitfrac
-        atmdict[:H2O][1:GV.upper_lower_bdy_i] = (H2Oppm .* n_tot(atmdict; GV.n_alt_index, GV.all_species))[1:GV.upper_lower_bdy_i]
-        atmdict[:HDO][1:GV.upper_lower_bdy_i] = (HDOppm .* n_tot(atmdict; GV.all_species))[1:GV.upper_lower_bdy_i]
-    end
-
-    # Plot the water profile ===========================================================================================================
+    # Plot the water profile 
+    # ===========================================================================================================
     if make_sat_curve
         satarray = H2Osatfrac
     else

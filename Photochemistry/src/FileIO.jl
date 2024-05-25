@@ -221,16 +221,42 @@ function load_from_paramlog(folder; quiet=true, globvars...)
     that simulation. 
     =#
 
+    GV = values(globvars)
+    required = [:molmass] # :alt
+    check_requirements(keys(GV), required)
+
     # Load the workbook
     paramlog_wb = XLSX.readxlsx("$(folder)PARAMETERS.xlsx")
 
     # Basic variables
     df_gen = DataFrame(XLSX.readtable("$(folder)PARAMETERS.xlsx", "General"));
+    if ~(:M_P in keys(GV)) | ~(:R_P in keys(GV))
+        try
+            global planet = get_param("PLANET", df_gen)
+            global M_P = get_param("M_P", df_gen)
+            global R_P = get_param("R_P", df_gen)
+        catch y
+            println("WARNING: Exception: $(y) - you are trying to load parameters which aren't logged. File probably made before module updates.")
+            println("Please load the following parameters manually: M_P, R_P, and pass them in as globvars, and re-run this command.")
+            println()
+        end
+    end
     ions_included = get_param("IONS", df_gen)
     hrshortcode = get_param("RSHORTCODE", df_gen)
     rshortcode = get_param("HRSHORTCODE", df_gen)
     rxn_spreadsheet = get_param("RXN_SOURCE", df_gen)
 
+
+    if ~(:alt in keys(GV))
+        try 
+            df_alt = DataFrame(XLSX.readtable("$(folder)PARAMETERS.xlsx", "AltGrid"));
+            global alt = df_alt.Alt
+        catch y
+            println("WARNING: Exception: $(y) - you tried to load the altitude grid but it's not logged. File probably made before module updates. Please pass in alt manually")
+            println()
+        end
+    end
+    
     # Species lists
     df_splists = DataFrame(XLSX.readtable("$(folder)PARAMETERS.xlsx", "SpeciesLists"));
     neutral_species = [Symbol(x) for x in filter(x->typeof(x)==String, df_splists.Neutrals)]
@@ -251,29 +277,28 @@ function load_from_paramlog(folder; quiet=true, globvars...)
         Ti_arr = df_temps.Ions
         Te_arr = df_temps.Electrons
     else 
-        GV = values(globvars)
-        required = [:alt]
-        check_requirements(keys(GV), required)
         if quiet==false
             println("WARNING: Reconstructing temperature profiles with default options based on logged control temperatures. It is POSSIBLE the reconstruction could be wrong if the temp function changed.")
         end
-        T_dict = T(get_param("TSURF", df_atmcond), get_param("TMESO", df_atmcond), get_param("TEXO", df_atmcond); alt)
+        T_dict = T(get_param("TSURF", df_atmcond), get_param("TMESO", df_atmcond), get_param("TEXO", df_atmcond); GV.alt)
         Tn_arr = T_dict["neutrals"]
         Ti_arr = T_dict["ions"]
         Te_arr = T_dict["electrons"]
     end
 
+    # Note: Here, all_species is loaded above so it is NOT a global variable. Molmass needs to be passed in though.
     Tplasma_arr = Ti_arr .+ Te_arr;
     Tprof_for_Hs = Dict("neutral"=>Tn_arr, "ion"=>Ti_arr);
     Tprof_for_diffusion = Dict("neutral"=>Tn_arr, "ion"=>Tplasma_arr)
-    Hs_dict = Dict{Symbol, Vector{Float64}}([sp=>scaleH(alt, sp, Tprof_for_Hs[charge_type(sp)]; molmass) for sp in all_species]); 
+    Hs_dict = Dict{Symbol, Vector{Float64}}([sp=>scaleH(alt, sp, Tprof_for_Hs[charge_type(sp)]; M_P, R_P, globvars...) for sp in all_species]); 
     water_bdy = get_param("WATER_BDY", df_atmcond) * 1e5 # It's stored in km but we want it in cm
 
     # Boundary conditions
     df_bcs = DataFrame(XLSX.readtable("$(folder)PARAMETERS.xlsx", "BoundaryConditions"));
     speciesbclist = load_bcdict_from_paramdf(df_bcs);
     
-    vardict = Dict("ions_included"=>ions_included,
+    vardict = Dict("alt"=>alt,
+                   "ions_included"=>ions_included,
                    "hrshortcode"=>hrshortcode,
                    "rshortcode"=>rshortcode,
                    "neutral_species"=>neutral_species,
@@ -281,6 +306,9 @@ function load_from_paramlog(folder; quiet=true, globvars...)
                    "all_species"=>all_species,
                    "transport_species"=>transport_species,
                    "chem_species"=>chem_species,
+                   "planet"=>planet,
+                   "M_P"=>M_P,
+                   "R_P"=>R_P,
                    "Tn_arr"=>Tn_arr,
                    "Ti_arr"=>Ti_arr,
                    "Te_arr"=>Te_arr,
