@@ -26,6 +26,8 @@ using PyPlot
 using PyCall
 using HDF5, JLD
 using LaTeXStrings
+using Dates
+using DataFrames
 using DelimitedFiles
 using SparseArrays
 using LinearAlgebra
@@ -36,8 +38,7 @@ using DifferentialEquations
 using IterativeSolvers
 using IncompleteLU
 using GeneralizedGenerated: mk_function
-using Dates
-using DataFrames
+
 using XLSX
 
 t2 = time()

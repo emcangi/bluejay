@@ -218,18 +218,6 @@ end
 #                        String manipulation functions                          #
 #===============================================================================#
 
-function charge_type(sp::Symbol)
-    #=
-    Returns a string representing the type of sp, i.e. ion, neutral, or electron
-    =#
-    if occursin("pl", String(sp))
-        return "ion"
-    elseif sp==:E
-        return "electron"
-    else
-        return "neutral"
-    end
-end
 
 function decompose_chemistry_string(s; returntype="array")
     #=

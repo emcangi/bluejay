@@ -1,8 +1,13 @@
 # **************************************************************************** #
 #                                                                              #
-#           Functions to format and load the chemical reaction network         #
+#                   Reaction network formatting and loading                    #
 #                                                                              #
 # **************************************************************************** #
+
+#===============================================================================#
+#                      Functions to load and manipulate the network             #
+#===============================================================================#
+
 function calculate_and_write_column_rates(rxn_filename, atm_state; globvars...)
     #=
     Calculates the column rates for all the reactions in rxn_filename on the species densities in atm_state 
@@ -170,6 +175,175 @@ function find_duplicates(rxnnet)
         i += 1
     end       
 end
+
+function load_network_and_make_functions(rxn_sheet; globvars...)
+    #=
+    Using the reaction spreadsheet, generates symbolic chemistry network and sub networks for hot atoms.
+
+    Input: 
+        rxn_sheet: path to a spreasheet containing chemical reactions.
+
+    Outputs: 
+        reaction_network: array of the symbolic network of reactions in the format [[reactants...], [products...], :(rate)]
+        hHnet, hDnet, hH2net, hHDnet: smaller arrays containing the reactions which produce hot atoms of the specified type
+        hot_H_rc_funcs, etc: special functions for each chemical reaction which can be evaluated on the fly in a fast manner.
+                             critical for enabling the calculation of non-thermal escape of hot atoms.
+    =#
+    GV = values(globvars)
+    required = [:all_species]
+    check_requirements(keys(GV), required)
+
+    reaction_network, hHnet, hDnet, hH2net, hHDnet = load_reaction_network(rxn_sheet; get_hot_rxns=true, GV.all_species);
+    hot_H_rc_funcs = Dict([rxn => mk_function(:((Tn, Ti, Te, M) -> $(rxn[3]))) for rxn in hHnet]);
+    hot_D_rc_funcs = Dict([rxn => mk_function(:((Tn, Ti, Te, M) -> $(rxn[3]))) for rxn in hDnet]);
+    hot_H2_rc_funcs = Dict([rxn => mk_function(:((Tn, Ti, Te, M) -> $(rxn[3]))) for rxn in hH2net]);
+    hot_HD_rc_funcs = Dict([rxn => mk_function(:((Tn, Ti, Te, M) -> $(rxn[3]))) for rxn in hHDnet]);
+    
+    return reaction_network, hHnet, hDnet, hH2net, hHDnet, hot_H_rc_funcs, hot_D_rc_funcs, hot_H2_rc_funcs, hot_HD_rc_funcs
+end
+
+function load_reaction_network(spreadsheet; saveloc=nothing, write_rxns=false, to_return="all", ions_on=true, get_hot_rxns=false, globvars...)
+    #=
+    Inputs:
+        spreadsheet: path and filename of the reaction network spreadsheet
+        saveloc: Path in which to store the re-written spreadsheet of active reactions. This should be the simulation result folder. 
+    Output:
+        reaction_network, a vector of vectors in the format
+        [Symbol[reactants...], Symbol[products...], :(rate coefficient expression)
+    =#
+    GV = values(globvars)
+    required = [:all_species]
+    check_requirements(keys(GV), required)
+
+    if get_hot_rxns
+        try 
+            @assert ions_on==true 
+        catch
+            throw("You can't calculate non-thermal escape in a neutral only simulation, at least for now, try again with ions_on=true")
+        end
+    end
+
+    if to_return=="all"
+        #load neutrals
+        neutral_net = format_neutral_network(spreadsheet, GV.all_species; saveloc=saveloc, write_rxns=write_rxns)
+
+        # Get Jrates
+        Jdict = format_Jrates(spreadsheet, GV.all_species, "Jrate network"; saveloc=saveloc, write_rxns=write_rxns, hot_atoms=true, ions_on=ions_on)
+
+        # Load all ions
+        if ions_on == true
+            ionsdict = format_ion_network(spreadsheet, GV.all_species; saveloc=saveloc, write_rxns=write_rxns, hot_atoms=get_hot_rxns)
+
+            @assert haskey(ionsdict, "hotH")
+            @assert haskey(Jdict, "hotH")
+            @assert haskey(ionsdict, "hotD")
+            @assert haskey(Jdict, "hotD")
+            @assert haskey(ionsdict, "hotH2")
+            @assert haskey(Jdict, "hotH2")
+            @assert haskey(ionsdict, "hotHD")
+            @assert haskey(Jdict, "hotHD")
+
+            hot_H_network = [Jdict["hotH"]..., ionsdict["hotH"]...]
+            hot_D_network = [Jdict["hotD"]..., ionsdict["hotD"]...]
+            hot_H2_network = [Jdict["hotH2"]..., ionsdict["hotH2"]...]
+            hot_HD_network = [Jdict["hotHD"]..., ionsdict["hotHD"]...]
+            whole_network = [Jdict["all"]..., neutral_net..., ionsdict["all"]...]
+        else 
+            # For neutral-only simulations we stlil need the two CO2pl attack on molecular hydrogen reactions
+            ionsdict = format_ion_network(spreadsheet, GV.all_species; saveloc=saveloc, write_rxns=write_rxns, hot_atoms=get_hot_rxns,
+                       special_condition=row->(row.R1=="CO2pl" && (row.R2=="HD" || row.R2=="H2") && (row.P1=="CO2"))) 
+            hot_H_network = []
+            hot_D_network = []
+            hot_H2_network = []
+            hot_HD_network = []
+            whole_network = [Jdict["all"]..., neutral_net...]
+        end 
+
+        return whole_network, hot_H_network, hot_D_network, hot_H2_network, hot_HD_network
+    elseif to_return=="hot"
+        # Load all ions
+        ionsdict = format_ion_network(spreadsheet, GV.all_species; saveloc=saveloc, write_rxns=write_rxns, hot_atoms=get_hot_rxns)
+        Jdict = format_Jrates(spreadsheet, GV.all_species, "Jrate network"; saveloc=saveloc, write_rxns=write_rxns, hot_atoms=true, ions_on=ions_on)
+
+        # Construct the networks
+        @assert haskey(ionsdict, "hotH")
+        @assert haskey(Jdict, "hotH")
+        @assert haskey(ionsdict, "hotD")
+        @assert haskey(Jdict, "hotD")
+        @assert haskey(ionsdict, "hotH2")
+        @assert haskey(Jdict, "hotH2")
+        @assert haskey(ionsdict, "hotHD")
+        @assert haskey(Jdict, "hotHD")
+
+        hot_H_network = [Jdict["hotH"]..., ionsdict["hotH"]...]
+        hot_D_network = [Jdict["hotD"]..., ionsdict["hotD"]...]
+        hot_H2_network = [Jdict["hotH2"]..., ionsdict["hotH2"]...]
+        hot_HD_network = [Jdict["hotHD"]..., ionsdict["hotHD"]...]
+
+        return hot_H_network, hot_D_network, hot_H2_network, hot_HD_network
+    end
+end
+
+function log_reactions(df, sheetname, spreadsheetname)
+    #=
+    Writes out the reactions as listed in df to the sheetname
+    "$(sheetname)" in spreadsheetname.xlsx.
+    =#
+
+    themode = isfile(spreadsheetname) ? "rw" : "w"
+
+    XLSX.openxlsx(spreadsheetname, mode=themode) do xf
+        if "Sheet1" in XLSX.sheetnames(xf)
+            sheet1 = xf[1]
+            XLSX.rename!(sheet1, sheetname)
+        else
+            XLSX.addsheet!(xf,"$(sheetname)")
+        end
+        
+        sheet = xf["$(sheetname)"]
+        sheet = xf["$(sheetname)"]
+        sheet[1, :] = names(df)
+        for r in 2:size(df)[1]+1, c in 1:size(df,2)
+             sheet[XLSX.CellRef(r, c)] = df[r-1,c]
+        end
+    end
+end
+
+function rxns_where_species_is_observer(sp, chemnet)
+    #=
+    Finds reactions where a given chemical species is a non-reacting third body ("observer")
+    
+    Input:
+        sp: Species which may be an observer
+        chemnet: chemistry reaction network
+    Output: either:
+        nothing: if the species was not found to be an observer in any reaction
+        twosides: List of reactions where the species is found on both LHS and RHS
+    =#
+
+    krate_rxns = filter(x->!occursin("J", string(x[3])), chemnet)
+    
+    twosides = []
+
+    flag = false
+    for rxn in krate_rxns
+        if in(sp, rxn[1]) && in(sp, rxn[2])
+            flag = true
+            twosides = push!(twosides, rxn)
+        end
+    end
+
+    if flag == true 
+        return twosides
+    else
+        return nothing
+    end
+end
+
+
+#===============================================================================#
+#              Functions to initially format the network object                 #
+#===============================================================================#
 
 function format_Jrates(spreadsheet, used_species, return_what; saveloc=nothing, write_rxns=false, hot_atoms=false, ions_on=true)
     #=
@@ -571,139 +745,6 @@ function get_Jrate_symb(reactant::String, products::Array)::Symbol
     return Symbol("J$(reactant)to" * join(products, "p"))
 end
 
-function load_network_and_make_functions(rxn_sheet; globvars...)
-    #=
-    Using the reaction spreadsheet, generates symbolic chemistry network and sub networks for hot atoms.
-
-    Input: 
-        rxn_sheet: path to a spreasheet containing chemical reactions.
-
-    Outputs: 
-        reaction_network: array of the symbolic network of reactions in the format [[reactants...], [products...], :(rate)]
-        hHnet, hDnet, hH2net, hHDnet: smaller arrays containing the reactions which produce hot atoms of the specified type
-        hot_H_rc_funcs, etc: special functions for each chemical reaction which can be evaluated on the fly in a fast manner.
-                             critical for enabling the calculation of non-thermal escape of hot atoms.
-    =#
-    GV = values(globvars)
-    required = [:all_species]
-    check_requirements(keys(GV), required)
-
-    reaction_network, hHnet, hDnet, hH2net, hHDnet = load_reaction_network(rxn_sheet; get_hot_rxns=true, GV.all_species);
-    hot_H_rc_funcs = Dict([rxn => mk_function(:((Tn, Ti, Te, M) -> $(rxn[3]))) for rxn in hHnet]);
-    hot_D_rc_funcs = Dict([rxn => mk_function(:((Tn, Ti, Te, M) -> $(rxn[3]))) for rxn in hDnet]);
-    hot_H2_rc_funcs = Dict([rxn => mk_function(:((Tn, Ti, Te, M) -> $(rxn[3]))) for rxn in hH2net]);
-    hot_HD_rc_funcs = Dict([rxn => mk_function(:((Tn, Ti, Te, M) -> $(rxn[3]))) for rxn in hHDnet]);
-    
-    return reaction_network, hHnet, hDnet, hH2net, hHDnet, hot_H_rc_funcs, hot_D_rc_funcs, hot_H2_rc_funcs, hot_HD_rc_funcs
-end
-
-function load_reaction_network(spreadsheet; saveloc=nothing, write_rxns=false, to_return="all", ions_on=true, get_hot_rxns=false, globvars...)
-    #=
-    Inputs:
-        spreadsheet: path and filename of the reaction network spreadsheet
-        saveloc: Path in which to store the re-written spreadsheet of active reactions. This should be the simulation result folder. 
-    Output:
-        reaction_network, a vector of vectors in the format
-        [Symbol[reactants...], Symbol[products...], :(rate coefficient expression)
-    =#
-    GV = values(globvars)
-    required = [:all_species]
-    check_requirements(keys(GV), required)
-
-    if get_hot_rxns
-        try 
-            @assert ions_on==true 
-        catch
-            throw("You can't calculate non-thermal escape in a neutral only simulation, at least for now, try again with ions_on=true")
-        end
-    end
-
-    if to_return=="all"
-        #load neutrals
-        neutral_net = format_neutral_network(spreadsheet, GV.all_species; saveloc=saveloc, write_rxns=write_rxns)
-
-        # Get Jrates
-        Jdict = format_Jrates(spreadsheet, GV.all_species, "Jrate network"; saveloc=saveloc, write_rxns=write_rxns, hot_atoms=true, ions_on=ions_on)
-
-        # Load all ions
-        if ions_on == true
-            ionsdict = format_ion_network(spreadsheet, GV.all_species; saveloc=saveloc, write_rxns=write_rxns, hot_atoms=get_hot_rxns)
-
-            @assert haskey(ionsdict, "hotH")
-            @assert haskey(Jdict, "hotH")
-            @assert haskey(ionsdict, "hotD")
-            @assert haskey(Jdict, "hotD")
-            @assert haskey(ionsdict, "hotH2")
-            @assert haskey(Jdict, "hotH2")
-            @assert haskey(ionsdict, "hotHD")
-            @assert haskey(Jdict, "hotHD")
-
-            hot_H_network = [Jdict["hotH"]..., ionsdict["hotH"]...]
-            hot_D_network = [Jdict["hotD"]..., ionsdict["hotD"]...]
-            hot_H2_network = [Jdict["hotH2"]..., ionsdict["hotH2"]...]
-            hot_HD_network = [Jdict["hotHD"]..., ionsdict["hotHD"]...]
-            whole_network = [Jdict["all"]..., neutral_net..., ionsdict["all"]...]
-        else 
-            # For neutral-only simulations we stlil need the two CO2pl attack on molecular hydrogen reactions
-            ionsdict = format_ion_network(spreadsheet, GV.all_species; saveloc=saveloc, write_rxns=write_rxns, hot_atoms=get_hot_rxns,
-                       special_condition=row->(row.R1=="CO2pl" && (row.R2=="HD" || row.R2=="H2") && (row.P1=="CO2"))) 
-            hot_H_network = []
-            hot_D_network = []
-            hot_H2_network = []
-            hot_HD_network = []
-            whole_network = [Jdict["all"]..., neutral_net...]
-        end 
-
-        return whole_network, hot_H_network, hot_D_network, hot_H2_network, hot_HD_network
-    elseif to_return=="hot"
-        # Load all ions
-        ionsdict = format_ion_network(spreadsheet, GV.all_species; saveloc=saveloc, write_rxns=write_rxns, hot_atoms=get_hot_rxns)
-        Jdict = format_Jrates(spreadsheet, GV.all_species, "Jrate network"; saveloc=saveloc, write_rxns=write_rxns, hot_atoms=true, ions_on=ions_on)
-
-        # Construct the networks
-        @assert haskey(ionsdict, "hotH")
-        @assert haskey(Jdict, "hotH")
-        @assert haskey(ionsdict, "hotD")
-        @assert haskey(Jdict, "hotD")
-        @assert haskey(ionsdict, "hotH2")
-        @assert haskey(Jdict, "hotH2")
-        @assert haskey(ionsdict, "hotHD")
-        @assert haskey(Jdict, "hotHD")
-
-        hot_H_network = [Jdict["hotH"]..., ionsdict["hotH"]...]
-        hot_D_network = [Jdict["hotD"]..., ionsdict["hotD"]...]
-        hot_H2_network = [Jdict["hotH2"]..., ionsdict["hotH2"]...]
-        hot_HD_network = [Jdict["hotHD"]..., ionsdict["hotHD"]...]
-
-        return hot_H_network, hot_D_network, hot_H2_network, hot_HD_network
-    end
-end
-
-function log_reactions(df, sheetname, spreadsheetname)
-    #=
-    Writes out the reactions as listed in df to the sheetname
-    "$(sheetname)" in spreadsheetname.xlsx.
-    =#
-
-    themode = isfile(spreadsheetname) ? "rw" : "w"
-
-    XLSX.openxlsx(spreadsheetname, mode=themode) do xf
-        if "Sheet1" in XLSX.sheetnames(xf)
-            sheet1 = xf[1]
-            XLSX.rename!(sheet1, sheetname)
-        else
-            XLSX.addsheet!(xf,"$(sheetname)")
-        end
-        
-        sheet = xf["$(sheetname)"]
-        sheet = xf["$(sheetname)"]
-        sheet[1, :] = names(df)
-        for r in 2:size(df)[1]+1, c in 1:size(df,2)
-             sheet[XLSX.CellRef(r, c)] = df[r-1,c]
-        end
-    end
-end
-
 function make_k_expr(A, B, C, T::String, M2, M1, pow, BR)
     #=
     Constructs the modified Arrhenius equation, with leading multipliers for
@@ -728,29 +769,6 @@ function make_k_expr(A, B, C, T::String, M2, M1, pow, BR)
         k = :($(((M2/M1)^pow)*BR*A) .* exp.($(C) ./ $(Meta.parse(T))))
     end
     return k
-end
-
-function make_Troe(k0_ABC, kinf_ABC, F, M2, M1, pow, BR)
-    #=
-    Make expression for type 3 reactions, of which there are currently none in the network (Feb 2022).
-
-    Input:
-        k0_ABC, kinf_ABC, kR_ABC: A, B, C arrhenius parameters for k0 (low pressure limit), kinf (high pressure limit), krad.
-        F: Troe parameter
-        M2, M1: Masses for heavier and lighter isotope for mass scaling
-        pow: power (usually -0.5) for mass scaling
-        BR: Branching ratio 
-    Output: a symbolic expression for the rate coefficient
-    =#
-    k0 = make_k_expr(k0_ABC..., "Tn", M2, M1, pow, BR)
-    kinf = make_k_expr(kinf_ABC..., "Tn", M2, M1, pow, BR)
-    
-    if F == 0
-        return :(($(k0) .* $(kinf) .* M) ./ ($(k0) .* M .+ $(kinf)))  # Updated to match Roger's code 4 Feb 2021
-    else        
-        FF = troe_expr(k0, kinf, F)
-        return :($(FF) .* ($(k0) .* $(kinf)) ./ ($(k0) .* M .+ $(kinf)))  # Updated to match Roger's code 5 Feb 2021
-    end
 end
 
 function make_modified_Troe(k0_ABC, kinf_ABC, kR_ABC, F, M2, M1, pow, BR)
@@ -783,34 +801,26 @@ function make_modified_Troe(k0_ABC, kinf_ABC, kR_ABC, F, M2, M1, pow, BR)
     end
 end
 
-function rxns_where_species_is_observer(sp, chemnet)
+function make_Troe(k0_ABC, kinf_ABC, F, M2, M1, pow, BR)
     #=
-    Finds reactions where a given chemical species is a non-reacting third body ("observer")
-    
+    Make expression for type 3 reactions, of which there are currently none in the network (Feb 2022).
+
     Input:
-        sp: Species which may be an observer
-        chemnet: chemistry reaction network
-    Output: either:
-        nothing: if the species was not found to be an observer in any reaction
-        twosides: List of reactions where the species is found on both LHS and RHS
+        k0_ABC, kinf_ABC, kR_ABC: A, B, C arrhenius parameters for k0 (low pressure limit), kinf (high pressure limit), krad.
+        F: Troe parameter
+        M2, M1: Masses for heavier and lighter isotope for mass scaling
+        pow: power (usually -0.5) for mass scaling
+        BR: Branching ratio 
+    Output: a symbolic expression for the rate coefficient
     =#
-
-    krate_rxns = filter(x->!occursin("J", string(x[3])), chemnet)
+    k0 = make_k_expr(k0_ABC..., "Tn", M2, M1, pow, BR)
+    kinf = make_k_expr(kinf_ABC..., "Tn", M2, M1, pow, BR)
     
-    twosides = []
-
-    flag = false
-    for rxn in krate_rxns
-        if in(sp, rxn[1]) && in(sp, rxn[2])
-            flag = true
-            twosides = push!(twosides, rxn)
-        end
-    end
-
-    if flag == true 
-        return twosides
-    else
-        return nothing
+    if F == 0
+        return :(($(k0) .* $(kinf) .* M) ./ ($(k0) .* M .+ $(kinf)))  # Updated to match Roger's code 4 Feb 2021
+    else        
+        FF = troe_expr(k0, kinf, F)
+        return :($(FF) .* ($(k0) .* $(kinf)) ./ ($(k0) .* M .+ $(kinf)))  # Updated to match Roger's code 5 Feb 2021
     end
 end
 
