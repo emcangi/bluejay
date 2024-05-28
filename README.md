@@ -1,5 +1,32 @@
 # bluejay: atmospheric photochemistry in Julia
 
+bluejay is a 1D photochemical model for planetary atmospheres, built by Eryn Cangi and Mike Chaffin at Laboratory for Atmospheric and Space Physics, University of Colorado Boulder.
+
+bluejay has thus far been implemented for Mars and Venus and carries the following characteristics:
+- 66 neutral and ion species
+- Fully coupled neutral and ion chemistry with no* required fixed background species 
+  - 600+ chemistry reactions
+  - Deuterium isotope chemistry for studying the D/H ratio
+  - Option to hold any species density constant
+  - Option to assume photochemical equilibrium for short-lived species (ions and some neutrals)
+  - Easy modification of the chemical network used (just supply an Excel spreadsheet with appropriate formatting)
+- Calculation of thermal and non-thermal escape of H, D, H2, and HD 
+- Capability to model surface (0 km) to space (exobase/escape region, ~250 km) 
+- Option to use a flexible Gear method ODE solver, or built-in Julia ODE solvers**
+- Fast run time (~5-10 minutes per simulation)
+- Can be run to chemical equilibrium or for shorter time periods 
+- Modifiable temperature profiles
+- Photochemical modeling without having to use FORTRAN ;)
+
+Things bluejay does not do at this time:
+- Solar wind interactions of any kind 
+- Self-consistently calculated ion escape
+- Fluid dynamics of any kind 
+- Radiative transfer/thermal balance calculations (the temperature profile is prescribed)
+
+* - argon is typically held constant in the Mars model, but doesn't have to be
+** - at present, the Julia ODE solvers don't seem able to handle the most complex simulations where all species densities are solved for, but can do fine with simpler atmospheres of fewer constituent molecules, or with fixed backgrounds.
+
 ## Installation 
 
 bluejay is currently up-to-date with Julia 1.8.5. It will likely work with newer versions, but it has not yet been tested. 
@@ -49,7 +76,7 @@ The Photochemistry module contains several submodules:
   - Photochemical equilibrium functions
 - **Crosssections.jl**: Functions which load cross section data and populate the dictionary of cross sections. Note, the J rates are hard-coded in as lists of reactants and products at this time due to the many different ways they are handled. This may be improvable/automatable in the future.
 - **FileIO.jl**: Anything that involves getting info out of or writing info into a file, including saving the model results and parameter logs.
-- **JuliaODEsolver.jl**: Optional submodule with functions to utilize the Julia ODE solvers. Not presently used in our work as the Gear solver (included in the `convege_new_file` script) works better.
+- **JuliaODEsolver.jl**: Optional submodule with functions to utilize the Julia ODE solvers. Not presently used in our work as the Gear solver (included in the `convege_new_file.jl` script) works better.
 - **Plotting.jl**: Functions which make plots for showing model inputs, model evolution, and results.
 - **ReactionNetwork.jl**: Everything needed to ingest an Excel spreadsheet of reaction rate data and turn it into a symbolic chemical network for Julia to read. Also includes functions which calculate enthapies of reaction and modify a reaction rate spreadsheet. These functions are NOT called by the model directly and MUST be run by the user when establishing a new simulation, say, for a new planet, because escape energy changes with different gravities.
 - **UnitConversions.jl**: Some basic unit conversions relevant to planetary atmospheres and water budgets.
@@ -68,9 +95,9 @@ The Photochemistry module contains several submodules:
   - `INITIAL_GUESS.jl`, an initial guess for species densities by altitude
 
 **If modeling a new planet**:
-1. Add planetary constants to dictionaries in `MODEL_SETUP.jl` for the planet in question. If you change any variable names, make sure to Ctrl-F replace them all submodules of Photochemistry. Variables to update include: M_P, R_P, DH, sol_in_sec, season_in_sec, g, SA, hygropause_alt, zmin, zmax, Texo/Tsurf/Tmeso options, and there may be more I've missed but hopefully not.
+1. Add planetary constants to dictionaries in `MODEL_SETUP.jl` for the planet in question. If you change any variable names, make sure to Ctrl-F replace them all submodules of Photochemistry. Variables to update include: `M_P`, `R_P`, `DH`, `sol_in_sec`, `season_in_sec`, `g`, `SA`, `hygropause_alt`, `zmin`, `zmax`, `Texo/Tsurf/Tmeso` options, and there may be more I've missed but hopefully not.
 2. Use `scale_solar_spectrum.py` (Python, not Julia) to scale the solar min/mean/max spectra to the orbital AU appropriate to your chosen planet. If using for exoplanets, please provide your own solar spectrum in final units of photons/s/cm^2/nm.
-3. Run `modify_rxn_spreadsheet` (from the `ReactionNetwork.jl` submodule) at the command line so that enthalpies of reaction will be re-calculated and saved to a new REACTION_NETWORK spreadsheet. WARNING: If you don't do this, non-thermal escape fluxes will NOT be reliable!
+3. Run `modify_rxn_spreadsheet` (from the `ReactionNetwork.jl` submodule) at the command line so that enthalpies of reaction will be re-calculated and saved to a new REACTION_NETWORK spreadsheet. WARNING: If you don't do this, non-thermal escape fluxes will NOT be physical!
 4. Dig into the module and change these deeply buried things:
   - `Keddy()` (eddy diffusion profile)
   - Temperature profile: currently handled separately for each planet; make sure to change the call in `MODEL_SETUP.jl` also.
@@ -111,4 +138,4 @@ This software is distributed under the <a href="https://www.gnu.org/licenses/gpl
 
 ## Name
 
-Mike thought that a bird-themed naming scheme would be fun. He suggested "Sparrow" for this model, combining "[chemical] species" + "arrow" to signify the motion of species vertically through the atmosphere. I pointed out that "Jay" would be a much punnier name (the reaction rates of photochemical processes are referred to as "J rates", also the model is written in Julia, which starts with J), and Mike pointed out that Jay is also a general name so it may be confusing. The blue jay is well recognized as a bird, and has a short and easy to remember name. I hope to make a pretty logo soon.
+Mike thought that a bird-themed naming scheme would be fun. He suggested "Sparrow" for this model, combining "[chemical] species" + "arrow" to signify the motion of species vertically through the atmosphere. I pointed out that "Jay" would be a much punnier name (the reaction rates of photochemical processes are referred to as "J rates", also the model is written in Julia, which starts with J), and Mike pointed out that Jay is also a general name so it may be confusing. The bluejay is well recognized as a bird, and has a short and easy to remember name. I hope to make a pretty logo soon.
