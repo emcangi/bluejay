@@ -4,7 +4,7 @@ bluejay is a 1D photochemical model for planetary atmospheres, built by Eryn Can
 
 bluejay has thus far been implemented for Mars and Venus and carries the following characteristics:
 - 66 neutral and ion species
-- Fully coupled neutral and ion chemistry with no† required fixed background species 
+- Fully coupled neutral and ion chemistry with no<sup>†</sup> required fixed background species 
   - 600+ chemistry reactions
   - Deuterium isotope chemistry for studying the D/H ratio
   - Option to hold any species density constant
@@ -12,7 +12,7 @@ bluejay has thus far been implemented for Mars and Venus and carries the followi
   - Easy modification of the chemical network used (just supply an Excel spreadsheet with appropriate formatting)
 - Calculation of thermal and non-thermal escape of H, D, H2, and HD 
 - Capability to model surface (0 km) to space (exobase/escape region, ~250 km) 
-- Option to use a flexible Gear method ODE solver, or built-in Julia ODE solvers‡
+- Option to use a flexible Gear method ODE solver, or built-in Julia ODE solvers<sup>‡</sup>
 - Fast run time (~5-10 minutes per simulation)
 - Can be run to chemical equilibrium or for shorter time periods 
 - Modifiable temperature profiles
@@ -24,8 +24,9 @@ Things bluejay does not do at this time:
 - Fluid dynamics of any kind 
 - Radiative transfer/thermal balance calculations (the temperature profile is prescribed)
 
-† argon is typically held constant in the Mars model, but doesn't have to be
-‡ at present, the Julia ODE solvers don't seem able to handle the most complex simulations where all species densities are solved for, but can do fine with simpler atmospheres of fewer constituent molecules, or with fixed backgrounds.
+<sup>†</sup> argon is typically held constant in the Mars model, but doesn't have to be
+
+<sup>‡</sup> at present, the Julia ODE solvers don't seem able to handle the most complex simulations where all species densities are solved for, but can do fine with simpler atmospheres of fewer constituent molecules, or with fixed backgrounds.
 
 ## Installation 
 
