@@ -90,7 +90,7 @@ The Photochemistry module contains several submodules:
   - `converge_new_file.jl`
   - `CONSTANTS.jl`: True physical constants. Should never need to be changed unless adding new constants.
   - `PLOT_STYLES.jl`: Styling choicse for model plots.
-  - `PARAMETERS.jl`: Parameters that the user can change before running the model. 
+  - `INPUT_PARAMETERS.jl`: Parameters that the user can change before running the model. 
   - `MODEL_SETUP.jl`: Some basic model parameters that don't change much, but depend on information in INPUT_PARAMETERS.jl.
   - `{PlanetName}-Inputs/REACTION_NETWORK_{PlanetName}.jl`, reaction rate data for the chemical network. Although rate constants don't change, these files also include the enthalpy calculations for each reaction and the excess energy of that reaction above escape velocity - which DOES change per planet. These sheets must be recalculated once for any new planet used in the model.
   - `INITIAL_GUESS.jl`, an initial guess for species densities by altitude
