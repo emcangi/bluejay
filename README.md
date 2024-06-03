@@ -46,9 +46,11 @@ Julia packages the model depends on:
 - Dates
 - DelimitedFiles
 - DifferentialEquations
+- DoubleFloats 
 - GeneralizedGenerated
 - HDF5
 - IncompleteLU
+- Interpolations
 - IterativeSolvers
 - JLD
 - LaTeXStrings
