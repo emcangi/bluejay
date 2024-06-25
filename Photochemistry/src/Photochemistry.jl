@@ -190,6 +190,7 @@ turn_off_borders,
 # ReactionNetwork.jl
     ## Load and manipulate
     calculate_and_write_column_rates,
+    enthalpy_of_reaction,
     filter_network, 
     find_duplicates,
     load_network_and_make_functions,
