@@ -1025,7 +1025,7 @@ if adding_new_species==true
         if use_nonzero_initial_profiles
             println("Initializing non-zero profiles for $(new_neutrals)")
             for nn in new_neutrals
-                n_current[nn] = reshape(readdlm("../Resources/initial_profiles/$(string(nn))_initial_profile.txt", '\r', comments=true, comment_char='#'), (num_layers,))
+                n_current[nn] = reshape(readdlm("Resources/initial_profiles/$(string(nn))_initial_profile.txt", '\r', comments=true, comment_char='#'), (num_layers,))
             end
         end
     elseif converge_which == "ions"
@@ -1039,7 +1039,7 @@ if adding_new_species==true
             println("Initializing non-zero profiles for $(new_ions)")
             # first fill in the H-bearing ions from data-inspired profiles
             for ni in setdiff(new_ions, keys(D_H_analogues))
-                n_current[ni] = reshape(readdlm("../Resources/initial_profiles/$(string(ni))_initial_profile.txt", '\r', comments=true, comment_char='#'), (num_layers,))
+                n_current[ni] = reshape(readdlm("Resources/initial_profiles/$(string(ni))_initial_profile.txt", '\r', comments=true, comment_char='#'), (num_layers,))
             end
             # Then create profiles for the D-bearing analogues based on the H-bearing species profiles
             for ni in intersect(new_ions, keys(D_H_analogues))
@@ -1064,7 +1064,7 @@ if adding_new_species==true
             println("Initializing non-zero profiles for $(new_neutrals) and $(new_ions)")
             for nn in new_neutrals
                 try
-                    n_current[nn] = reshape(readdlm("../Resources/initial_profiles/$(string(nn))_initial_profile.txt", '\r', comments=true, comment_char='#'), (num_layers,))
+                    n_current[nn] = reshape(readdlm("Resources/initial_profiles/$(string(nn))_initial_profile.txt", '\r', comments=true, comment_char='#'), (num_layers,))
                 catch 
                     println("No initial guess found for $(nn). Initial profile will be zero everywhere.")
                 end
@@ -1072,7 +1072,7 @@ if adding_new_species==true
 
             for ni in setdiff(new_ions, keys(D_H_analogues))
                 try
-                    n_current[ni] = reshape(readdlm("../Resources/initial_profiles/$(string(ni))_initial_profile.txt", '\r', comments=true, comment_char='#'), (num_layers,))
+                    n_current[ni] = reshape(readdlm("Resources/initial_profiles/$(string(ni))_initial_profile.txt", '\r', comments=true, comment_char='#'), (num_layers,))
                 catch 
                     println("No initial guess found for $(ni). Initial profile will be zero everywhere.")
                 end
