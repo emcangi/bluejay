@@ -39,6 +39,11 @@ const polarizability = Dict(# Values available from experiment
                             :HO2=>1.858e-24,  :HOCO=>3.224e-24, :NH=>1.418e-24,  :NH2=>1.752e-24, 
                             :OH=>1.020e-24,   :OD=>1.020e-24,
 
+                            # place holder Chlorine species
+                            :HCl=> 2.108e-24, :Cl=> 2.108e-24, :ClO=> 2.108e-24, :ClCO=>2.108e-24,
+                            # place holder Sulfur species
+                            :S=> 2.108e-24, :SO=> 2.108e-24, :SO2=> 2.108e-24, :SO3=>2.108e-24,
+
                             # Assumed same as hydrogen analogue
                             :DCO=>2.505e-24, :DO2=>1.858e-24, :DOCO=>3.224e-24, :HDO2=>2.143e-24, :O1D=>0.802e-24, 
 
@@ -76,7 +81,8 @@ const molmass = Dict(:H=>1, :Hpl=>1,
                      :CO2=>44, :CO2pl=>44, :N2O=>44, :N2Opl=>44, 
                      :HOCO=>45, :HCO2pl=>45, :HN2Opl=>45,  
                      :DOCO=>46, :DCO2pl=>46, :NO2=>46, :NO2pl=>46,
-                     :O3=>48, 
+                     :O3=>48, :HCl=>36, :Cl=>35, :ClO=>51, :ClCO=>63,
+                     :S=>32, :SO=>48, :SO2=>64, :SO3=>80
                      )
 
 const collision_xsect = Dict(:H=>4e-15, # Zhang 2009

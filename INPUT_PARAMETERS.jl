@@ -16,7 +16,7 @@ const planet = "Venus"
 # Input and output files, directory
 # =======================================================================================================
 const results_dir = code_dir*"../Results_$(planet)/"
-const initial_atm_file = "$(planet)-Inputs/venus_H2O1e-6_converged_vGFd5b0a.h5"  # File to use to initialize the atmosphere. 
+const initial_atm_file = "$(planet)-Inputs/added S,SO,SO2,SO3.h5"  # File to use to initialize the atmosphere.
     # OPTIONS: 
     # INITIAL_GUESS.h5 --> Basic Mars starting file.
     # venus_H2O1e-6_converged_vGFd5b0a.h5 --> Best Venus initial atmosphere 
@@ -115,7 +115,7 @@ const do_chem = true   # Turning this or next one of will toggle chemistry or tr
 const do_trans = true  # Often useful for troubleshooting or converging new atmospheres.
 const adding_new_species = false
 const make_new_alt_grid = false  # Set to true if extending the altitude grid. TODO: Need to re-write that code.
-const use_nonzero_initial_profiles = true 
+const use_nonzero_initial_profiles = true
     # OPTIONS: 
     # true -- uses initial guess densities for species based on previous model output.
     # false -- sets species to zero density and lets the chemistry and transport build them up.

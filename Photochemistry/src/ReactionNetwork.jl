@@ -77,7 +77,7 @@ function calculate_and_write_column_rates(rxn_filename, atm_state; globvars...)
                 row.ColumnRate = col_rate
 
                 if col_rate==0
-                    println("$(this_rxn) has a 0 col rate. This may or may not be expected.")
+                    println("$(this_rxn) has a 0 col_rate. This may or may not be expected.")
                 end
 
             end

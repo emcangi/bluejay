@@ -245,7 +245,6 @@ function reactant_density_product(atmdict::Dict{Symbol, Vector{ftype_ncur}}, rea
             throw("Got an unknown symbol in a reaction rate: $(r)")
         end
     end
-
     return density_product 
 end 
 
