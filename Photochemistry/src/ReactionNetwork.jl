@@ -843,19 +843,28 @@ end
 # Also run if you add new reactions to the spreadsheet or change rate coefs!    #
 #===============================================================================#
 
-function escape_velocity()
-    return sqrt(bigG * marsM / (radiusM + zmax)) / 100 # 100 converts from cm/s to m/s, bc escape energy function is written in MKS.
+function escape_velocity(; globvars...)
+    #=
+    Calculates escape velocity for the planet described by the supplied global parameters.
+    this kinda doesn't make sense but it's the way to do it that is most consistent with 
+    the rest of the module.
+    =#
+    GV = values(globvars)
+    required = [:M_P, :R_P, :zmax]
+    check_requirements(keys(GV), required)
+
+    return sqrt(bigG * GV.M_P / (GV.R_P + GV.zmax)) / 100 # 100 converts from cm/s to m/s, bc escape energy function is written in MKS.
 end 
 
-function escape_energy(z)
+function escape_energy(z; globvars...)
     #=
     Calculates escape energy from planet P for a molecule containing z protons.
     =#
     
-    kJ_to_eV((0.5 * z * (1.67e-27 #=kg=#) * (escape_velocity() #=m/s=#)^2) / 1000 #=kJ/J=#)
+    kJ_to_eV((0.5 * z * (1.67e-27 #=kg=#) * (escape_velocity(; globvars...) #=m/s=#)^2) / 1000 #=kJ/J=#)
 end
 
-function enthalpy_of_reaction(reactants, products, enthalpy_dict)
+function enthalpy_of_reaction(reactants, products, enthalpy_dict; globvars...)
     #=
     Calculates the total enthalpy of reaction, amount needed to escape hot atoms and molecules in the products,
     and the total excess to figure out if its exothermic or not. Note that it just automatically looks for H, D, H2, HD right now...
@@ -897,30 +906,30 @@ function enthalpy_of_reaction(reactants, products, enthalpy_dict)
         m += 3
         flag += 1
     end
+
+    # Determine if exothermic or endothermic, using the standard convention:
+    # ΔfH0 < 0 ==> exothermic, ΔfH0 > 0 ==> endothermic. 
         
-    # Convert the total enthalpy of reaction to eV:
-    total_reaction_enthalpy_ev = ev_per_molecule(kJ_to_eV(-1*(enthalpy_of_rxn)))
+    # Convert the total enthalpy of reaction to eV.
+    # Change the sign by multiplying by -1, since ΔfH0 < 0 (negative, exothermic) means there
+    # excess energy (i.e. heat) is a product, but ΔfH0 > 0 (positive, endothermic means energy
+    # is consumed in the reaction.
+    total_reaction_enthalpy_ev = -1*ev_per_molecule(kJ_to_eV(enthalpy_of_rxn))
     
     # Calculate how much energy goes into escaping the hot atoms:
-    energy_required_to_escape_all_hot = escape_energy(m)
+    energy_required_to_escape_all_hot = escape_energy(m; globvars...)
     
     # Calculate how much excess energy we have
     excess_energy = round(total_reaction_enthalpy_ev - energy_required_to_escape_all_hot, digits=2)
 
     # Calculate whether endothermic or exothermic
-    endo_exo = excess_energy > 0 ? "exothermic" : "endothermic"
+    can_drive_nonthermal_escape = excess_energy > 0 ? true : false
     
-    # println("Reaction $(format_chemistry_string(reactants, products))")
     if flag > 1
         println("Flag! Reaction produces two hot atoms")
     end
-    # println("Raw enthalpy is $(total_reaction_enthalpy_ev) eV")
-    # println("Mass to escape $(m), so need a minimum of $(m*escape_energy(1)) eV")
-    # println("excess energy $(excess_energy).")
-    # println("Positive excess energy: $(excess_energy > 0), so reaction is $(endo_exo)")
-    # println()
     
-    return endo_exo, total_reaction_enthalpy_ev, energy_required_to_escape_all_hot, excess_energy
+    return can_drive_nonthermal_escape, total_reaction_enthalpy_ev, energy_required_to_escape_all_hot, excess_energy
 end
 
 function get_product_and_reactant_cols(df)
@@ -933,7 +942,7 @@ function get_product_and_reactant_cols(df)
     return rcols, pcols
 end
 
-function calculate_enthalpies(df; species=[:H, :D, :H2, :HD], new_cols=nothing, insert_i=nothing)
+function calculate_enthalpies(df; species=[:H, :D, :H2, :HD], new_cols=nothing, insert_i=nothing, globvars...)
     #=
     Inputs:
         df: A dataframe containing the contents of a reaction spreadsheet to which we must add excess energies
@@ -943,7 +952,7 @@ function calculate_enthalpies(df; species=[:H, :D, :H2, :HD], new_cols=nothing, 
     =#
     
     #Enthalpy of formation 
-    enthalpy_df = DataFrame(XLSX.readtable("../Resources/Enthalpies_of_Formation.xlsx", "enthalpy"))
+    enthalpy_df = DataFrame(XLSX.readtable("Resources/Enthalpies_of_Formation.xlsx", "enthalpy"))
     
     enthalpy = Dict([Symbol(k)=>df_lookup(enthalpy_df, "Species", k, "Enthalpy of formation (kJ/mol)")[1] for k in enthalpy_df."Species"])
 
@@ -959,8 +968,8 @@ function calculate_enthalpies(df; species=[:H, :D, :H2, :HD], new_cols=nothing, 
     rcols, pcols = get_product_and_reactant_cols(df)
     
     # Count endothermic and exothermic
-    endo_count = 0
-    exo_count = 0
+    not_escape_driver_count = 0
+    escape_driver_count = 0
     
     for row in eachrow(df)
         reactants = [Symbol(row.:($r)) for r in rcols]
@@ -972,13 +981,13 @@ function calculate_enthalpies(df; species=[:H, :D, :H2, :HD], new_cols=nothing, 
         end
 
         if any(x->x in products, species)
-            exo_or_endo, total_enthalpy, loss_energy, excess_energy = enthalpy_of_reaction(reactants, products, enthalpy)
+            drives_NT_escape, total_enthalpy, loss_energy, excess_energy = enthalpy_of_reaction(reactants, products, enthalpy; globvars...)
             row.rxnEnthalpy = string(total_enthalpy)
             row.totalEscE = string(loss_energy)
             row.excessE = string(excess_energy)
             
-            if exo_or_endo == "exothermic"
-                exo_count += 1
+            if drives_NT_escape == true
+                escape_driver_count += 1
                 row.NTEscape = "Yes"
 
                 if :D in products
@@ -994,8 +1003,8 @@ function calculate_enthalpies(df; species=[:H, :D, :H2, :HD], new_cols=nothing, 
                 if :H2 in products
                     row.hotH2 = "Yes"
                 end
-            else 
-                endo_count += 1
+            else # if drives_NT_escape == false
+                not_escape_driver_count += 1
 
                 # Handle special case where charge exchange should always be counted as producing hot atoms
                 println("reactants $(Set(reactants)), products $(Set(products))" )
@@ -1005,23 +1014,23 @@ function calculate_enthalpies(df; species=[:H, :D, :H2, :HD], new_cols=nothing, 
                 if (Set(reactants)==Set([:Hpl, :H])) & (Set(products)==Set([:Hpl, :H])) # Resonant
                     row.NTEscape = "Yes"
                     row.hotH = "Yes"
-                    endo_count -= 1
-                    exo_count += 1
+                    not_escape_driver_count -= 1
+                    escape_driver_count += 1
                 elseif (Set(reactants)==Set([:Dpl, :H])) & (Set(products)==Set([:Hpl, :D])) # deuterated
                     row.NTEscape = "Yes"
                     row.hotD = "Yes"
-                    endo_count -= 1
-                    exo_count += 1
+                    not_escape_driver_count -= 1
+                    escape_driver_count += 1
                 elseif (Set(reactants)==Set([:Hpl, :O])) & (Set(products)==Set([:Opl, :H])) # with O
                     row.NTEscape = "Yes"
                     row.hotH = "Yes"
-                    endo_count -= 1
-                    exo_count += 1
+                    not_escape_driver_count -= 1
+                    escape_driver_count += 1
                 elseif (Set(reactants)==Set([:Dpl, :O])) & (Set(products)==Set([:Opl, :D])) # D with O
                     row.NTEscape = "Yes"
                     row.hotD = "Yes"
-                    endo_count -= 1
-                    exo_count += 1
+                    not_escape_driver_count -= 1
+                    escape_driver_count += 1
                 else
                     row.NTEscape = "No"
                     if :D in products
@@ -1042,11 +1051,11 @@ function calculate_enthalpies(df; species=[:H, :D, :H2, :HD], new_cols=nothing, 
         end
     end
     
-    println("Exothermic: $(exo_count), Endothermic: $(endo_count)")
+    println("Drives non-thermal escape (exothermic): $(escape_driver_count)\nDoes not drive non-thermal escape (endothermic): $(not_escape_driver_count)")
     return df
 end
 
-function modify_rxn_spreadsheet(spreadsheet; new_file="REACTION_NETWORK_NEW.xlsx", spc=[:H, :D, :H2, :HD], new_cols=nothing, insert_i=[0,7,8,8])
+function modify_rxn_spreadsheet(spreadsheet; new_file="REACTION_NETWORK_NEW.xlsx", spc=[:H, :D, :H2, :HD], new_cols=nothing, insert_i=[0,7,8,8], globvars...)
     #=
     Inputs:
         spreadsheet: A starting spreadsheet with reaction rate data.
@@ -1081,9 +1090,9 @@ function modify_rxn_spreadsheet(spreadsheet; new_file="REACTION_NETWORK_NEW.xlsx
             end
             
             if insert_i != nothing
-                df_to_write = calculate_enthalpies(df; species=spc, new_cols=new_cols, insert_i=insert_i[j])
+                df_to_write = calculate_enthalpies(df; species=spc, new_cols=new_cols, insert_i=insert_i[j], globvars...)
             else 
-                df_to_write = calculate_enthalpies(df; species=spc)
+                df_to_write = calculate_enthalpies(df; species=spc, globvars...)
             end
         else
             df_to_write = df

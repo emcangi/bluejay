@@ -12,6 +12,7 @@ bluejay has thus far been implemented for Mars and Venus and carries the followi
   - Easy modification of the chemical network used (just supply an Excel spreadsheet with appropriate formatting)
 - Calculation of thermal and non-thermal escape of H, D, H2, and HD 
 - Capability to model surface (0 km) to space (exobase/escape region, ~250 km) 
+- Vertical coordinate: Altitude
 - Option to use a flexible Gear method ODE solver, or built-in Julia ODE solvers<sup>‡</sup>
 - Fast run time (~5-10 minutes per simulation)
 - Can be run to chemical equilibrium or for shorter time periods 
@@ -19,6 +20,7 @@ bluejay has thus far been implemented for Mars and Venus and carries the followi
 - Photochemical modeling without having to use FORTRAN ;)
 
 Things bluejay does not do at this time:
+- Use pressure as the vertical coordinate
 - Solar wind interactions of any kind 
 - Self-consistently calculated ion escape
 - Fluid dynamics of any kind 
@@ -91,7 +93,7 @@ The Photochemistry module contains several submodules:
 - Ensure that the root folder contains the `Photochemistry` folder, the `uvxsect` folder, and the following scripts and files:
   - `converge_new_file.jl`
   - `CONSTANTS.jl`: True physical constants. Should never need to be changed unless adding new constants.
-  - `PLOT_STYLES.jl`: Styling choicse for model plots.
+  - `PLOT_STYLES.jl`: Styling choices for model plots.
   - `INPUT_PARAMETERS.jl`: Parameters that the user can change before running the model. 
   - `MODEL_SETUP.jl`: Some basic model parameters that don't change much, but depend on information in INPUT_PARAMETERS.jl.
   - `{PlanetName}-Inputs/REACTION_NETWORK_{PlanetName}.jl`, reaction rate data for the chemical network. Although rate constants don't change, these files also include the enthalpy calculations for each reaction and the excess energy of that reaction above escape velocity - which DOES change per planet. These sheets must be recalculated once for any new planet used in the model.
