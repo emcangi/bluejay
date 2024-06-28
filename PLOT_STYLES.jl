@@ -64,7 +64,7 @@ const speciescolor = Dict( # PRIMARY NEUTRALS + IONS
                     :NO2=>"#a492e5", :NO2pl=>"#a492e5",  
                     :N2Hpl=>"#611115",:N2Dpl=>"#611115",
                     :HCl=>"#1F540F", :Cl=>"#2EE4EC", :ClO=>"#EEEA0C", :ClCO=>"#EDAC0D",
-                    :S=>"#2CB704", :SO=>"#92E57A", :SO2=>"#74B18C", :SO3=>"#C9FF55"
+                    :S=>"#FF3232", :SO=>"#E8C3FF", :SO2=>"#74B18C", :SO3=>"#C9FF55"
                     );
 
 # NOTE: Some code is repeated here below, also occurring in get_deuterated, to figure out which species are deuterated. 
