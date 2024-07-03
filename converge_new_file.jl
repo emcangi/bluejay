@@ -28,6 +28,7 @@ using HDF5, JLD
 using LaTeXStrings
 using Dates
 using DataFrames
+using DataStructures
 using DelimitedFiles
 using SparseArrays
 using LinearAlgebra
@@ -1595,6 +1596,21 @@ println("Time to beginning convergence is $(format_sec_or_min(time()-t1))\n\n")
 #                                                                              #
 # **************************************************************************** #
 
+# First ste up a dictionary to store the parameter DataFrames, so that we can 
+# make more than one call to writing out the file (the normal call and also the
+# call in the case of the model crashing)
+
+param_df_dict = OrderedDict("General"=>PARAMETERS_GEN, 
+                            "AtmosphericConditions"=>PARAMETERS_CONDITIONS, 
+                            "AltGrid"=>PARAMETERS_ALTGRID, 
+                            "SpeciesLists"=>PARAMETERS_SPLISTS,
+                            "TemperatureArrays"=>PARAMETERS_TEMPERATURE_ARRAYS
+                            "Crosssections"=>PARAMETERS_XSECTS, 
+                            "BoundaryConditions"=>PARAMETERS_BCS,
+                            "Solver" => PARAMETERS_SOLVER
+                            )
+xlsx_parameter_log = "$(results_dir)$(sim_folder_name)/PARAMETERS.xlsx"
+
 ti = time()
 println("$(Dates.format(now(), "(HH:MM:SS)")) Beginning convergence")
 
@@ -1617,8 +1633,7 @@ try
                                  Tn=Tn_arr, Ti=Ti_arr, Te=Te_arr, Tp=Tplasma_arr, Tprof_for_diffusion, transport_species, opt="",
                                  upper_lower_bdy_i, use_ambipolar, use_molec_diff, zmax)
 catch y
-    XLSX.writetable("$(results_dir)$(sim_folder_name)/PARAMETERS.xlsx", "General"=>PARAMETERS_GEN, "AtmosphericConditions"=>PARAMETERS_CONDITIONS, "SpeciesLists"=>PARAMETERS_SPLISTS,
-                    "Solver"=>PARAMETERS_SOLVER, "Crosssections"=>PARAMETERS_XSECTS, "BoundaryConditions"=>PARAMETERS_BCS)
+    XLSX.writetable(xlsx_parameter_log, param_df_dict...)
     write_to_log(logfile, "Terminated before completion at $(format_sec_or_min(time()-ti))", mode="a")
     throw("ERROR: Simulation terminated before completion with exception:")
 end
@@ -1739,14 +1754,8 @@ t7 = time()
 
 # Write out the parameters as the final step 
 
-XLSX.writetable("$(results_dir)$(sim_folder_name)/PARAMETERS.xlsx", "General"=>PARAMETERS_GEN, 
-                                                                    "AltGrid"=>PARAMETERS_ALTGRID, 
-                                                                    "AtmosphericConditions"=>PARAMETERS_CONDITIONS, 
-                                                                    "SpeciesLists"=>PARAMETERS_SPLISTS,
-                                                                    "Solver"=>PARAMETERS_SOLVER, 
-                                                                    "Crosssections"=>PARAMETERS_XSECTS, 
-                                                                    "BoundaryConditions"=>PARAMETERS_BCS, 
-                                                                    "TemperatureArrays"=>PARAMETERS_TEMPERATURE_ARRAYS)
+XLSX.writetable(xlsx_parameter_log, param_df_dict...)
+
 println("Saved parameter spreadsheet")
 write_to_log(logfile, "Simulation total runtime $(format_sec_or_min(t7-t1))", mode="a")
 println("Simulation finished!")
