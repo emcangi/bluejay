@@ -308,7 +308,7 @@ function load_from_paramlog(folder; quiet=true, globvars...)
         # hope the user has passed it in
         global Hs_dict = Dict{Symbol, Vector{Float64}}([sp=>scaleH(GV.alt, sp, Tprof_for_Hs[charge_type(sp)]; GV.M_P, GV.R_P, globvars...) for sp in all_species]); 
     end
-    water_bdy = get_param("WATER_BDY", df_atmcond) * 1e5 # It's stored in km but we want it in cm
+    upper_lower_bdy = get_param("upper_lower_bdy", df_atmcond)
 
     # Boundary conditions
     df_bcs = DataFrame(XLSX.readtable("$(folder)PARAMETERS.xlsx", "BoundaryConditions"));
@@ -332,7 +332,7 @@ function load_from_paramlog(folder; quiet=true, globvars...)
                    "Hs_dict"=>Hs_dict,
                    "speciesbclist"=>speciesbclist,
                    "rxn_spreadsheet"=>rxn_spreadsheet,
-                   "water_bdy"=>water_bdy,
+                   "upper_lower_bdy"=>upper_lower_bdy,
                    "Jratelist"=>Jratelist)
 
     try

@@ -1603,8 +1603,9 @@ println("Time to beginning convergence is $(format_sec_or_min(time()-t1))\n\n")
 param_df_dict = OrderedDict("General"=>PARAMETERS_GEN, 
                             "AtmosphericConditions"=>PARAMETERS_CONDITIONS, 
                             "AltGrid"=>PARAMETERS_ALTGRID, 
+                            "AltInfo"=>PARAMETERS_ALT_INFO,
                             "SpeciesLists"=>PARAMETERS_SPLISTS,
-                            "TemperatureArrays"=>PARAMETERS_TEMPERATURE_ARRAYS
+                            "TemperatureArrays"=>PARAMETERS_TEMPERATURE_ARRAYS,
                             "Crosssections"=>PARAMETERS_XSECTS, 
                             "BoundaryConditions"=>PARAMETERS_BCS,
                             "Solver" => PARAMETERS_SOLVER

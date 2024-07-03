@@ -575,10 +575,25 @@ push!(PARAMETERS_GEN, ("AMBIPOLAR_DIFFUSION_ON", use_ambipolar));
 push!(PARAMETERS_GEN, ("MOLEC_DIFFUSION_ON", use_molec_diff));
 
 # Log altitude grid so we can avoid loading this very file when doing later analysis.
-PARAMETERS_ALTGRID = DataFrame(Alt=alt)
+PARAMETERS_ALTGRID = DataFrame(Alt=alt, # grid
+                               # The following syntax is ugly, and required because the XLSX package won't write columns of different lengths,
+                               # so shorter lists must be padded with blank lines.
+                               # It appears again below where species lists are written out.
+                               non_bdy_layers=[[string(a) for a in non_bdy_layers]..., ["" for i in 1:length(alt)-length(non_bdy_layers)]...],
+                               ) 
 
+# Various descriptive things about the altitude grid that are single values, not vectors.
+PARAMETERS_ALT_INFO = DataFrame(Field=[], Value=[], Unit=[], Desc=[]);
+push!(PARAMETERS_ALT_INFO, ("zmin", zmin, "cm", "Min altitude (altitude of lower boundary)"));
+push!(PARAMETERS_ALT_INFO, ("dz", dz, "cm", "Height of a discretized altitude layer"));
+push!(PARAMETERS_ALT_INFO, ("zmax", zmax, "cm", "Max altitude (altitude of top boundary)"));
+push!(PARAMETERS_ALT_INFO, ("n_all_layers", n_all_layers, "", "Number of discretized altitude layers, including boundary layers (i.e. length(alt))"));
+push!(PARAMETERS_ALT_INFO, ("num_layers", num_layers, "", "Number of discretized altitude layers, excluding boundary layers (i.e. length(alt)-2)"));
+push!(PARAMETERS_ALT_INFO, ("upper_lower_bdy", upper_lower_bdy, "cm", "Altitude at which water goes from being fixed to calculated"));
+push!(PARAMETERS_ALT_INFO, ("upper_lower_bdy_i", upper_lower_bdy_i, "", "Index of the line above within the alt grid"));
+
+# Atmospheric conditions.
 PARAMETERS_CONDITIONS = DataFrame(Field=[], Value=[], Unit=[]);
-
 push!(PARAMETERS_CONDITIONS, ("SZA", SZA, "deg"));
 push!(PARAMETERS_CONDITIONS, ("TSURF", controltemps[1], "K"));
 push!(PARAMETERS_CONDITIONS, ("TMESO", controltemps[2], "K"));
@@ -587,11 +602,6 @@ push!(PARAMETERS_CONDITIONS, ("MEAN_TEMPS", join(meantemps, " "), "K"));
 push!(PARAMETERS_CONDITIONS, ("WATER_MR", water_mixing_ratio, "mixing ratio"));
 push!(PARAMETERS_CONDITIONS, ("WATER_CASE", water_case, "whether running with 10x, 1/10th, or standard water in middle/upper atmo"));
 
-waterbdy = :H2O in inactive_species ? zmax : upper_lower_bdy/1e5
-push!(PARAMETERS_CONDITIONS, ("WATER_BDY", waterbdy, "km"))
-
-# This is so ugly because the XLSX package won't write columns of different lengths, so I have to pad all the shorter lists
-# with blanks up to the length of the longest list and also transform all the symbols into strings. 
 L = max(length(all_species), length(neutral_species), length(ion_species), length(no_chem_species), length(no_transport_species))
 PARAMETERS_SPLISTS = DataFrame(AllSpecies=[[string(a) for a in all_species]..., ["" for i in 1:L-length(all_species)]...], 
                                Neutrals=[[string(n) for n in neutral_species]..., ["" for i in 1:L-length(neutral_species)]...], 
