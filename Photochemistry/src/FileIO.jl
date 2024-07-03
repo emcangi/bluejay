@@ -222,13 +222,13 @@ function load_from_paramlog(folder; quiet=true, globvars...)
     =#
 
     GV = values(globvars)
-    required = [:molmass] # :alt
+    required = [:molmass] 
     check_requirements(keys(GV), required)
 
     # Load the workbook
     paramlog_wb = XLSX.readxlsx("$(folder)PARAMETERS.xlsx")
 
-    # Basic variables
+    # Planet, M_P, R_P, and altitude, which were not logged in older runs.
     df_gen = DataFrame(XLSX.readtable("$(folder)PARAMETERS.xlsx", "General"));
     if ~(:M_P in keys(GV)) | ~(:R_P in keys(GV))
         try
@@ -237,17 +237,11 @@ function load_from_paramlog(folder; quiet=true, globvars...)
             global R_P = get_param("R_P", df_gen)
         catch y
             println("WARNING: Exception: $(y) - you are trying to load parameters which aren't logged. File probably made before module updates.")
-            println("Please load the following parameters manually: M_P, R_P, and pass them in as globvars, and re-run this command.")
+            println("Please pass in the following global variables: planet, M_P, R_P, then re-run this command.")
             println()
         end
     end
-    ions_included = get_param("IONS", df_gen)
-    hrshortcode = get_param("RSHORTCODE", df_gen)
-    rshortcode = get_param("HRSHORTCODE", df_gen)
-    rxn_spreadsheet = get_param("RXN_SOURCE", df_gen)
-    DH = get_param("DH", df_gen)
-
-
+    
     if ~(:alt in keys(GV))
         try 
             df_alt = DataFrame(XLSX.readtable("$(folder)PARAMETERS.xlsx", "AltGrid"));
@@ -257,8 +251,17 @@ function load_from_paramlog(folder; quiet=true, globvars...)
             println()
         end
     end
+
+    # Codes
+    hrshortcode = get_param("RSHORTCODE", df_gen)
+    rshortcode = get_param("HRSHORTCODE", df_gen)
+
+    # Basics - more
+    rxn_spreadsheet = get_param("RXN_SOURCE", df_gen)
+    DH = get_param("DH", df_gen)
     
     # Species lists
+    ions_included = get_param("IONS", df_gen)
     df_splists = DataFrame(XLSX.readtable("$(folder)PARAMETERS.xlsx", "SpeciesLists"));
     neutral_species = [Symbol(x) for x in filter(x->typeof(x)==String, df_splists.Neutrals)]
     ion_species = [Symbol(x) for x in filter(x->typeof(x)==String, df_splists.Ions)]
@@ -281,7 +284,14 @@ function load_from_paramlog(folder; quiet=true, globvars...)
         if quiet==false
             println("WARNING: Reconstructing temperature profiles with default options based on logged control temperatures. It is POSSIBLE the reconstruction could be wrong if the temp function changed.")
         end
-        T_dict = T(get_param("TSURF", df_atmcond), get_param("TMESO", df_atmcond), get_param("TEXO", df_atmcond); GV.alt)
+        # Need to have some logic for constructing the temperature profile from the logged control parameters, and it's 
+        # different by planet. 
+        if planet=="Venus"
+            T_dict = T_Venus(get_param("TSURF", df_atmcond), get_param("TMESO", df_atmcond), get_param("TEXO", df_atmcond), 
+                             "Venus-Inputs/FoxandSung2001_temps_mike.txt"; GV.alt)
+        elseif planet=="Mars"
+            T_dict = T_Mars(get_param("TSURF", df_atmcond), get_param("TMESO", df_atmcond), get_param("TEXO", df_atmcond); GV.alt)
+        end
         Tn_arr = T_dict["neutrals"]
         Ti_arr = T_dict["ions"]
         Te_arr = T_dict["electrons"]
