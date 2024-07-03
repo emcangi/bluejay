@@ -270,6 +270,7 @@ function load_from_paramlog(folder; quiet=true, globvars...)
     no_chem_species = [Symbol(x) for x in [filter(x->typeof(x)==String, df_splists.NoChem)]...];
     transport_species = setdiff(all_species, no_transport_species);
     chem_species = setdiff(all_species, no_chem_species);
+    Jratelist = [Symbol(x) for x in filter(x->typeof(x)==String, df_splists.Jratelist)]
 
     # Atmospheric conditions
     df_atmcond = DataFrame(XLSX.readtable("$(folder)PARAMETERS.xlsx", "AtmosphericConditions"));
@@ -331,7 +332,8 @@ function load_from_paramlog(folder; quiet=true, globvars...)
                    "Hs_dict"=>Hs_dict,
                    "speciesbclist"=>speciesbclist,
                    "rxn_spreadsheet"=>rxn_spreadsheet,
-                   "water_bdy"=>water_bdy)
+                   "water_bdy"=>water_bdy,
+                   "Jratelist"=>Jratelist)
 
     try
         vardict["alt"] = alt
