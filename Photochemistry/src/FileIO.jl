@@ -247,11 +247,21 @@ function load_from_paramlog(folder; quiet=true, globvars...)
             df_alt = DataFrame(XLSX.readtable("$(folder)PARAMETERS.xlsx", "AltGrid"));
             global df_altinfo = DataFrame(XLSX.readtable("$(folder)PARAMETERS.xlsx", "AltInfo"));
             global alt = df_alt.Alt
+            global non_bdy_layers = df_alt.non_bdy_layers
         catch y
             println("WARNING: Exception: $(y) - you tried to load the altitude grid but it's not logged. File probably made before module updates. Please pass in alt manually")
             println()
         end
     end
+
+    # AltInfo
+    zmin = get_param("zmin", df_altinfo)
+    dz = get_param("dz", df_altinfo)
+    zmax = get_param("zmax", df_altinfo)
+    n_all_layers = get_param("n_all_layers", df_altinfo)
+    num_layers = get_param("num_layers", df_altinfo)
+    upper_lower_bdy = get_param("upper_lower_bdy", df_altinfo)
+    upper_lower_bdy_i = get_param("upper_lower_bdy_i", df_altinfo)
 
     # Codes
     hrshortcode = get_param("RSHORTCODE", df_gen)
@@ -309,8 +319,7 @@ function load_from_paramlog(folder; quiet=true, globvars...)
         # hope the user has passed it in
         global Hs_dict = Dict{Symbol, Vector{Float64}}([sp=>scaleH(GV.alt, sp, Tprof_for_Hs[charge_type(sp)]; GV.M_P, GV.R_P, globvars...) for sp in all_species]); 
     end
-    upper_lower_bdy = get_param("upper_lower_bdy", df_altinfo)
-
+    
     # Boundary conditions
     df_bcs = DataFrame(XLSX.readtable("$(folder)PARAMETERS.xlsx", "BoundaryConditions"));
     speciesbclist = load_bcdict_from_paramdf(df_bcs);
@@ -334,8 +343,17 @@ function load_from_paramlog(folder; quiet=true, globvars...)
                    "speciesbclist"=>speciesbclist,
                    "rxn_spreadsheet"=>rxn_spreadsheet,
                    "upper_lower_bdy"=>upper_lower_bdy,
-                   "Jratelist"=>Jratelist)
-
+                   "Jratelist"=>Jratelist,
+                   "non_bdy_layers"=>non_bdy_layers,
+                   "zmin"=>zmin,
+                   "zmax"=>zmax,
+                   "dz"=>dz,
+                   "n_all_layers"=>n_all_layers,
+                   "num_layers"=>num_layers,
+                   "upper_lower_bdy"=>upper_lower_bdy,
+                   "upper_lower_bdy_i"=>upper_lower_bdy_i
+                   )
+    
     try
         vardict["alt"] = alt
         vardict["M_P"] = M_P
