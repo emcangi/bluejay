@@ -63,7 +63,7 @@ const speciescolor = Dict( # PRIMARY NEUTRALS + IONS
                     :NO=>"#e639b1",:NOpl=>"#e639b1",
                     :NO2=>"#a492e5", :NO2pl=>"#a492e5",  
                     :N2Hpl=>"#611115",:N2Dpl=>"#611115",
-                    :HCl=>"#1F540F", :Cl=>"#2EE4EC", :ClO=>"#EEEA0C", :ClCO=>"#EDAC0D",
+                    :HCl=>"#1F540F", :Cl=>"#2EE4EC", :ClO=>"#EEEA0C", :ClCO=>"#EDAC0D", :DCl=>"#DC8181", :Cl2=>"#89FAD6",
                     :S=>"#FF3232", :SO=>"#E8C3FF", :SO2=>"#74B18C", :SO3=>"#C9FF55"
                     );
 

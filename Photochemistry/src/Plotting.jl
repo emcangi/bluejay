@@ -141,7 +141,7 @@ function plot_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, savepath::String, a
                                 :NH,:NHpl,:NH2,:NH2pl,:NH3pl,
                                 :NO,:NOpl,:NO2,:NO2pl,
                                 :N2Hpl,:N2Dpl,
-                                :HCl, :Cl, :ClO, :ClCO,
+                                :HCl, :Cl, :ClO, :ClCO, :DCl, :Cl2,
                                 :S, :SO, :SO2, :SO3]
                         );
 
