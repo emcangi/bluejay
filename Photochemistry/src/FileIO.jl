@@ -247,7 +247,7 @@ function load_from_paramlog(folder; quiet=true, globvars...)
             df_alt = DataFrame(XLSX.readtable("$(folder)PARAMETERS.xlsx", "AltGrid"));
             global df_altinfo = DataFrame(XLSX.readtable("$(folder)PARAMETERS.xlsx", "AltInfo"));
             global alt = df_alt.Alt
-            global non_bdy_layers = df_alt.non_bdy_layers
+            global non_bdy_layers = [parse(Float64, f) for f in collect(skipmissing(df_alt.non_bdy_layers))] # [parse(Float64, f) for f in  df_alt.non_bdy_layers if f != missing]
         catch y
             println("WARNING: Exception: $(y) - you tried to load the altitude grid but it's not logged. File probably made before module updates. Please pass in alt manually")
             println()
