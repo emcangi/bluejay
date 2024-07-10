@@ -142,7 +142,7 @@ function plot_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, savepath::String, a
                                 :NO,:NOpl,:NO2,:NO2pl,
                                 :N2Hpl,:N2Dpl,
                                 :HCl, :Cl, :ClO, :ClCO, :DCl, :Cl2,
-                                :S, :SO, :SO2, :SO3]
+                                :S, :SO, :SO2, :SO3, :H2SO4]
                         );
 
     axes_by_sp = Dict()

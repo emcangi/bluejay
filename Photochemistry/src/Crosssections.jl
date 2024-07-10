@@ -241,7 +241,8 @@ function populate_xsect_dict(pd_dataf, xsecfolder; ion_xsects=true, globvars...)
                                 # Cl containing species
                                 "HCl"=>[["H","Cl"]],
                                 #S containing species
-                                "SO2"=>[["SO","O"], ["S","O2"]])
+                                "SO2"=>[["SO","O"], ["S","O2"]],
+                                "H2SO4"=>[["SO3","H2O"]])
     
         
 

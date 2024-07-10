@@ -66,7 +66,7 @@ const orig_neutrals = [:Ar, :CO, :CO2, :H, :H2, :H2O, :H2O2,
                        :O, :O1D, :O2, :O3, :OH,
                        :D, :DO2, :DOCO, :HD, :HDO, :HDO2, :OD,
                         :Cl, :ClO, :HCl, :ClCO, :DCl,
-                        :S, :SO, :SO2, :SO3,
+                        :S, :SO, :SO2, :SO3, :H2SO4,
 
                        # Turn these off for minimal ionosphere:
                        :C, :DCO, :HCN, :HCO, :N, :NO, :Nup2D, 
