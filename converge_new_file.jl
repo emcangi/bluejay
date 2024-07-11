@@ -975,7 +975,7 @@ as such in the reaction spreadsheet.
 =#
 println("$(Dates.format(now(), "(HH:MM:SS)")) Loading reaction network")
 reaction_network, hot_H_network, hot_D_network, 
-hot_H2_network, hot_HD_network = load_reaction_network(reaction_network_spreadsheet; saveloc=results_dir*sim_folder_name*"/active_rxns.xlsx",
+hot_H2_network, hot_HD_network = load_reaction_network(reaction_network_spreadsheet; saveloc=results_dir*sim_folder_name*"/$(used_rxns_spreadsheet_name)",
                                                                        write_rxns=true, get_hot_rxns=ions_included, ions_on=ions_included, all_species)
 
 #              Create evaluatable rate coefficients by reaction                 #
@@ -1732,7 +1732,7 @@ elseif problem_type == "Gear"
     write_final_state(atm_soln, results_dir, sim_folder_name, final_atm_file; alt, num_layers, hrshortcode, Jratedict, rshortcode, external_storage)
 
     # Write out the final column rates to the reaction log
-    calculate_and_write_column_rates("active_rxns.xlsx", atm_soln; all_species, dz, ion_species, num_layers, reaction_network, results_dir, sim_folder_name, 
+    calculate_and_write_column_rates(used_rxns_spreadsheet_name, atm_soln; all_species, dz, ion_species, num_layers, reaction_network, results_dir, sim_folder_name, 
                                                               Tn=Tn_arr[2:end-1], Ti=Ti_arr[2:end-1], Te=Te_arr[2:end-1])
     
     write_to_log(logfile, "$(Dates.format(now(), "(HH:MM:SS)")) Making production/loss plots", mode="a")

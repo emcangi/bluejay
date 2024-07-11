@@ -468,6 +468,7 @@ end
 # The shortcodes provide unique identifiers for a simulation. Necessary because you end up running the model many times...
 const hrshortcode, rshortcode = generate_code(ions_included, controltemps[1], controltemps[2], controltemps[3], water_case, solar_scenario)
 const sim_folder_name = "$(hrshortcode)_$(rshortcode)_$(tag)"
+const used_rxns_spreadsheet_name = "active_rxns.xlsx"
 
 
 # ***************************************************************************************************** #
@@ -561,7 +562,7 @@ push!(PARAMETERS_GEN, ("HRSHORTCODE", hrshortcode));
 push!(PARAMETERS_GEN, ("RSHORTCODE", rshortcode));
 push!(PARAMETERS_GEN, ("VARIED_PARAM", exp_type))
 push!(PARAMETERS_GEN, ("INITIAL_ATM", initial_atm_file));
-push!(PARAMETERS_GEN, ("RXN_SOURCE", reaction_network_spreadsheet));
+push!(PARAMETERS_GEN, ("RXN_SOURCE", results_dir*sim_folder_name*"/$(used_rxns_spreadsheet_name)"));
 push!(PARAMETERS_GEN, ("IONS", ions_included ));
 push!(PARAMETERS_GEN, ("CONVERGE", converge_which));
 push!(PARAMETERS_GEN, ("NONTHERMAL_ESC", nontherm));
