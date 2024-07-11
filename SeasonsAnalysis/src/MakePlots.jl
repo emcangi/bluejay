@@ -2247,7 +2247,7 @@ function get_escape_for_all_atmospheres(thefolders, thefiles; globvars...)
     Called in esc_flux_vs_time and f_vs_time
     =#
     # Check for a saved file with the escape values in it
-    parent_folder = String(match(r".+(?=I)", thefiles[1]).match)
+    parent_folder = String(match(r".+(?=I-)", thefiles[1]).match)
     println("Searching $(parent_folder) for an escape spreadsheet")
     flush(stdout)
 
