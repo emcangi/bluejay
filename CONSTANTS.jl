@@ -43,8 +43,8 @@ const polarizability = Dict(# Values available from experiment
                             :HCl=> 2.515e-24, :Cl=> 2.180e-24, :ClO=> 2.108e-24, :ClCO=>2.108e-24, 
                             :Cl2=>4.610e-24, :DCl=>2.108e-24, 
     
-                            #Sulfur species
-                            :S=> 2.900e-24, :SO=> 2.108e-24, :SO2=> 3.882e-24, :SO3=>4.297e-24,:H2SO4=>4.297e-24, #SO and H2SO4 are a place holder
+                            #Sulfur species SO and H2SO4 are a place holder
+                            :S=> 2.900e-24, :SO=> 2.108e-24, :SO2=> 3.882e-24, :SO3=>4.297e-24,:H2SO4=>4.297e-24, :HDSO4=>4.297e-24,
 
                             # Assumed same as hydrogen analogue
                             :DCO=>2.505e-24, :DO2=>1.858e-24, :DOCO=>3.224e-24, :HDO2=>2.143e-24, :O1D=>0.802e-24, 
@@ -84,7 +84,7 @@ const molmass = Dict(:H=>1, :Hpl=>1,
                      :HOCO=>45, :HCO2pl=>45, :HN2Opl=>45,  
                      :DOCO=>46, :DCO2pl=>46, :NO2=>46, :NO2pl=>46,
                      :O3=>48, :HCl=>36, :Cl=>35, :ClO=>51, :ClCO=>63, :Cl2=>71, :DCl=>37,
-                     :S=>32, :SO=>48, :SO2=>64, :SO3=>80, :H2SO4=>98
+                     :S=>32, :SO=>48, :SO2=>64, :SO3=>80, :H2SO4=>98, :HDSO4=>99
                      )
 
 const collision_xsect = Dict(:H=>4e-15, # Zhang 2009

@@ -240,9 +240,12 @@ function populate_xsect_dict(pd_dataf, xsecfolder; ion_xsects=true, globvars...)
 
                                 # Cl containing species
                                 "HCl"=>[["H","Cl"]],
+                                "DCl"=>[["D","Cl"]],
                                 #S containing species
                                 "SO2"=>[["SO","O"], ["S","O2"]],
-                                "H2SO4"=>[["SO3","H2O"]])
+                                "SO3"=>[["SO2","O"]], #there may be more possible products than what I have listed, but JPL didn't give a recomended quantum yield
+                                "H2SO4"=>[["SO3","H2O"]], # same issue as SO3, JPL did not give a recomended quantum yield
+                                "HDSO4"=>[["SO3","HDO"]]) # uses mass scaeling of H2SO4
     
         
 

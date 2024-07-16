@@ -16,7 +16,7 @@ const planet = "Venus"
 # Input and output files, directory
 # =======================================================================================================
 const results_dir = code_dir*"../Results_$(planet)/"
-const initial_atm_file = "$(planet)-Inputs/added H2SO4.h5"  # File to use to initialize the atmosphere.
+const initial_atm_file = "$(planet)-Inputs/made DpHCltoHDpCl mass scale.h5"  # File to use to initialize the atmosphere.
     # OPTIONS: 
     # INITIAL_GUESS.h5 --> Basic Mars starting file.
     # venus_H2O1e-6_converged_vGFd5b0a.h5 --> Best Venus initial atmosphere 
