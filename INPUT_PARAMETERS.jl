@@ -16,10 +16,12 @@ const planet = "Venus"
 # Input and output files, directory
 # =======================================================================================================
 const results_dir = code_dir*"../Results_$(planet)/"
-const initial_atm_file = "$(planet)-Inputs/venus_H2O1e-6_converged_vGFd5b0a.h5"  # File to use to initialize the atmosphere. 
+const initial_atm_file = "$(planet)-Inputs/" * "INITIAL_GUESS.h5" # File to use to initialize the atmosphere. 
     # OPTIONS: 
-    # INITIAL_GUESS.h5 --> Basic Mars starting file.
-    # venus_H2O1e-6_converged_vGFd5b0a.h5 --> Best Venus initial atmosphere 
+    # INITIAL_GUESS_MARS.h5 --> Basic Mars starting file.
+    # INITIAL_GUESS_MARS_bxz4YnHk.h5 --> A Mars atmosphere that includes N2O, NO2, and their ions;
+    #                                    not particularly motivated by any present-day data.                                         
+    # INITIAL_GUESS_VENUS_vGFd5b0a.h5 --> Best Venus initial atmosphere 
 const final_atm_file = "final_atmosphere.h5"
 const reaction_network_spreadsheet = code_dir*"$(planet)-Inputs/REACTION_NETWORK_$(uppercase(planet)).xlsx"
     # OPTIONS: "REACTION_NETWORK_MIN_IONOSPHERE.xlsx", code_dir*"REACTION_NETWORK_$(uppercase(planet)).xlsx"
