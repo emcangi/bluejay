@@ -113,12 +113,23 @@ The Photochemistry module contains several submodules:
 6. You will need to generate a new initial guess of the atmosphere and feed it in as (e.g.) `INITIAL_GUESS.h5` You can use any method to do this. Suggestions include: Set the principal component of the atmosphere (e.g. CO2 on Mars) to be a constant value roughly what it is at the surface, and zero out all other species and let the model build them up; collect numbers from existing published works and use those.
 
 **If adding new chemical species**:
-This list may be incomplete and will be updated.
-1. Add entries for the new species to `speciescolor` variable in `PLOT_STYLES.jl`
-2. Add the species to the `species_groups` variable in PLOTTING / `plot_atm()`
-3. Add the species to either `new_neutrals` or `new_ions` variables in `MODEL_SETUP.jl` (and once you've converged an atmosphere that includes the sepcies in the solution, move them to the "`conv`" lists).
-4. Set `adding_new_species` variable in `INPUT_PARAMETERS`.jl to true
-5. If you want to provide a non-zero initial guess profile for the species, set `use_nonzero_initial_profiles` to true in `INPUT_PARAMETERS`.jl, and enter the initial guess in a file with path (relative to the code directory) equal to `../Resources/initial_profiles/{speciesname}_initial_profile.txt`.
+This list may be incomplete. If you discover a necessary step that isn't written here, please open a Github issue.
+1. Add the species' mass in amu to the `molmass` dictionary in `CONSTANTS.jl`.
+2. Add entries for the new species to `speciescolor` variable in `PLOT_STYLES.jl`
+3. Add the species to the `species_groups` variable in PLOTTING / `plot_atm()`
+4. Add the species to either `new_neutrals` or `new_ions` variables in `MODEL_SETUP.jl`.
+5. Set `adding_new_species` variable in `INPUT_PARAMETERS`.jl to true
+6. If you want to provide a non-zero initial guess profile for the species, set `use_nonzero_initial_profiles` to true in `INPUT_PARAMETERS`.jl, and enter the initial guess in a file with path (relative to the code directory) equal to `../Resources/initial_profiles/{speciesname}_initial_profile.txt`. 
+7. Add related bimolecular/termolecular chemical reactions to the appropriate spreadsheet (e.g. `REACTION_NETWORK_{PlanetName}.jl`).
+8. For any new photodissociation/photoionization reactions including the new species:
+  - Add the reactions under the Photodissociation and Photoionization tabs in the reaction network spreadsheet, setting their status to 'New' for the first run.
+  - Obtain the cross sections for each reaction as a function of wavelength, binned in half-integer steps (0.5, 1.5, 2.5 etc nm), and save as a .csv or .dat file in the `uvxsect` folder with the symbolic representation of the reaction as the filename (e.g. JH2OtoH2pO1D; where p means a regular plus sign and pl means a superscript plus for ions).
+  - Add the reactant and product lists to the `reactant_product_sets` in `Crosssections.jl` under the `populate_xsect_dict()` function.
+9. Converge a new atmosphere with the new species. Once successful:
+  - Save the output `final_atmosphere.h5` as the new initial guess file for that planet
+  - Set the newly introduced photodissociation/photoionization reactions to "Conv" in the "Status" column of the appropriate tabs within the reaction network spreadsheet
+  - Set `adding_new_species` variable in `INPUT_PARAMETERS`.jl to false.
+  - Move the new species' symbols to the "`conv`" lists in `MODEL_SETUP.jl`.
 
 
 **Running the model**:

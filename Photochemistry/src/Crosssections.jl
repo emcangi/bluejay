@@ -220,6 +220,7 @@ function populate_xsect_dict(pd_dataf, xsecfolder; ion_xsects=true, globvars...)
     xsect_dict[get_Jrate_symb("HDO2", ["HDO", "O1D"])] = map(xs->quantumyield(xs,((x->true, 0),)), map(t->hdo2xsect(hdo2xdata, t), GV.Tn))
 
     # The following reactions have associated files listing cross sections.
+    # TODO: Ideally this should not be hard coded in; ought to be passed in based on the reaction spreadsheet.
     reactant_product_sets = Dict("CO2"=>[["CO2pl"], ["CO2plpl"], ["Cplpl", "O2"], ["Cpl", "O2"], ["COpl", "Opl"], ["COpl", "O"], ["Opl", "CO"], ["Opl", "Cpl", "O"], ["C", "O", "O"], ["C", "O2"]],
                                  "CO"=>[["COpl"],  ["C", "Opl"],  ["O", "Cpl"], ["C", "O"]],
                                  "H2O"=>[["H2Opl"], ["Opl", "H2"], ["Hpl", "OH"], ["OHpl", "H"]],
@@ -227,7 +228,7 @@ function populate_xsect_dict(pd_dataf, xsecfolder; ion_xsects=true, globvars...)
                                  "N2"=>[["N2pl"], ["Npl", "N"]],
                                  "NO2"=>[["NO2pl"], ["NO", "O"]],
                                  "NO"=>[["NOpl"], ["N", "O"]],
-                                 "N2O"=>[["N2Opl"], ["N2", "O1D"], ["N2", "O1D"]],
+                                 "N2O"=>[["N2Opl"], ["N2", "O1D"]],
                                  "H"=>[["Hpl"]],
                                  "D"=>[["Dpl"]],
                                  "H2"=>[["H2pl"], ["Hpl", "H"]],

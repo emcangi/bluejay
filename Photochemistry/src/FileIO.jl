@@ -228,8 +228,12 @@ function load_from_paramlog(folder; quiet=true, globvars...)
     # Load the workbook
     paramlog_wb = XLSX.readxlsx("$(folder)PARAMETERS.xlsx")
 
-    # Planet, M_P, R_P, and altitude, which were not logged in older runs.
+    # Read as many of the parameter sheets as we can right now
     df_gen = DataFrame(XLSX.readtable("$(folder)PARAMETERS.xlsx", "General"));
+    df_atmcond = DataFrame(XLSX.readtable("$(folder)PARAMETERS.xlsx", "AtmosphericConditions"));
+    df_bcs = DataFrame(XLSX.readtable("$(folder)PARAMETERS.xlsx", "BoundaryConditions"));
+
+    # Planet, M_P, R_P, and altitude, which were not logged in older runs.
     if ~(:M_P in keys(GV)) | ~(:R_P in keys(GV))
         try
             global planet = get_param("PLANET", df_gen)
@@ -244,24 +248,41 @@ function load_from_paramlog(folder; quiet=true, globvars...)
     
     if ~(:alt in keys(GV))
         try 
-            df_alt = DataFrame(XLSX.readtable("$(folder)PARAMETERS.xlsx", "AltGrid"));
+            global df_alt = DataFrame(XLSX.readtable("$(folder)PARAMETERS.xlsx", "AltGrid"));
             global df_altinfo = DataFrame(XLSX.readtable("$(folder)PARAMETERS.xlsx", "AltInfo"));
-            global alt = df_alt.Alt
-            global non_bdy_layers = [parse(Float64, f) for f in collect(skipmissing(df_alt.non_bdy_layers))] # [parse(Float64, f) for f in  df_alt.non_bdy_layers if f != missing]
         catch y
             println("WARNING: Exception: $(y) - you tried to load the altitude grid but it's not logged. File probably made before module updates. Please pass in alt manually")
             println()
         end
+    else
+        global alt = GV.alt # This seems stupid but has to be done because apparently the if/else blocks can't access the keyword arg alt??
     end
 
     # AltInfo
-    zmin = get_param("zmin", df_altinfo)
-    dz = get_param("dz", df_altinfo)
-    zmax = get_param("zmax", df_altinfo)
-    n_all_layers = get_param("n_all_layers", df_altinfo)
-    num_layers = get_param("num_layers", df_altinfo)
-    upper_lower_bdy = get_param("upper_lower_bdy", df_altinfo)
-    upper_lower_bdy_i = get_param("upper_lower_bdy_i", df_altinfo)
+    if (@isdefined df_altinfo) & (@isdefined df_alt)
+        global alt = df_alt.Alt
+        global non_bdy_layers = [parse(Float64, f) for f in collect(skipmissing(df_alt.non_bdy_layers))]
+        global zmin = get_param("zmin", df_altinfo)
+        global dz = get_param("dz", df_altinfo)
+        global zmax = get_param("zmax", df_altinfo)
+        global n_all_layers = get_param("n_all_layers", df_altinfo)
+        global num_layers = get_param("num_layers", df_altinfo)
+        global upper_lower_bdy = get_param("upper_lower_bdy", df_altinfo)
+        global upper_lower_bdy_i = get_param("upper_lower_bdy_i", df_altinfo)
+    else 
+        # In this case, alt should have been passed in manually.
+        global non_bdy_layers = alt[2:end-1]
+        global zmin = alt[1]
+        global dz = alt[2] - alt[1]
+        global zmax = alt[end]
+        global n_all_layers = length(alt)
+        global num_layers = length(non_bdy_layers)
+        # In older versions of the parameter logging, this variable was named "WATER_BDY".
+        global upper_lower_bdy = get_param("WATER_BDY", df_atmcond) * 1e5
+        # Ideally we would not repeat the code for n_alt_index here, but oh well.
+        global upper_lower_bdy_i = Dict([z=>clamp((i-1),1, num_layers) for (i, z) in enumerate(alt)])[upper_lower_bdy]
+
+    end
 
     # Codes
     hrshortcode = get_param("RSHORTCODE", df_gen)
@@ -283,10 +304,7 @@ function load_from_paramlog(folder; quiet=true, globvars...)
     chem_species = setdiff(all_species, no_chem_species);
     Jratelist = [Symbol(x) for x in filter(x->typeof(x)==String, df_splists.Jratelist)]
 
-    # Atmospheric conditions
-    df_atmcond = DataFrame(XLSX.readtable("$(folder)PARAMETERS.xlsx", "AtmosphericConditions"));
-
-    ## Temperatures first
+    # Temperatures
     if "TemperatureArrays" in XLSX.sheetnames(paramlog_wb)
         df_temps = DataFrame(XLSX.readtable("$(folder)PARAMETERS.xlsx", "TemperatureArrays"));
         Tn_arr = df_temps.Neutrals
@@ -321,7 +339,6 @@ function load_from_paramlog(folder; quiet=true, globvars...)
     end
     
     # Boundary conditions
-    df_bcs = DataFrame(XLSX.readtable("$(folder)PARAMETERS.xlsx", "BoundaryConditions"));
     speciesbclist = load_bcdict_from_paramdf(df_bcs);
     
     vardict = Dict("DH"=>DH, 
