@@ -57,7 +57,7 @@ const SA = 4*pi*(R_P)^2 # cm^2
 # ***************************************************************************************************** #
 
 remove_ignored_species = true # Whether to use a slightly smaller list of species and reactions (removing minor species that Roger had in his model)
-ignored_species = [:CNpl,:HCNpl,:HCNHpl,:HN2Opl,:NH2pl,:NH3pl,:N2Opl,:NO2pl,:CH,:CN,:HCN,:HNO,:NH,:NH2,:HD2pl]#:N2O,:NO2
+ignored_species = [:CNpl,:HCNpl,:HCNHpl,:HN2Opl,:NH2pl,:NH3pl,:CH,:CN,:HCN,:HNO,:NH,:NH2,:HD2pl]#
 
 #                                        Neutrals
 # =======================================================================================================
@@ -67,7 +67,7 @@ const orig_neutrals = [:Ar, :CO, :CO2, :H, :H2, :H2O, :H2O2,
                        :D, :DO2, :DOCO, :HD, :HDO, :HDO2, :OD,
 
                        # Turn these off for minimal ionosphere:
-                       :C, :DCO, :HCN, :HCO, :N, :NO, :Nup2D, 
+                       :C, :DCO, :HCN, :HCO, :N, :NO, :Nup2D, :N2O, :NO2
                        ]; 
 const conv_neutrals = remove_ignored_species==true ? setdiff(orig_neutrals, ignored_species) : orig_neutrals
 const new_neutrals = [];
@@ -82,7 +82,7 @@ const orig_ions = [:CO2pl, :HCO2pl, :Opl, :O2pl, # Nair minimal ionosphere
                    :H2Opl,  :HDOpl, :H3Opl, :H2DOpl, 
                    :HO2pl, :HCOpl, :DCOpl, :HOCpl, :DOCpl, :DCO2pl, 
                    :HNOpl,   
-                   :Npl, :NHpl, :N2pl, :N2Hpl, :N2Dpl, :NOpl,
+                   :Npl, :NHpl, :N2pl, :N2Hpl, :N2Dpl, :NOpl, :N2Opl, :NO2pl,
                    :OHpl, :ODpl];
 const new_ions = [];
 const ion_species = remove_ignored_species==true ? setdiff([orig_ions..., new_ions...], ignored_species) : [orig_ions..., new_ions...]
