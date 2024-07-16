@@ -435,16 +435,16 @@ end
 # Crosssection file sources
 # -------------------------------------------------------------------
 const photochem_data_files = Dict(:CO2=>Dict("main"=>"CO2.dat"), 
-                                   :H2O=>Dict("main"=>"h2oavgtbl.dat"), 
-                                   :HDO=>Dict("main"=>"HDO.dat"), 
-                                   :H2O2=>Dict("main"=>"H2O2.dat"), 
-                                   :HDO2=>Dict("main"=>"H2O2.dat"), 
-                                   :O3=>Dict("main"=>"O3.dat", "chapman"=>"O3Chap.dat"), 
-                                   :O2=>Dict("main"=>"O2.dat", "schr_short"=>"130-190.cf4", "schr_mid"=>"190-280.cf4", "schr_long"=>"280-500.cf4"), 
-                                   :H2=>Dict("main"=>"binnedH2.csv"), 
-                                   :HD=>Dict("main"=>"binnedH2.csv"), 
-                                   :OH=>Dict("main"=>"binnedOH.csv", "O1D+H"=>"binnedOHo1D.csv"), 
-                                   :OD=>Dict("main"=>"OD.csv"))
+                                  :H2O=>Dict("main"=>"h2oavgtbl.dat"), 
+                                  :HDO=>Dict("main"=>"HDO.dat"), 
+                                  :H2O2=>Dict("main"=>"H2O2.dat"), 
+                                  :HDO2=>Dict("main"=>"H2O2.dat"), 
+                                  :O3=>Dict("main"=>"O3.dat", "chapman"=>"O3Chap.dat"), 
+                                  :O2=>Dict("main"=>"O2.dat", "schr_short"=>"130-190.cf4", "schr_mid"=>"190-280.cf4", "schr_long"=>"280-500.cf4"), 
+                                  :H2=>Dict("main"=>"binnedH2.csv"), 
+                                  :HD=>Dict("main"=>"binnedH2.csv"), 
+                                  :OH=>Dict("main"=>"binnedOH.csv", "O1D+H"=>"binnedOHo1D.csv"), 
+                                  :OD=>Dict("main"=>"OD.csv"))
 
 # Filename tags and codes
 # -------------------------------------------------------------------
@@ -543,12 +543,6 @@ const error_checking_scheme = "new"
 # elseif problem_type != "Gear" && (ftype_ncur == Double64 || ftype_chem == Double64)
 #     println("problem_type != Gear but using Double64 in CUSTOMIZATIONS.jl")
 # end
-
-# ***************************************************************************************************** #
-#                                                                                                       #
-#                         Misc. things that depend on things defined above                              #
-#                                                                                                       #
-# ***************************************************************************************************** #
 
 # ***************************************************************************************************** #
 #                                                                                                       #

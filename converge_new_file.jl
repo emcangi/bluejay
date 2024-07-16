@@ -1189,6 +1189,7 @@ HDOprum = precip_microns(:HDO, [n_current[:HDO][1]; n_current[:HDO]; n_current[:
 # outside of the primary ODE solver. Inactive species never change during simulation.
 # Jrates must be stored here because they have to be updated alongside evolution
 # of the atmospheric densities--the solver doesn't handle their values currently.
+# NOTE: The stored Jrates will have units of #/s.
 const external_storage = Dict{Symbol, Vector{Float64}}([j=>n_current[j] for j in union(short_lived_species, inactive_species, Jratelist)])
 const n_inactive = flatten_atm(n_current, inactive_species; num_layers)
 
