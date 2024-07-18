@@ -1283,7 +1283,7 @@ function top_mechanisms(x, sp, atmdict, p_or_r; savepath=nothing, filename_extra
     top5_rxn_strs = sorted_column_val.Reaction[1:L]
     
     for row in eachrow(sorted_column_val)[1:L]
-        ax.plot(by_alt_df[!, row.Reaction], plot_grid, label=string_to_latexstr(row.Reaction), linewidth=2)
+        ax.plot(by_alt_df[!, row.Reaction], GV.plot_grid, label=string_to_latexstr(row.Reaction), linewidth=2)
     end
     ax.legend(loc=(1.01, 0.5))
     
