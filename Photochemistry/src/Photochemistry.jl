@@ -17,7 +17,7 @@ using PyCall
 using Random
 using SparseArrays
 using XLSX
-
+using Latexify
 
 export 
 
@@ -182,6 +182,7 @@ plot_reaction_on_demand,
 plot_rxns,
 plot_species_on_demand,
 plot_temp_prof, 
+plot_tophot_lineandbar,
 plot_water_profile, 
 set_rc_params,
 top_mechanisms,    
