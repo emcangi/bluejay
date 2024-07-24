@@ -1084,6 +1084,216 @@ function plot_temp_prof(Tprof_1; opt="", cols=[medgray, "xkcd:bright orange", "c
     end
 end
 
+function plot_tophot_lineandbar(atmdict, spreadsheet; N=5, savepath=nothing, draw_arrow=true, lower_ylim=125, globvars...) 
+    #=
+    Input:
+        atmdict: Atmospheric state dictionary
+        spreadsheet: Spreadsheet of reactions used in the model run for which the plot is made 
+        Optional arguments:
+            N: number of reactions to plot 
+    Output: 
+        Plot of the production profiles of the 5 reactions that produce the most flux
+        of hot H and D.
+    =#
+
+    GV = values(globvars)
+    required =  [:all_species, :alt, :collision_xsect, :dz, :ion_species, :Jratedict, :molmass, :monospace_choice, :M_P, 
+                 :non_bdy_layers, :num_layers, :n_alt_index, :planet, :R_P, :sansserif_choice, :Tn, :Ti, :Te, :zmax]
+    check_requirements(keys(GV), required)
+
+    # Generate the escape dataframes 
+    # ===========================================================================================
+
+    # Collect the species-specific networks and rate coefficient equations
+    reaction_network, hHnet, hDnet, hH2net, hHDnet, hHrc, hDrc, hH2rc, hHDrc = load_network_and_make_functions(spreadsheet; 
+                                                                                                               get_hot_rxns=true, 
+                                                                                                               all_species=GV.all_species)
+
+    # Get total density
+    Mtot = sum([atmdict[sp] for sp in GV.all_species]);
+    
+    # H ----------------------------------------------------------------------------------------#
+    H_prod_by_alt = escaping_hot_atom_production(:H, hHnet, hHrc, atmdict, Mtot; globvars...);
+    H_prod_by_alt_df = escaping_hot_atom_production(:H, hHnet, hHrc, atmdict, Mtot; returntype="df", globvars...);
+    total_hot_H = nonthermal_escape_flux(hHnet, H_prod_by_alt; dz=GV.dz); # This is already sorted within the function here.
+
+    # D ----------------------------------------------------------------------------------------#
+    D_prod_by_alt = escaping_hot_atom_production(:D, hDnet, hDrc, atmdict, Mtot; globvars...)
+    D_prod_by_alt_df = escaping_hot_atom_production(:D, hDnet, hDrc, atmdict, Mtot; returntype="df", globvars...)
+    total_hot_D = nonthermal_escape_flux(hDnet, D_prod_by_alt; dz=GV.dz);
+    flush(stdout)
+    
+    # Generate colors
+    # colordf = DataFrame(XLSX.readtable("IMPORTANT_RXN_COLORS.xlsx", "Sheet1"));
+    mike_reaction_colors = Dict(
+        "HCOpl + E --> CO + H" => "#E23209",
+        "DCOpl + E --> CO + D" => "#E23209",
+        
+        "Hpl + H --> H + Hpl" => "#D51E65", #"#FF7072", #
+        "Dpl + H --> D + Hpl" => "#D51E65", #"#FF7072", #
+        
+        "OHpl + O --> O2pl + H" => "#8E258F",
+        "ODpl + O --> O2pl + D" => "#8E258F",
+        
+        "CO2pl + H2 --> HCO2pl + H" => "#779BE7", #"#332288",
+        "CO2pl + HD --> HCO2pl + D" => "#779BE7", #"#332288",
+        
+        "Hpl + O2 --> O2pl + H" => "#1B998B", #"#44AA99",
+        "Dpl + O2 --> O2pl + D" => "#1B998B", #"#44AA99",
+    );
+
+    rcParams = PyCall.PyDict(matplotlib."rcParams")
+    rcParams["mathtext.fontset"] = "custom"
+    rcParams["mathtext.rm"] = GV.sansserif_choice
+    rcParams["mathtext.it"] = GV.sansserif_choice*", Italic"
+    rcParams["mathtext.bf"] = GV.sansserif_choice*", Bold"
+    rcParams["font.sans-serif"] = GV.sansserif_choice
+    rcParams["font.monospace"] = "FreeMono"
+    rcParams["font.size"] = 7
+    rcParams["axes.titlesize"] = 7
+    rcParams["axes.labelsize"]= 7
+    rcParams["xtick.labelsize"] = 7
+    rcParams["ytick.labelsize"] = 7
+    rcParams["lines.linewidth"] = 0.5
+
+    # Set up the figure dimensions
+    fig, ax = subplots(1, 2, 
+                       figsize=(6.277, 2.09), dpi=300,
+                       gridspec_kw=Dict("wspace"=>0.525))
+
+    # SET UP THE REACTION RATE PANEL
+    # ===============================================================================
+  
+    # all panels
+    plot_bg(ax[1])
+    ax[1].tick_params(which="both", labeltop=false, labelbottom=true, top=true,
+                      width=0.25, length=2, pad=2)
+    ax[1].set_xlabel(L"Escaping atom production rate (cm$^{-3}$ s$^{-1}$)")
+    ax[1].set_xscale("log")
+    ax[1].set_xlim(1e-4, 1e1) # H plot limits
+    ax[1].xaxis.set_major_locator(matplotlib.ticker.LogLocator(base=10.0, numticks=10))
+    locmin = matplotlib.ticker.LogLocator(base=10.0,subs=(0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9), numticks=10)
+    ax[1].xaxis.set_minor_locator(locmin)
+    ax[1].tick_params(which="minor", length=1, color="0.5", width=0.25)
+    ax[1].set_ylabel("Altitude (km)")
+    ax[1].set_ylim(lower_ylim, GV.zmax/1e5)
+    ax[1].set_yticks(lower_ylim:25:(GV.zmax/1e5))
+
+    
+    #remove top and bottom gridline
+    ax[1].get_ygridlines()[1].set_visible(false)
+    ax[1].get_ygridlines()[end].set_visible(false)
+    
+    # color set
+    # H is first column, D second column
+    H_colororder = []
+    H_colororder_dark = []
+    D_colororder = []
+    D_colororder_dark = []
+    # Plot the H reactions
+    for row in eachrow(total_hot_H)[1:N]
+        thiscol = get(mike_reaction_colors, row.Rxn, "#000")
+        push!(H_colororder, thiscol)
+        ax[1].plot(H_prod_by_alt_df[!, row.Rxn], GV.plot_grid, label=row.Rxn, linewidth=0.5, color=thiscol)
+    end
+
+    # And the D reactions
+    for row in eachrow(total_hot_D)[1:N]
+        thiscol =  get(mike_reaction_colors, row.Rxn, "#000")
+        push!(D_colororder, thiscol)
+
+        ax[1].plot(D_prod_by_alt_df[!, row.Rxn], GV.plot_grid, label=row.Rxn, linewidth=0.325, alpha=0.65, 
+                 mfc="black", mec="black", color=thiscol)
+    end
+    
+    # add escape probability
+    esc_prob = escape_probability(:H, atmdict; globvars...)
+    esc_prob_color = "0.2"
+    ax[1].plot(esc_prob, GV.plot_grid, label="esc prob", linewidth=0.5, color=esc_prob_color, dashes=(16,2))
+    
+    rcParams["hatch.linewidth"] = 1
+    rcParams["hatch.color"] = "magenta"
+    flush(stdout)
+    println("RR panel ok")
+    flush(stdout)
+
+    # NOW DO THE BAR CHART SET 
+    # ==========================================================================================
+    # Make ticklabels
+    H_ticklbls = ["$(string_to_latexstr(H_i))" for H_i in total_hot_H[1:N, :].Rxn]
+    D_ticklbls = ["$(string_to_latexstr(D_i))" for D_i in total_hot_D[1:N, :].Rxn]
+
+    # basics
+    plot_bg(ax[2])
+    ax[2].tick_params(which="both", left=false, labelleft=false, top=true,
+                      width=0.25, length=2, pad=2)
+    ax[2].set_xlim(3e1, 3e7)
+    ax[2].set_xscale("log")
+    ax[2].xaxis.set_major_locator(matplotlib.ticker.LogLocator(base=10.0, numticks=10))
+    locmin = matplotlib.ticker.LogLocator(base=10.0,subs=(0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9),numticks=10)
+    ax[2].xaxis.set_minor_locator(locmin)
+    ax[2].tick_params(which="minor", length=1, color="0.5", width=0.25)
+    ax[2].invert_yaxis()
+
+    # Bars 
+    barw=0.5
+    ax[2].barh(collect(1:N), total_hot_H[1:N, :].Value, height=-barw, color=H_colororder, align="edge", zorder=10)
+    ax[2].barh(collect(1:N), total_hot_D[1:N, :].Value, height=barw, color="#ededed", alpha=1.0, 
+                  align="edge", zorder=10)
+    ax[2].barh(collect(1:N), total_hot_D[1:N, :].Value, height=barw, color=D_colororder, alpha=0.45,
+                  align="edge", zorder=10)
+
+    # Values
+    esc_formatter = f->latexify(@sprintf "%.2E" f; fmt=FancyNumberFormatter("%.1e",s"\g<mantissa> \\times 10^{\g<sign_exp>\g<mag_exp>}"))
+    for (i, f) in enumerate(total_hot_H[1:N, :].Value)
+        ax[2].text(f*0.9, i-barw/2, "$(esc_formatter(f))", ha="right", va="center_baseline", color="white", size=7, zorder=15)
+    end
+    for (i, f) in enumerate(total_hot_D[1:N, :].Value)
+        ax[2].text(f*0.9, i+barw/2, "$(esc_formatter(f))", ha="right", va="center_baseline", color="white", size=7, zorder=15)
+    end
+
+    # Tick labels, but manually, to make coloring better
+    reaction_label_x = ax[2].get_xlim()[1]
+    for y in 1:N
+        ax[2].text(reaction_label_x, y-0.25, H_ticklbls[y]*" ", color=H_colororder[y], fontsize=7, ha="right", va="center_baseline")
+        ax[2].text(reaction_label_x, y+0.25, D_ticklbls[y]*" ", color=D_colororder[y], alpha=0.65, fontsize=7, ha="right", va="center_baseline")
+    end
+    
+    #ax[2].set_title("Reaction contributions to escape", size=16)
+    ax[2].set_xlabel(L"H & D Escape flux (cm$^{-2}$ s$^{-1}$)")
+    
+    # Label H and D
+    ax[1].text(5e-4, 166, "D-producing", weight="light", alpha=0.65, size=7)
+    ax[1].text(2e-1, 130, "H-producing", weight="normal", size=7)
+    ax[1].text(1.0, 248, "escape\nprobability\n(unitless)", color=esc_prob_color, size=7, va="top")
+    
+    # draw a line from the HCO+ loss curve to the label
+    if draw_arrow
+        ax[1].annotate(text="", 
+                       xy=(0.8e-1,0.85), xycoords=ax[2].transData,
+                       xytext=(3e0,172), textcoords=ax[1].transData,
+                       arrowprops=Dict("width"=>0.5, "lw"=>0.0, "color"=>"#E23209", "headwidth"=>2.5, "headlength"=>2.5),
+                       annotation_clip=false)
+    end
+
+    # label panels with "a" and "b"
+    ax[1].annotate("a", size=8, weight="bold",
+        xy=(0.0, 1.0), xycoords=ax[1].transAxes, 
+        xytext=(-29,0), textcoords="offset points",
+        ha="left", va="center_baseline")
+    ax[2].annotate("b", size=8, weight="bold", zorder=1000,
+        xy=(0.0, 1.0), xycoords=ax[2].transAxes, 
+        xytext=(-62.5,0), textcoords="offset points",
+        ha="left", va="center_baseline")
+    
+    if savepath==nothing
+        show()
+    else
+        savefig(savepath*"top_hot_producing_mechanisms.png", bbox_inches="tight", dpi=300)
+    end
+    show()
+end
+
 function plot_water_profile(atmdict, savepath::String; showonly=false, watersat=nothing, H2Oinitf=nothing, prev_profs=nothing, globvars...)  
     #=
     Plots the water profile in mixing ratio and number densities, in two panels.
