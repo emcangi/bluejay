@@ -125,7 +125,8 @@ This list may be incomplete. If you discover a necessary step that isn't written
   - Add the reactions under the Photodissociation and Photoionization tabs in the reaction network spreadsheet, setting their status to 'New' for the first run.
   - Obtain the cross sections for each reaction as a function of wavelength, binned in half-integer steps (0.5, 1.5, 2.5 etc nm), and save as a .csv or .dat file in the `uvxsect` folder with the symbolic representation of the reaction as the filename (e.g. JH2OtoH2pO1D; where p means a regular plus sign and pl means a superscript plus for ions).
   - Add the reactant and product lists to the `reactant_product_sets` in `Crosssections.jl` under the `populate_xsect_dict()` function.
-9. Converge a new atmosphere with the new species. Once successful:
+9. Add the enthalpies of formation of the species to the spreadsheet `Enthalpies_of_Formation.xlsx`, using one of the existing sources in the spreadsheet or any reputable database.
+10. Converge a new atmosphere with the new species. Once successful:
   - Save the output `final_atmosphere.h5` as the new initial guess file for that planet
   - Set the newly introduced photodissociation/photoionization reactions to "Conv" in the "Status" column of the appropriate tabs within the reaction network spreadsheet
   - Set `adding_new_species` variable in `INPUT_PARAMETERS`.jl to false.
