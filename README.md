@@ -111,6 +111,7 @@ The Photochemistry module contains several submodules:
   - Water profile handling
   - `escape_probability()`: This will require new parameters for H and D escape that need to be calculated in a Monte Carlo particle transport model. Currently in May 2024 Bethan Gregory is responsible for this.
 6. You will need to generate a new initial guess of the atmosphere and feed it in as (e.g.) `INITIAL_GUESS.h5` You can use any method to do this. Suggestions include: Set the principal component of the atmosphere (e.g. CO2 on Mars) to be a constant value roughly what it is at the surface, and zero out all other species and let the model build them up; collect numbers from existing published works and use those.
+7. If you need to remove any species that aren't relevant, delete these from `orig_ions` and `orig_neutrals`, and ensure your initial guess file doesn't contain any profiles for them.
 
 **If adding new chemical species**:
 This list may be incomplete. If you discover a necessary step that isn't written here, please open a Github issue.
