@@ -133,14 +133,16 @@ function plot_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, savepath::String, a
                                 :H2O2,:HDO2,
                                 :HO2,:HO2pl,:DO2,
                                 :OH,:OHpl,:OD,:ODpl],
-                            # NITROGEN NEUTRALS + IONS and RARE C MOLECULES
+                            # NITROGEN NEUTRALS + IONS, RARE C MOLECULES, and Chlorine 
                             3=>[:C,:Cpl,:CH,:CHpl,
                                 :CN,:CNpl,:HCN,:HCNpl,:HCNHpl,
                                 :HNO,:HNOpl,:HN2Opl,
                                 :N,:Npl,:N2O,:N2Opl,
                                 :NH,:NHpl,:NH2,:NH2pl,:NH3pl,
                                 :NO,:NOpl,:NO2,:NO2pl,
-                                :N2Hpl,:N2Dpl]
+                                :N2Hpl,:N2Dpl,
+                                :HCl, :Cl, :ClO, :ClCO, :DCl, :Cl2,
+                                :S, :SO, :SO2, :SO3, :H2SO4, :HDSO4]
                         );
 
     axes_by_sp = Dict()

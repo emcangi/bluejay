@@ -237,7 +237,18 @@ function populate_xsect_dict(pd_dataf, xsecfolder; ion_xsects=true, globvars...)
                                  "HDO2"=>[["HDO2pl"]],
                                  "O"=>[["Opl"]],
                                  "O2"=>[["O2pl"]],
-                                 "O3"=>[["O3pl"]])
+                                 "O3"=>[["O3pl"]],
+
+                                # Cl containing species
+                                "HCl"=>[["H","Cl"]],
+                                "DCl"=>[["D","Cl"]],
+                                #S containing species
+                                "SO2"=>[["SO","O"], ["S","O2"]],
+                                "SO3"=>[["SO2","O"]], #there may be more possible products than what I have listed, but JPL didn't give a recomended quantum yield
+                                "H2SO4"=>[["SO3","H2O"]], # same issue as SO3, JPL did not give a recomended quantum yield
+                                "HDSO4"=>[["SO3","HDO"]]) # uses mass scaeling of H2SO4
+    
+        
 
     for r in keys(reactant_product_sets)
         for ps in reactant_product_sets[r]
