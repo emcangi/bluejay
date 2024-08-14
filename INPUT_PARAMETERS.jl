@@ -16,7 +16,7 @@ const planet = "Venus"
 # Input and output files, directory
 # =======================================================================================================
 const results_dir = code_dir*"../Results_$(planet)/"
-const initial_atm_file = "$(planet)-Inputs/" * "INITIAL_GUESS.h5" # File to use to initialize the atmosphere. 
+const initial_atm_file = "$(planet)-Inputs/" * "INITIAL_GUESS_VENUS_vGFd5b0a.h5" # File to use to initialize the atmosphere. 
     # OPTIONS: 
     # INITIAL_GUESS_MARS.h5 --> Basic Mars starting file.
     # INITIAL_GUESS_MARS_bxz4YnHk.h5 --> A Mars atmosphere that includes N2O, NO2, and their ions;
@@ -82,6 +82,8 @@ const water_case = "standard" # Amount of water in the atmosphere
 const water_loc = "mesosphere" # Location to modify water abundance, if selecting "low" or "high" water case 
     # OPTIONS: "loweratmo", "everywhere", "mesosphere"
 
+# VENUS OPTIONS:
+const venus_special_water = false# true
 # MARS DUST OPTIONS:
 const dust_storm_on = false  # This adds a parcel of water at some altitude, sort of like if there was a dust storm. Haven't published on this.
     # OPTIONS: True, false
