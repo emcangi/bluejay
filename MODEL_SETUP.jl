@@ -65,7 +65,9 @@ const orig_neutrals = [:Ar, :CO, :CO2, :H, :H2, :H2O, :H2O2,
                        :HO2, :HOCO, :N2, 
                        :O, :O1D, :O2, :O3, :OH,
                        :D, :DO2, :DOCO, :HD, :HDO, :HDO2, :OD,
-
+                        :Cl, :ClO, :HCl, :ClCO, :DCl,
+                        :S, :SO, :SO2, :SO3, :H2SO4, :HDSO4,
+                        :N2O, :NO2,
                        # Turn these off for minimal ionosphere:
                        :C, :DCO, :HCN, :HCO, :N, :NO, :Nup2D, :N2O, :NO2
                        ]; 
@@ -393,6 +395,12 @@ elseif planet=="Venus"
                                     :CO=>Dict("n"=>[4.5e-6*ntot_at_lowerbdy, NaN], "f"=>[NaN, 0.]),
                                     :O2=>Dict("n"=>[3e-3*ntot_at_lowerbdy, NaN], "f"=>[NaN, 0.]),
                                     :N2=>Dict("n"=>[0.032*ntot_at_lowerbdy, NaN]),
+
+                                    #Krasnopolsky, 2010a: this was 400ppb at 74km in altitude, and the actual number is likely lower (is either 4.0E-7, or 4.8E-7 depending on the calculation); and according to Zhang 2012 it is 3.66e-7
+                                    :HCl=>Dict("n"=>[3.66e-7 * ntot_at_lowerbdy, NaN]),
+
+                                    #Denis A. Belyaev 2012: this was 0.1 ppmv at 165–170 K to 0.5–1 ppmv at 190–192 K; It said 0.1ppm was related to the most common temperature reading so I went with that (this is either 1E-7 or 6.79E-8 depending on the calculation)
+                                    :SO2=>Dict("n"=>[1.0E-7 * ntot_at_lowerbdy, NaN]),
 
                                     # water mixing ratio is fixed at lower boundary
                                     :H2O=>Dict("n"=>[H2O_lowerbdy, NaN], "f"=>[NaN, 0.]),
