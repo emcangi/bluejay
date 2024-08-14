@@ -2141,6 +2141,8 @@ function set_h2oinitfrac_bySVP(atmdict, h_alt; globvars...)
 end
 
 function setup_water_profile!(atmdict; constfrac=1, dust_storm_on=false, make_sat_curve=false, water_amt="standard", excess_water_in="mesosphere", 
+                                       venus_special_water=false, venus_special_h2o_bot=nothing, venus_special_hdo_bot=nothing,
+                                       venus_special_h2o_top=nothing, venus_special_hdo_top=nothing,
                                        showonly=false, hygropause_alt=40e5, globvars...)
     #=
     Sets up the water profile as a fraction of the initial atmosphere. 
@@ -2201,9 +2203,21 @@ function setup_water_profile!(atmdict; constfrac=1, dust_storm_on=false, make_sa
             atmdict[:HDO][1:GV.upper_lower_bdy_i] = (HDOppm .* n_tot(atmdict; GV.all_species))[1:GV.upper_lower_bdy_i]
         end
     elseif GV.planet=="Venus"
+        ntot = n_tot(atmdict; GV.n_alt_index, GV.all_species)
+
         # TODO: Add a more interesting implementation as needed.
-        atmdict[:H2O] = constfrac .* n_tot(atmdict; GV.n_alt_index, GV.all_species)
+        atmdict[:H2O] = constfrac .* ntot
         atmdict[:HDO] = 2 * GV.DH * atmdict[:H2O] 
+
+        # SPECIAL: Try a prescribed high water abundance in the mesosphere.
+        if venus_special_water==true 
+            n = 11
+            vmr_h2o = logrange(venus_special_h2o_bot, venus_special_h2o_top, n) 
+            vmr_hdo = logrange(venus_special_hdo_bot, venus_special_hdo_top, n) 
+
+            atmdict[:H2O][1:n] = vmr_h2o .* ntot[1:n]
+            atmdict[:HDO][1:n] = vmr_hdo .* ntot[1:n]
+        end
     end
 
     # Plot the water profile 
