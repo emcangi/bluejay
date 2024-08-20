@@ -339,11 +339,11 @@ function final_escape(thefolder, thefile; globvars...)
     
     GV = values(globvars)
     required = [ # Things from CONSTANTS.jl
-                                   :q, :molmass, :polarizability, :collision_xsect,
-                                   # From CUSTOMIZATIONS.jl
-                                   :alt, :dz, :num_layers, :n_alt_index, :non_bdy_layers, 
-                                   # Simulation-unique stuff 
-                                    :all_species, :hHnet, :hDnet, :hH2net, :hHDnet, :hHrc, :hDrc, :hH2rc, :hHDrc, :use_ambipolar, :use_molec_diff]
+                :q, :molmass, :polarizability, :collision_xsect,
+                # From CUSTOMIZATIONS.jl
+                :alt, :dz, :num_layers, :n_alt_index, :non_bdy_layers, 
+                # Simulation-unique stuff 
+                :all_species, :hHnet, :hDnet, :hH2net, :hHDnet, :hHrc, :hDrc, :hH2rc, :hHDrc, :use_ambipolar, :use_molec_diff]
     check_requirements(keys(GV), required)
     
     # First load the atmosphere and associated variables.
@@ -421,13 +421,13 @@ function get_transport_PandL_rate(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype
 
     GV = values(globvars)
     required = [:all_species, :alt, :dz, :Hs_dict, :molmass,  :n_alt_index,
-                                   :neutral_species, :num_layers, :polarizability, :q, :speciesbclist, :Te, :Ti, :Tn, :Tp, 
-                                   :Tprof_for_Hs, :Tprof_for_diffusion, :transport_species, :use_ambipolar, :use_molec_diff]
+                :neutral_species, :num_layers, :polarizability, :q, :speciesbclist, :Te, :Ti, :Tn, :Tp, 
+                :Tprof_for_Hs, :Tprof_for_diffusion, :transport_species, :use_ambipolar, :use_molec_diff]
     check_requirements(keys(GV), required)
 
     if nonthermal
         required = [:hot_H_network, :hot_D_network, :hot_H_rc_funcs, :hot_D_rc_funcs, 
-                                       :hot_H2_network, :hot_H2_rc_funcs, :hot_HD_network, :hot_HD_rc_funcs, :Jratedict]
+                    :hot_H2_network, :hot_H2_rc_funcs, :hot_HD_network, :hot_HD_rc_funcs, :Jratedict]
         check_requirements(keys(GV), required)
     end
 
