@@ -1049,7 +1049,7 @@ function escape_probability(sp, atmdict; globvars...)::Array
     # Parameters determined through Bethan's Monte Carlo model. 
     # [1] = A = escape probability at altitude where above column = 0, for high energy particles. upper limit
     # [2] = a = how "transparent" the atmosphere is to an escaping atom. smaller for higher energy so this is for an upper limit.
-    params = Dict("Mars"=>[0.916, 0.39],
+    params = Dict("Mars"=>[0.916, 0.039],
                   "Venus"=>[0.868, 0.058]
                  )[GV.planet]
 
