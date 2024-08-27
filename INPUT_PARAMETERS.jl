@@ -26,6 +26,7 @@ const initial_atm_file = "$(planet)-Inputs/made DpHCltoHDpCl mass scale.h5"  # F
     # INITIAL_GUESS_MARS_bxz4YnHk.h5 --> A Mars atmosphere that includes N2O, NO2, and their ions;
     #                                    not particularly motivated by any present-day data.                                         
     # INITIAL_GUESS_VENUS_vGFd5b0a.h5 --> Best Venus initial atmosphere 
+    # INITIAL_GUESS_VENUS_oUT0ZbGN.h5 --> Venus initial atmosphere with basic chlorine and sulfur species included.
 const final_atm_file = "final_atmosphere.h5"
 const reaction_network_spreadsheet = code_dir*"$(planet)-Inputs/REACTION_NETWORK_$(uppercase(planet)).xlsx"
     # OPTIONS: "REACTION_NETWORK_MIN_IONOSPHERE.xlsx", code_dir*"REACTION_NETWORK_$(uppercase(planet)).xlsx"
