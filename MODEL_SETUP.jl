@@ -6,7 +6,7 @@
 # 
 # Eryn Cangi
 # Created April 2024
-# Last edited: May 2024
+# Last edited: August 2024
 # Currently tested for Julia: 1.8.5
 ################################################################################
 
@@ -56,51 +56,21 @@ const SA = 4*pi*(R_P)^2 # cm^2
 #                                                                                                       #
 # ***************************************************************************************************** #
 
-remove_ignored_species = true # Whether to use a slightly smaller list of species and reactions (removing minor species that Roger had in his model)
-ignored_species = [:CNpl,:HCNpl,:HCNHpl,:HN2Opl,:NH2pl,:NH3pl,:CH,:CN,:HCN,:HNO,:NH,:NH2,:HD2pl]#
-
-#                                        Neutrals
-# =======================================================================================================
-const orig_neutrals = [:Ar, :CO, :CO2, :H, :H2, :H2O, :H2O2, 
-                       :HO2, :HOCO, :N2, 
-                       :O, :O1D, :O2, :O3, :OH,
-                       :D, :DO2, :DOCO, :HD, :HDO, :HDO2, :OD,
-                        :Cl, :ClO, :HCl, :ClCO, :DCl,
-                        :S, :SO, :SO2, :SO3, :H2SO4, :HDSO4,
-                        :N2O, :NO2,
-                       # Turn these off for minimal ionosphere:
-                       :C, :DCO, :HCN, :HCO, :N, :NO, :Nup2D, :N2O, :NO2
-                       ]; 
-const conv_neutrals = remove_ignored_species==true ? setdiff(orig_neutrals, ignored_species) : orig_neutrals
-const new_neutrals = [];
-const neutral_species = [conv_neutrals..., new_neutrals...];
-
-#                                          Ions
-# =======================================================================================================
-const orig_ions = [:CO2pl, :HCO2pl, :Opl, :O2pl, # Nair minimal ionosphere 
-                   :Arpl, :ArHpl, :ArDpl, 
-                   :Cpl, :CHpl,  :COpl, 
-                   :Hpl, :Dpl, :H2pl, :HDpl, :H3pl, :H2Dpl, :HD2pl, 
-                   :H2Opl,  :HDOpl, :H3Opl, :H2DOpl, 
-                   :HO2pl, :HCOpl, :DCOpl, :HOCpl, :DOCpl, :DCO2pl, 
-                   :HNOpl,   
-                   :Npl, :NHpl, :N2pl, :N2Hpl, :N2Dpl, :NOpl, :N2Opl, :NO2pl,
-                   :OHpl, :ODpl];
-const new_ions = [];
-const ion_species = remove_ignored_species==true ? setdiff([orig_ions..., new_ions...], ignored_species) : [orig_ions..., new_ions...]
-const nontherm = ions_included==true ? true : false   # whether to do non-thermal escape; this has to be here because it's needed in short order to do Jrates.
+# Minor species that have reactions available in the network files, but aren't used. These are just for
+# reference: [:CNpl,:HCNpl,:HCNHpl,:HN2Opl,:NH2pl,:NH3pl,:CH,:CN,:HCN,:HNO,:NH,:NH2,:HD2pl]
  
 #                                     Full species list
 # =======================================================================================================
+const neutral_species = [conv_neutrals[planet]..., new_neutrals...];
+const ion_species = [conv_ions[planet]..., new_ions...]
 const new_species = [new_neutrals..., new_ions...]  # Needed later to be excluded from n_tot() as called 
                                                     # in the water saturation calculation, in the case
                                                     # where new species are being added.
 const all_species = [neutral_species..., ion_species...];
 
-
 #                        Photolysis and Photoionization rate symbol lists 
 # =======================================================================================================
-
+const nontherm = ions_included==true ? true : false   # whether to do non-thermal escape. Must be here, sued in call to format Jrates
 const conv_Jrates, newJrates = format_Jrates(reaction_network_spreadsheet, all_species, "Jratelist"; ions_on=ions_included, hot_atoms=nontherm)
 const Jratelist = [conv_Jrates..., newJrates...];
 
