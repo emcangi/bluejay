@@ -169,7 +169,9 @@ const assume_photochem_eq = false # whether to turn on photochemical equilibrium
 
 # Turn plots off and on
 # =======================================================================================================
-const make_P_and_L_plots = true  # Turn off to save several minutes of runtime if you don't need to check for equilibrium.
+const make_P_and_L_plots = true  # Makes a 3-panel plot showing production and loss due to 1) chemistry, 
+                                 # 2) transport, 3) sum of both. Turn off to save several minutes of 
+                                 # runtime if you don't need to check for equilibrium.
     # OPTIONS: True, false
 
 # Algorithm tolerances
