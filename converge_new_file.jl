@@ -1108,18 +1108,25 @@ E = electron_density(n_current; e_profile_type, non_bdy_layers, ion_species)
 # If you want to completely wipe out the water profile and install the initial one
 # (i.e. when running a stand alone simulation)
 if reinitialize_water_profile
-    println("Initializing the water profile anew (reinitialize_water_profile=true)")
+    println("$(Dates.format(now(), "(HH:MM:SS)")) Initializing the water profile anew (reinitialize_water_profile=true)")
     # hygropause_alt is an optional argument. If using, must be a unit of length in cm i.e. 40e5 = 40 km.
-    println("$(Dates.format(now(), "(HH:MM:SS)")) Setting up the water profile...")
-    cf = planet == "Venus" ? water_mixing_ratio : 1
-    setup_water_profile!(n_current; constfrac=cf, venus_special_water, 
-                                    venus_special_h2o_bot=h2o_vmr_low, venus_special_hdo_bot=hdo_vmr_low,
-                                    venus_special_h2o_top=h2o_vmr_high, venus_special_hdo_top=hdo_vmr_high,
-                                    dust_storm_on=dust_storm_on, water_amt=water_case, ffac=f_fac_opts[water_case], ealt=add_water_alt_opts[water_case], 
-                                    hygropause_alt=hygropause_alt, excess_water_in=water_loc, 
-                                    all_species, alt, DH, num_layers, non_bdy_layers, n_alt_index, planet, plot_grid,
-                                    H2O_excess, HDO_excess,  H2Osat, water_mixing_ratio,  results_dir, 
-                                    sim_folder_name, speciescolor, speciesstyle, upper_lower_bdy_i, monospace_choice, sansserif_choice)
+    if planet=="Venus"
+        setup_water_profile!(n_current; constfrac=water_mixing_ratio, venus_special_water, 
+                                        venus_special_h2o_bot=h2o_vmr_low, venus_special_hdo_bot=hdo_vmr_low,
+                                        venus_special_h2o_top=h2o_vmr_high, venus_special_hdo_top=hdo_vmr_high,
+                                        dust_storm_on=dust_storm_on, water_amt=water_case, ffac=f_fac_opts[water_case], ealt=add_water_alt_opts[water_case], 
+                                        hygropause_alt=hygropause_alt, excess_water_in=water_loc, 
+                                        all_species, alt, DH, num_layers, non_bdy_layers, n_alt_index, planet, plot_grid,
+                                        H2O_excess, HDO_excess,  H2Osat, water_mixing_ratio,  results_dir, 
+                                        sim_folder_name, speciescolor, speciesstyle, upper_lower_bdy_i, monospace_choice, sansserif_choice)
+    elseif planet=="Mars"
+        setup_water_profile!(n_current; dust_storm_on=dust_storm_on, water_amt=water_case, ffac=f_fac_opts[water_case], ealt=add_water_alt_opts[water_case], 
+                                        hygropause_alt=hygropause_alt, excess_water_in=water_loc, 
+                                        all_species, alt, DH, num_layers, non_bdy_layers, n_alt_index, planet, plot_grid,
+                                        H2O_excess, HDO_excess,  H2Osat, water_mixing_ratio,  results_dir, 
+                                        sim_folder_name, speciescolor, speciesstyle, upper_lower_bdy_i, monospace_choice, sansserif_choice)
+
+    end
 end
 
 # If you want to just modify the water profile, i.e. when running several simulations
