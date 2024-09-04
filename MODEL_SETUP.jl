@@ -109,6 +109,11 @@ no_transport_species = [];
 
 # Fixed species (Densities don't update)
 # -------------------------------------------------------------------
+for s in dont_compute_either_chem_or_transport
+    push!(no_chem_species, s)
+    push!(no_transport_species, s)
+end
+
 for s in dont_compute_chemistry
     if ~(s in no_chem_species)
         push!(no_chem_species, s)
@@ -120,19 +125,15 @@ for s in dont_compute_transport
     end
 end
 
-for s in dont_compute_either_chem_or_transport
-    push!(no_chem_species, s)
-    push!(no_transport_species, s)
-end
 
 # Chemistry and transport participants
 # -------------------------------------------------------------------
 if converge_which == "neutrals"
-    append!(no_chem_species, union(conv_ions, N_neutrals)) # This is because the N chemistry is intimiately tied up with the ions.
-    append!(no_transport_species, union(conv_ions, N_neutrals, short_lived_species))
+    append!(no_chem_species, union(conv_ions[planet], N_neutrals)) # This is because the N chemistry is intimiately tied up with the ions.
+    append!(no_transport_species, union(conv_ions[planet], N_neutrals, short_lived_species))
 elseif converge_which == "ions"
-    append!(no_chem_species, setdiff(conv_neutrals, N_neutrals))
-    append!(no_transport_species, setdiff(conv_neutrals, N_neutrals))
+    append!(no_chem_species, setdiff(conv_neutrals[planet], N_neutrals))
+    append!(no_transport_species, setdiff(conv_neutrals[planet], N_neutrals))
 elseif converge_which == "both"
     append!(no_transport_species, short_lived_species)
 end
