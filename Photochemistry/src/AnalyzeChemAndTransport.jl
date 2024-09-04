@@ -314,7 +314,7 @@ function diffusion_timescale(s::Symbol, T_arr::Array, atmdict; globvars...)
     Dcoef_template = zeros(size(T_arr)) 
 
     # Other stuff
-    Hs = scaleH(GV.alt, s, T_arr; GV.molmass)
+    Hs = scaleH(GV.alt, s, T_arr; globvars...)
     ncur_with_bdys =  ncur_with_boundary_layers(atmdict; GV.all_species, GV.n_alt_index)
     
     # Molecular diffusion timescale: H_s^2 / D, scale height over diffusion constant
@@ -322,7 +322,7 @@ function diffusion_timescale(s::Symbol, T_arr::Array, atmdict; globvars...)
     molec_or_ambi_timescale = (Hs .^ 2) ./ D
    
     # Eddy timescale... this was in here only as scale H... 
-    K = Keddy(alt, n_tot(ncur_with_bdys; GV.all_species, GV.molmass); GV.planet) 
+    K = Keddy(alt, n_tot(ncur_with_bdys; GV.all_species, GV.molmass); globvars...) 
     eddy_timescale = (Hs .^ 2) ./ K
 
     # Combined timescale?!??
