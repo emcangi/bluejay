@@ -260,6 +260,17 @@ const Ti_arr = T_array_dict["ions"]
 const Te_arr = T_array_dict["electrons"]
 
 const Tplasma_arr = Ti_arr .+ Te_arr;
+# A comment on the plasma temperature: It's more rightly defined as (Te + Ti)/2, and comes into play in the diffusion
+# equation for ions. Per Schunk & Nagy 2009, equations 5.55 and 5.56, the ambipolar diffusion coefficient is 
+# Da = 2kT_p / (m_i * ν_in). This is the same as our formulation here (see Core.jl, Dcoef!()), which is 
+# Da = k(T_e + T_i) / (m_i * ν_in). The diffusion equation in our model includes a term like 1/T * dT/dz (see also
+# Schunk and Nagy 2009, equation 5.54, third term in the bracket). Note that the factor of 2 in the official definition of
+# the plasma temperature cancels out here. If we defined plasma temperature as the average of T_e and T_i, we would have an 
+# extra factor of 1/2 in the scale height (Schunk & Nagy 2009 equation 5.59) as calculated for plasma, unless we wrote a 
+# special version of scaleH() (see Core.jl) to handle the plasma temperature. To avoid reformulating our scale height 
+# function, we define the plasma temperature for the purposes of the model as simply T_e + T_i.
+# It may be warranted in the future to change this so that the definition matches with the literature appropriately.
+# --Eryn, 5 September 2024
 const Tprof_for_diffusion = Dict("neutral"=>Tn_arr, "ion"=>Tplasma_arr)
 const Tprof_for_Hs = Dict("neutral"=>Tn_arr, "ion"=>Ti_arr)
 
