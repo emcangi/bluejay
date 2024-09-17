@@ -1289,7 +1289,7 @@ function T_Venus(Tsurf::Float64, Tmeso::Float64, Texo::Float64, file_for_interp;
         return returnme[particle_type]
     end
 
-    function NEUTRALS()
+    function NEUTRALS(new_a)
         Tn = zeros(size(GV.alt))
 
         Tn[i_lower] .= Tsurf .+ lapserate*GV.alt[i_lower]
@@ -1306,7 +1306,7 @@ function T_Venus(Tsurf::Float64, Tmeso::Float64, Texo::Float64, file_for_interp;
         return Tn 
     end 
 
-    function ELECTRONS(;spc="electron") 
+    function ELECTRONS(new_a; spc="electron") 
         Te = zeros(size(GV.alt))
 
         Te[i_lower] .= Tsurf .+ lapserate*GV.alt[i_lower]
@@ -1323,7 +1323,7 @@ function T_Venus(Tsurf::Float64, Tmeso::Float64, Texo::Float64, file_for_interp;
         return Te
     end
 
-    function IONS(;spc="ion") 
+    function IONS(new_a; spc="ion") 
         Ti = zeros(size(GV.alt))
 
         Ti[i_lower] .= Tsurf .+ lapserate*GV.alt[i_lower]
@@ -1349,8 +1349,8 @@ function T_Venus(Tsurf::Float64, Tmeso::Float64, Texo::Float64, file_for_interp;
     i_upper = findall(z->z > z_meso_top, GV.alt)
     # i_meso_top = findfirst(z->z==z_meso_top, GV.alt)
 
-    # For interpolating upper atmo temperatures from Fox & Sung 2001
-    new_a = collect(90e5:2e5:250e5) # TODO: Remove hard coded values
+    # For interpolating upper atmo temperatures from Fox & Sung 2001 - only from 90 km up
+    interp_alts = collect(90e5:GV.alt[2]-GV.alt[1]:GV.alt[end])
 
     return Dict("neutrals"=>NEUTRALS(), "ions"=>IONS(), "electrons"=>ELECTRONS())
 end
