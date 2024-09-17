@@ -83,7 +83,7 @@ const absorber = Dict([x=>Symbol(match(r"(?<=J).+(?=to)", string(x)).match) for 
 const D_H_analogues = Dict(:ArDpl=>:ArHpl, :Dpl=>:Hpl, :DCOpl=>:HCOpl, :HDpl=>:H2pl, :HD2pl=>:H3pl, :H2Dpl=>:H3pl, :N2Dpl=>:N2Hpl,
                            :DCO2pl=>:HCO2pl, :DOCpl=>:HOCpl, :H2DOpl=>:H3Opl, :HDOpl=>:H2Opl, :ODpl=>:OHpl)  
 const D_bearing_species = get_deuterated(all_species)
-const D_ions = get_deuterated(ion_species) #[s for s in ion_species if occursin('D', string(s))];
+const D_ions = get_deuterated(ion_species)
 const N_neutrals = [s for s in neutral_species if occursin('N', string(s))];
 
 
