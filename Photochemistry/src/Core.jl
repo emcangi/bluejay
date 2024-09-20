@@ -1352,7 +1352,7 @@ function T_Venus(Tsurf::Float64, Tmeso::Float64, Texo::Float64, file_for_interp;
     # For interpolating upper atmo temperatures from Fox & Sung 2001 - only from 90 km up
     interp_alts = collect(90e5:GV.alt[2]-GV.alt[1]:GV.alt[end])
 
-    return Dict("neutrals"=>NEUTRALS(), "ions"=>IONS(), "electrons"=>ELECTRONS())
+    return Dict("neutrals"=>NEUTRALS(interp_alts), "ions"=>IONS(interp_alts), "electrons"=>ELECTRONS(interp_alts))
 end
 
 

@@ -17,7 +17,7 @@ const mH = 1.67e-24;            # g
 const q = -4.8032e-10            # statcoulomb (cm^1.5 g^0.5 s^-1)
 const density_water_cgs = 0.997408  # used mostly for conversions
 const s_per_yr = 3.154e7
-
+const SMOW = 1.6e-4             # Standard mean ocean water
 
 # Polarizability from NIST. Experimental values from: https://cccbdb.nist.gov/pollistx.asp
 # Calculations for species not available in experiment from: https://cccbdb.nist.gov/polcalc2x.asp
@@ -51,6 +51,9 @@ const polarizability = Dict(# Values available from experiment
 
                             # Assumed same as non-excited version
                             :Nup2D=>1.710e-24, 
+
+                            # IONS! Because we should include sum over ions per Garcia Munoz 2007.
+                            #:H2pl=>4.69e-25, 
                             )
 
 const molmass = Dict(:H=>1, :Hpl=>1, 

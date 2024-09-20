@@ -35,8 +35,8 @@ const R_P = Dict( # Planetary radius in cm
                  "Venus"=>6050e5
                 )[planet] 
 const DH = Dict( # Atmospheric D/H ratio 
-                "Mars"=>5.5 * 1.6e-4, # Yung 1988
-                "Venus"=>240 * 1.6e-4,
+                "Mars"=>5.5 * SMOW, # Yung 1988
+                "Venus"=>240 * SMOW, # Fedorova 2008
                )[planet]
 const sol_in_sec = Dict(
                         "Mars"=>88775.2438,   # One Mars sol in seconds
@@ -382,7 +382,7 @@ elseif planet=="Venus"
                                     :HCl=>Dict("n"=>[3.66e-7 * ntot_at_lowerbdy, NaN]),
 
                                     #Denis A. Belyaev 2012: this was 0.1 ppmv at 165–170 K to 0.5–1 ppmv at 190–192 K; It said 0.1ppm was related to the most common temperature reading so I went with that (this is either 1E-7 or 6.79E-8 depending on the calculation)
-                                    :SO2=>Dict("n"=>[1.0E-7 * ntot_at_lowerbdy, NaN]),
+                                    :SO2=>Dict("n"=>[1.0e-7 * ntot_at_lowerbdy, NaN]),
 
                                     # water mixing ratio is fixed at lower boundary
                                     :H2O=>Dict("n"=>[H2O_lowerbdy, NaN], "f"=>[NaN, 0.]),

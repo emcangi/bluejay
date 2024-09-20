@@ -212,7 +212,8 @@ GEL_to_molecule,
 molec_to_GEL, 
 total_escape_to_GEL,
 total_escape_to_area_escape,
-prum_to_ppm
+prum_to_ppm,
+rayleigh_fractionation
 
 
 # ~*~*~*~*~*~*~*~~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~        
