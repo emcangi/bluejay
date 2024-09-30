@@ -1461,15 +1461,6 @@ const crosssection = populate_xsect_dict(photochem_data_files, xsecfolder; ion_x
 solarflux = readdlm(code_dir*solarfile,'\t', Float64, comments=true, comment_char='#')[1:2000,:]
 solarflux[:,2] = solarflux[:,2] * cosd(SZA)  # Adjust the flux according to specified SZA
 
-lambdas = Float64[]
-for j in Jratelist, ialt in 1:length(alt)
-    global lambdas = union(lambdas, crosssection[j][ialt][:,1])
-end
-
-if !(setdiff(solarflux[:,1],lambdas)==[])
-    throw("Solar flux wavelengths don't match cross section wavelengths!")
-end
-
 # pad all cross-sections to solar
 for j in Jratelist, ialt in 1:length(alt)
     crosssection[j][ialt] = padtosolar(solarflux, crosssection[j][ialt])
