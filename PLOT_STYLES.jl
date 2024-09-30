@@ -76,7 +76,7 @@ known_species = keys(speciescolor)
 Dspc = [s for s in setdiff(known_species, [:Nup2D, :O1D]) if occursin('D', string(s))]
 
 # D group will have dashed lines; neutrals, solid (default)
-const speciesstyle = Dict(vcat([s=>"--" for s in Dspc], [:HD2pl=>":", :Nup2D=>"-."]) )
+const speciesstyle = Dict(vcat([s=>"--" for s in Dspc], [s=>"-" for s in setdiff(keys(speciescolor), Dspc)], [:HD2pl=>":", :Nup2D=>"-."]) )
 
 
 const medgray = "#444444"
