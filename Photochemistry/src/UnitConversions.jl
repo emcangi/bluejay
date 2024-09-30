@@ -105,6 +105,67 @@ function prum_to_ppm(sp, prum, atmdict; globvars...)
     return (colabund/nt_sum) / 1e-6 # return ppm
 end
 
+function rayleigh_fractionation(solve_for; water_lost=nothing, water_today=nothing, f=nothing, DH_original=nothing, DH_today=nothing)
+    #=
+    Solve the Rayleigh fractionation equation. Units don't matter as everything occurs in fractions. 
+    
+    Inputs
+        solve_for: Any of the optional variable names
+        water_lost: Water lost over the time period bookended by the two DH values.
+        water_today: Current water inventory, or water inventory at the time designated by DH_today.
+        f: fractionation factor, assumed constant
+        DH_original: D/H value at some time in the past
+        DH_today: D/H value "today" (or at some time you're interested in calculating)
+    Outputs:
+        Whichever variable wasn't provided.
+    =#
+    if solve_for=="water_lost"
+        @assert water_lost == nothing
+        @assert water_today != nothing
+        @assert f != nothing
+        @assert DH_original != nothing
+        @assert DH_today != nothing
+        return water_today * ((DH_today / DH_original)^(1/(1-f)) -1 )
+    end
+
+    if solve_for=="water_today"
+        @assert water_lost != nothing
+        @assert water_today == nothing
+        @assert f != nothing
+        @assert DH_original != nothing
+        @assert DH_today != nothing
+        return water_lost / ((DH_today / DH_original)^(1/(1-f)) -1 ) 
+    end
+
+    if solve_for=="f"
+        @assert water_lost != nothing
+        @assert water_today != nothing
+        @assert f == nothing
+        @assert DH_original != nothing
+        @assert DH_today != nothing
+        return 1 - ( (log(DH_today) - log(DH_original)) / (log(water_lost/water_today + 1)) )
+    end
+
+    if solve_for=="DH_today"
+        @assert water_lost != nothing
+        @assert water_today != nothing
+        @assert f != nothing
+        @assert DH_original != nothing
+        @assert DH_today == nothing
+        return DH_original * (water_lost / water_today + 1) ^ (1-f)
+    end
+
+    if solve_for=="DH_original"
+        @assert water_lost != nothing
+        @assert water_today != nothing
+        @assert f != nothing
+        @assert DH_original == nothing
+        @assert DH_today != nothing
+        return DH_today / ((water_lost / water_today + 1) ^ (1-f))
+    end
+
+end
+
 
 #                       Converting joules and eletron volts                     #
 #===============================================================================#
