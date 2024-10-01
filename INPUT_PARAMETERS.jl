@@ -101,6 +101,10 @@ const HDO_excess = 0.350 # excess HDO in ppm (divide by 1000 to get ppb)
 # Control which species (atoms, molecules) are modeled 
 # =======================================================================================================
 
+const ions_included = true
+const converge_which = "both"
+    # OPTIONS: "ions", "neutrals", "both"
+
 # Species lists
 # -------------------------------------------------------------------
 # Convention: Alphabetized, except D-bearing species should be mixed in after their H-bearing isotopologue. 
@@ -159,9 +163,6 @@ const conv_ions = Dict("Mars"=>[:Arpl, :ArHpl, :ArDpl,
 
 # More specific settings for controling the modeling of species
 # -------------------------------------------------------------------
-const ions_included = true
-const converge_which = "both"
-    # OPTIONS: "ions", "neutrals", "both"
 const dont_compute_chemistry = [:Ar]
 const dont_compute_transport = []
 const dont_compute_either_chem_or_transport = []  # Chemical species which should never update their densities, but may participate in chem+transport.
