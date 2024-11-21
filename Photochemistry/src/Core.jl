@@ -1653,7 +1653,7 @@ function Dcoef!(D_arr, T_arr, sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncu
     15.30 and table 15.2 footnote.
     For ions, it returns ambipolar diffusion coefficients according to Krasnopolsky 2002 and 
     Schunk & Nagy equation 5.55. Yes, the equation is done in one line and it's ugly, but it works.
-    Units: cm/s
+    Units: cm^2/s
 
     Inputs:
         D_arr: the container for the diffusion coefficients for ONE species.
@@ -1940,6 +1940,7 @@ function Keddy(z::Vector, nt::Vector; globvars...)
         nt: Total atmospheric density
     Ouptut:
         k: eddy diffusion coefficients at all altitudes.
+           Units: cm^2/s
     =#
 
     GV = values(globvars)
