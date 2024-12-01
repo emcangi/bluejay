@@ -1007,6 +1007,24 @@ elseif make_new_alt_grid==false
     n_current = get_ncurrent(initial_atm_file)
 end
 
+# PLOT EDDY _---___------------------------
+# SPECIAL CASE: PLot eddy diffusion to check it.
+if occursin("rhaps", solar_scenario)
+    println("Plotting eddy diffusion for making sure I'm not dumb")
+    fig, ax = subplots()
+    if use_mahieux2021==true 
+        Karr = Keddy(non_bdy_layers, [1]; planet, use_mahieux2021=true)
+    else
+        Karr = Keddy(non_bdy_layers, n_tot(n_current; all_species); planet, use_mahieux2021)
+    end
+    ax.plot(Karr, plot_grid)
+    ax.set_xscale("log")
+    ax.set_ylabel("Alt (km)")
+    ax.set_xlabel(L"Eddy diffusion coefficient (cm$^2$/s)")
+    savefig(results_dir * sim_folder_name*"/eddy_diffusion.png", fmt="png", dpi=300, bbox_inches="tight")
+    close(fig)
+end
+
 
 #                 Set the boundary altitude below which water is fixed          #
 #===============================================================================#
@@ -1647,7 +1665,7 @@ try
                                  polarizability, planet, plot_grid, q, R_P, reaction_network, rshortcode, 
                                  season_length_in_sec, sol_in_sec, solarflux, speciesbclist, speciescolor, speciesstyle, 
                                  Tn=Tn_arr, Ti=Ti_arr, Te=Te_arr, Tp=Tplasma_arr, Tprof_for_diffusion, transport_species, opt="",
-                                 upper_lower_bdy_i, use_ambipolar, use_molec_diff, zmax)
+                                 upper_lower_bdy_i, use_ambipolar, use_molec_diff, use_mahieux2021, zmax)
 catch y
     XLSX.writetable(xlsx_parameter_log, param_df_dict...)
     write_to_log(logfile, "Terminated before completion at $(format_sec_or_min(time()-ti))", mode="a")
@@ -1759,7 +1777,8 @@ elseif problem_type == "Gear"
                                   hot_H_network, hot_D_network, hot_H2_network, hot_HD_network, hrshortcode, ion_species, Jratedict, M_P, 
                                   molmass, monospace_choice, neutral_species, non_bdy_layers, num_layers, n_all_layers, n_alt_index, polarizability, planet,
                                   plot_grid, q, R_P, rshortcode, reaction_network, sansserif_choice, speciesbclist, Tn=Tn_arr, Ti=Ti_arr, Te=Te_arr, Tp=Tplasma_arr, 
-                                  Tprof_for_Hs, Tprof_for_diffusion, transport_species, upper_lower_bdy_i, upper_lower_bdy, use_ambipolar, use_molec_diff, zmax)
+                                  Tprof_for_Hs, Tprof_for_diffusion, transport_species, upper_lower_bdy_i, upper_lower_bdy, use_ambipolar, use_molec_diff, 
+                                  use_mahieux2021, zmax)
     end
 
 else
