@@ -504,7 +504,6 @@ function plot_net_volume_change(sp, atmdict; globvars...)
     ax.scatter(fpos, plot_grid, marker="^", color="red", label="Gain", zorder=10)
     ax.scatter(fneg, plot_grid, marker="v", color="blue", label="Loss", zorder=10)
     ax.legend()
-    # ax.axhline(165, linestyle="--", color="gray", linewidth=2, zorder=0)
     ax.set_xscale("log")
     ax.set_ylabel("Alt (km)")
     ax.set_title(string_to_latexstr(string(sp))*" transport")
@@ -912,9 +911,9 @@ function plot_reaction_on_demand(atmdict, reactants; print_col_total=false, prod
     end
 end
 
-function plot_species_on_demand(atmdict, spclist, filename; savepath=nothing, showonly=false, shaded_region=false, axh_text="", mixing_ratio=false, plot_e=false, lw=2,
+function plot_species_on_demand(atmdict, spclist, filename; savepath=nothing, showonly=false, shaded_region=nothing, axh_text="", mixing_ratio=false, plot_e=false, lw=2,
                                 xlab=L"Number density (cm$^{-3}$)", xlims=(1e-12, 1e18), figsz=(16,6), ylims=(0,zmax/1e5), titl=nothing,
-                                overridestyle=false, posdict = Dict(), extratext=nothing, LL=(0.9,0.9), titlcol="black",
+                                overridestyle=false, posdict = Dict(), extratext=nothing, LL=(0.9,0.9), titlcol="black", plot_hline=nothing,
                                 globvars...)
     #=
     Makes a "spaghetti plot" of the species in spclist, in concentrations by altitude in the
@@ -966,6 +965,12 @@ function plot_species_on_demand(atmdict, spclist, filename; savepath=nothing, sh
             plot_me = plot_me ./ n_tot(atmdict; GV.all_species)
         end
         ax.plot(plot_me, GV.plot_grid, color=col, linewidth=lw, label=sp, linestyle=ls, zorder=10)
+        
+
+        if plot_hline != nothing
+            ax.axhline(plot_hline, color="black", zorder=10)
+        end
+
         
         textloc = get(posdict, sp, nothing)
         if textloc != nothing
