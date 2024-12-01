@@ -20,7 +20,7 @@ const planet = "Mars"
 # Input and output files, directory
 # =======================================================================================================
 const results_dir = code_dir*"../Results_$(planet)/"
-const initial_atm_file = "$(planet)-Inputs/INITIAL_GUESS_MARS_bxz4YnHk.h5"  # File to use to initialize the atmosphere.
+const initial_atm_file = "$(planet)-Inputs/INITIAL_GUESS_VENUS_oUT0ZbGN.h5"  # File to use to initialize the atmosphere.
     # OPTIONS: 
     # INITIAL_GUESS_MARS.h5 --> Basic Mars starting file.
     # INITIAL_GUESS_MARS_bxz4YnHk.h5 --> A Mars atmosphere that includes N2O, NO2, and their ions;
@@ -36,7 +36,7 @@ const reaction_network_spreadsheet = code_dir*"$(planet)-Inputs/REACTION_NETWORK
 const short_summary = "co+od_ratecoeff_eq_co+oh" 
       # a short string that will be added to the results folder, to jog your memory of what you did.
       # Recommended not to include spaces. May be blank.
-const logged_long_description = "Test a rate coefficient of +0% (*1) of H equivalent for CO + OD -> CO2 + D" 
+const logged_long_description = "Test extending alt grid" 
       # Brief summary of simulation goal, will be in the log file but not the results folder name.
 const results_version = "v0"  
       # Helps keep track of attempts if you need to keep changing things. Will be appended to results
@@ -148,7 +148,8 @@ const conv_neutrals = Dict("Mars"=>[:Ar, :C, :CO, :CO2, # Argon and carbon speci
                                      :H2O2, :HDO2, :HOCO, :DOCO, 
                                      :N, :N2, :NO, :Nup2D, :N2O, :NO2,
                                      :O, :O1D, :O2, :O3, :OH, :OD,
-                                     :S, :SO, :SO2, :SO3, :H2SO4, :HDSO4] # Sulfur species
+                                     :S, :SO, :SO2, :SO3, :H2SO4, :HDSO4 # Sulfur species
+                                    ] 
                            ); 
 
 const conv_ions = Dict("Mars"=>[:Arpl, :ArHpl, :ArDpl, 
@@ -201,7 +202,12 @@ const abs_tol = 1e-12
 const do_chem = true   # Turning this or next one of will toggle chemistry or transport.
 const do_trans = true  # Often useful for troubleshooting or converging new atmospheres.
 const adding_new_species = false
-const make_new_alt_grid = false  # Set to true if extending the altitude grid. TODO: Need to re-write that code.
+const make_new_alt_grid = false# true  # Set to true if extending the altitude grid. TODO: Need to re-write that code.
+const which_boundary_has_changed = "zmin"
+const fillval = "nearest"
+    # What to fill the new altitude entries with; OPTIONS:
+    # "zeros": 0 everywhere
+    # "nearest" : nearest value in the density array
 const use_nonzero_initial_profiles = true
     # OPTIONS: 
     # true -- uses initial guess densities for species based on previous model output.

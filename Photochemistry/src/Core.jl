@@ -1260,7 +1260,7 @@ function T_Mars(Tsurf, Tmeso, Texo; lapserate=-1.4e-5, z_meso_top=108e5, weird_T
     return Dict("neutrals"=>NEUTRALS(), "ions"=>IONS(), "electrons"=>ELECTRONS())
 end 
 
-function T_Venus(Tsurf::Float64, Tmeso::Float64, Texo::Float64, file_for_interp; z_meso_top=80e5, lapserate=-8e-5, weird_Tn_param=8, globvars...)
+function T_Venus(Tsurf::Float64, Tmeso::Float64, Texo::Float64, file_for_interp; z_meso_top=90e5, lapserate=-8e-5, weird_Tn_param=8, globvars...)
     #= 
     Input:
         z: altitude above surface in cm
@@ -1274,56 +1274,59 @@ function T_Venus(Tsurf::Float64, Tmeso::Float64, Texo::Float64, file_for_interp;
     Uses the typical temperature structure for neutrals, but interpolates temperatures
     for ions and electrons above 108 km according to the profiles in Fox & Sung 2001.
     =#
-
     GV = values(globvars)
     @assert all(x->x in keys(GV), [:alt])
-    
+
     # Subroutines -------------------------------------------------------------------------------------
 
-    function upperatmo_i_or_e(z, particle_type; Ti_array=Ti_interped, Te_array=Te_interped, select_alts=new_a)
-        #=
-        Finds the index for altitude z within new_a
-        =#
-        i = something(findfirst(isequal(z), select_alts), 0)
-        returnme = Dict("electron"=>Te_array[i], "ion"=>Ti_array[i])
-        return returnme[particle_type]
-    end
-
-    function NEUTRALS(new_a)
+    function NEUTRALS(alts_for_interp)
         Tn = zeros(size(GV.alt))
 
         Tn[i_lower] .= Tsurf .+ lapserate*GV.alt[i_lower]
         Tn[i_meso] .= Tmeso
 
-        # upper atmo
+        # Upper atmosphere
         Tfile = readdlm(file_for_interp, ',')
-        T_n = Tfile[2,:]
-        alt_i = Tfile[1,:] .* 1e5
-        interp_ion = LinearInterpolation(alt_i, T_n)
-        Tn_interped = [interp_ion(a) for a in new_a];
-        Tn[i_upper] .= Tn_interped # upper_atmo_neutrals(GV.alt[i_upper])
+        T_n_from_file = Tfile[2,:]
+        alt_n_from_file = Tfile[1,:] .* 1e5 # These are the altitudes in the file, may not be on the altgrid
+
+        interp_neu = LinearInterpolation(alt_n_from_file, T_n_from_file) #  here we make an interpolation object
+        Tn_interped = [interp_neu(a) for a in alts_for_interp];
+
+        # Now get the indices of alts_for_interp
+        i_alts_with_interped_Tn = [i for i in indexin(alts_for_interp, GV.alt)]
+        # println("i_alts: $(typeof(i_alts_with_interped_Tn))")
+
+        # Finally, assign upper atmo 
+        Tn[i_alts_with_interped_Tn] .= Tn_interped # Overwrite with interpolated stuff from the file
 
         return Tn 
     end 
 
-    function ELECTRONS(new_a; spc="electron") 
+    function ELECTRONS(alts_for_interp; spc="electron") 
         Te = zeros(size(GV.alt))
 
         Te[i_lower] .= Tsurf .+ lapserate*GV.alt[i_lower]
         Te[i_meso] .= Tmeso
 
         # Upper atmo
+        # Interpolate from file
         Tfile = readdlm(file_for_interp, ',')
-        T_e = Tfile[4,:]
-        alt_e = Tfile[1,:] .* 1e5
-        interp_elec = LinearInterpolation(alt_e, T_e)
-        Te_interped = [interp_elec(a) for a in new_a];
-        Te[i_upper] .= Te_interped
+        T_e_from_file = Tfile[4,:]
+        alt_e_from_file = Tfile[1,:] .* 1e5
+        interp_elec = LinearInterpolation(alt_e_from_file, T_e_from_file)
+        Te_interped = [interp_elec(a) for a in alts_for_interp]
+
+        # Now get the indices of alts_for_interp
+        i_alts_with_interped_Te = [i for i in indexin(alts_for_interp, GV.alt)]
+
+        # Finally, assign upper atmo 
+        Te[i_alts_with_interped_Te] .= Te_interped
 
         return Te
     end
 
-    function IONS(new_a; spc="ion") 
+    function IONS(alts_for_interp; spc="ion") 
         Ti = zeros(size(GV.alt))
 
         Ti[i_lower] .= Tsurf .+ lapserate*GV.alt[i_lower]
@@ -1331,11 +1334,16 @@ function T_Venus(Tsurf::Float64, Tmeso::Float64, Texo::Float64, file_for_interp;
 
         # Upper atmo
         Tfile = readdlm(file_for_interp, ',')
-        T_i = Tfile[3,:]
-        alt_i = Tfile[1,:] .* 1e5
-        interp_ion = LinearInterpolation(alt_i, T_i)
-        Ti_interped = [interp_ion(a) for a in new_a];
-        Ti[i_upper] .= Ti_interped
+        T_i_from_file = Tfile[3,:]
+        alt_i_from_file = Tfile[1,:] .* 1e5
+        interp_ion = LinearInterpolation(alt_i_from_file, T_i_from_file)
+        Ti_interped = [interp_ion(a) for a in alts_for_interp];
+
+        # Now get the indices of alts_for_interp
+        i_alts_with_interped_Ti = [i for i in indexin(alts_for_interp, GV.alt)]
+
+        # Finally, assign upper atmo
+        Ti[i_alts_with_interped_Ti] .= Ti_interped
 
         return Ti
     end
