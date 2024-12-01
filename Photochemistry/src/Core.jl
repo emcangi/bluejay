@@ -1946,7 +1946,7 @@ function Keddy(z::Vector, nt::Vector; globvars...)
     =#
 
     GV = values(globvars)
-    required = [:planet]
+    required = [:planet, :use_mahieux2021]
     check_requirements(keys(GV), required)
 
     k = zeros(size(z)) # Initialize array for eddy diffusion
@@ -1955,7 +1955,35 @@ function Keddy(z::Vector, nt::Vector; globvars...)
         k[findall(i->i .<= 60e5, z)] .= 10. ^ 6
         k[upperatm] .= 2e13 ./ sqrt.(nt[upperatm])
     elseif GV.planet=="Venus"
-        k = 8e12*(nt .^ -0.5)
+        if GV.use_mahieux2021==true
+            print("USING MAHIEUX+2021 EDDY")
+            # RHAPS - from Mahieux+ 2021:
+
+            # Below 110 km:
+            k[findall(i->i .<= 110e5, z)] .= 3.62e6
+
+            # Data pulled from paper with webplot digitizer
+            data_n = [3.6e6, 7.5e6, 0.4e6,  1011878, 1e8, 201e6] 
+            data_z = [110, 120, 130,  133.2, 139, 140]  * 1e5
+
+            # Interpolate between 110 and 140 
+            interp_lin = linear_interpolation(data_z, data_n);
+            all_new_z = 110e5:2e5:140e5
+            all_new_n = interp_lin(all_new_z)
+
+            try
+                first_i = findall(i->i .== all_new_z[1], z)[1]
+                last_i =  findall(i->i .== all_new_z[end], z)[1]
+                k[first_i:last_i] .= all_new_n
+            catch
+                println("Ah, you must want the Eddy diffusion coefficient just at the lower boundary? ITs value is $(k[1]). Returning it now...")
+                return k[1]
+            end
+
+            k[findall(i->i .>= 140e5, z)] .= 2.01e8
+        else
+            k = 8e12*(nt .^ -0.5) # Krasnopolsky paper I htink
+        end
     end
 
     return k
@@ -1985,12 +2013,12 @@ function update_diffusion_and_scaleH(species_list, atmdict::Dict{Symbol, Vector{
     =#
     GV = values(globvars)
     required = [:all_species, :alt, :speciesbclist, :M_P, :molmass, :neutral_species, :n_alt_index, :polarizability, :planet, :R_P, :q,
-               :Tn, :Tp, :Tprof_for_diffusion, :use_ambipolar, :use_molec_diff]
+               :Tn, :Tp, :Tprof_for_diffusion, :use_ambipolar, :use_molec_diff, :use_mahieux2021]
     check_requirements(keys(GV), required)
 
     ncur_with_bdys = ncur_with_boundary_layers(atmdict; GV.n_alt_index, GV.all_species)
     
-    K = Keddy(GV.alt, n_tot(ncur_with_bdys; GV.all_species, GV.n_alt_index); GV.planet)
+    K = Keddy(GV.alt, n_tot(ncur_with_bdys; GV.all_species, GV.n_alt_index); GV.planet, GV.use_mahieux2021)
     H0_dict = Dict{String, Vector{ftype_ncur}}("neutral"=>scaleH(ncur_with_bdys, GV.Tn; globvars...),
                                                "ion"=>scaleH(ncur_with_bdys, GV.Tp; globvars...))
     
