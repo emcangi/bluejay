@@ -149,6 +149,7 @@ function populate_xsect_dict(pd_dataf, xsecfolder; ion_xsects=true, globvars...)
 
     xsect_dict[get_Jrate_symb("O3", ["O", "O", "O"])] =  fill(quantumyield(o3xdata,((x->true, 0.),)),GV.n_all_layers)
 
+    # TODO: These are sort of redundant with the loop on line 254. This could be tidied up. 
     # H2 and HD photodissociation --------------------------------------------------
     # H2+hv->H+H
     xsect_dict[get_Jrate_symb("H2", ["H", "H"])] = fill(h2xdata, GV.n_all_layers)
