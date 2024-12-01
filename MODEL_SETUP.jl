@@ -201,7 +201,7 @@ const e_profile_type = ions_included==true ? "quasineutral" : "none"
 
 #                                       Altitude grid                  
 # =======================================================================================================
-const zmin = Dict("Venus"=>90e5, "Mars"=>0.)[planet]
+const zmin = Dict("Venus"=>46e5, "Mars"=>0.)[planet]
 const dz = 2e5  # Discretized layer thickness
 const zmax = 250e5  # Top altitude (cm)
 const alt = convert(Array, (zmin:dz:zmax)) # These are the layer centers.
@@ -357,14 +357,14 @@ if planet=="Mars"
                         :D=> Dict("f"=>[0., NaN], "v"=>[NaN, effusion_velocity(Tn_arr[end], 2.0; M_P, R_P, zmax)], "ntf"=>[NaN, "see boundaryconditions()"]),
                        );
 elseif planet=="Venus"
-    const ntot_at_lowerbdy = 9.5e15 # Based on Fox & Sung 2001
+    const ntot_at_lowerbdy = 3.6e19 # 47 km   # 9.5e15 # at 90 km
 
-    H2O_lowerbdy = h2o_vmr_low * ntot_at_lowerbdy
-    HDO_lowerbdy = hdo_vmr_low * ntot_at_lowerbdy
+    H2O_lowerbdy = 21 * h2o_vmr_low * ntot_at_lowerbdy # special for Kras bcs at 47 km
+    HDO_lowerbdy = 21 * hdo_vmr_low * ntot_at_lowerbdy
     
     # END SPECIAL
     # MRs
-    SO2mr = 1e-7
+    SO2mr = 9.7e-6 # Note added by Eryn during rebase 5/26/26: Review this value for altitude of interest
     # Simon's notes: Belyaev 2012: this was 0.1 ppmv at 165–170 K to 0.5–1 ppmv at 190–192 K; 
     # It said 0.1ppm was related to the most common temperature reading so I went with that 
     # (this is either 1E-7 or 6.79E-8 depending on the calculation)
@@ -373,24 +373,30 @@ elseif planet=="Venus"
     O2mr = 3e-3
     COmr = 4.5e-6
     CO2mr = 0.965
-    HClmr = 3.66e-7
+    HClmr = 4e-7
     # Simon's notes: Krasnopolsky, 2010a: this was 400ppb at 74km in altitude, and the actual number is likely lower 
     # (is either 4.0E-7, or 4.8E-7 depending on the calculation); and according to Zhang 2012 it is 3.66e-7
     SOmr = 1e-7
 
     
     const KoverH_lowerbdy = Keddy([zmin], [ntot_at_lowerbdy]; planet)[1]/scaleH_lowerboundary(zmin, Tn_arr[1]; molmass, M_P, R_P, zmin)
+    println("Fyi, K/H is $(KoverH_lowerbdy)")
     const manual_speciesbclist=Dict(# major species neutrals at lower boundary (estimated from Fox&Sung 2001, Hedin+1985, agrees pretty well with VIRA)
-                                    :CO2=>Dict("n"=>[CO2mr*ntot_at_lowerbdy, NaN], "f"=>[NaN, 0.]),
-                                    :Ar=>Dict("n"=>[5e11, NaN], "f"=>[NaN, 0.]),
-                                    :CO=>Dict("n"=>[COmr*ntot_at_lowerbdy, NaN], "f"=>[NaN, 0.]),
-                                    :O2=>Dict("n"=>[O2mr*ntot_at_lowerbdy, NaN], "f"=>[NaN, 0.]),
+                                    :CO2=>Dict("n"=>[CO2mr*ntot_at_lowerbdy, NaN], 
+                                               "f"=>[NaN, 0.]),
+                                    #:Ar=>Dict("n"=>[5e11, NaN], "f"=>[NaN, 0.]),
+                                    :CO=>Dict("v"=>[-(0.1/2)*KoverH_lowerbdy, NaN], 
+                                              "f"=>[NaN, 0.]),
+                                    :O2=>Dict("v"=>[-(0.1/2)*KoverH_lowerbdy, NaN], 
+                                              "f"=>[NaN, 0.]),
                                     :N2=>Dict("n"=>[N2mr*ntot_at_lowerbdy, NaN]),
 
                                     
                                     :HCl=>Dict("n"=>[HClmr * ntot_at_lowerbdy, NaN]),
-                                    :DCl=>Dict("n"=>[HClmr * DH * ntot_at_lowerbdy, NaN]),
-
+                                    :DCl=>Dict("n"=>[HClmr * 190 * SMOW * ntot_at_lowerbdy, NaN]),
+                                    # Note added by Eryn during rebase 5/26/26: May need to double check D/H on this DCl. 
+                                    
+                                    # :NO=>Dict("n"=>[5.5e-9*ntot_at_lowerbdy, NaN]),# z=47km, KRas 2012
 
                                     :H2SO4=>Dict("n"=>[H2SO4mr * ntot_at_lowerbdy, NaN]), 
 
@@ -398,9 +404,11 @@ elseif planet=="Venus"
                                     :SO=>Dict("n"=>[SOmr * ntot_at_lowerbdy, NaN]),
 
                                     # water mixing ratio is fixed at lower boundary
-                                    :H2O=>Dict("n"=>[H2O_lowerbdy, NaN], "f"=>[NaN, 0.]),
+                                    :H2O=>Dict("n"=>[H2O_lowerbdy, NaN], 
+                                               "f"=>[NaN, 0.]),
                                     # we assume HDO has the bulk atmosphere ratio with H2O at the lower boundary, ~consistent with Bertaux+2007 observations
-                                    :HDO=>Dict("n"=>[HDO_lowerbdy, NaN], "f"=>[NaN, 0.]),
+                                    :HDO=>Dict("n"=>[HDO_lowerbdy, NaN], 
+                                               "f"=>[NaN, 0.]),
 
                                     # atomic H and D escape solely by photochemical loss to space, can also be mixed downward
                                     :H=> Dict("v"=>[-KoverH_lowerbdy, effusion_velocity(Tn_arr[end], 1.0; zmax, M_P, R_P)],
@@ -417,9 +425,10 @@ elseif planet=="Venus"
                                               "ntf"=>[NaN, "see boundaryconditions()"]),
 
                                     # # H2 mixing ratio at lower boundary adopted from Yung&DeMore1982 as in Fox&Sung2001
-                                    # :H2=>Dict("n"=>[1e-7*ntot_at_lowerbdy, NaN],
-                                    #           "v"=>[NaN, effusion_velocity(Tn_arr[end], 2.0; zmax)],
-                                    #           "ntf"=>[NaN, "see boundaryconditions()"]),
+                                    :H2=>Dict("n"=>[4.5e-9*ntot_at_lowerbdy, NaN], # 47 km kras # original: 1e-7*ntot_at_lowerbdy
+                                              # "v"=>[NaN, effusion_velocity(Tn_arr[end], 2.0; zmax)],
+                                              # "ntf"=>[NaN, "see boundaryconditions()"]
+                                              ),
                                     # :HD=>Dict("n"=>[DH*1e-7*ntot_at_lowerbdy, NaN],
                                     #           "v"=>[NaN, effusion_velocity(Tn_arr[end], 3.0; zmax)],
                                     #           "ntf"=>[NaN, "see boundaryconditions()"]),
