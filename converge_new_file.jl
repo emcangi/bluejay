@@ -1652,7 +1652,7 @@ try
                                  polarizability, planet, plot_grid, q, R_P, reaction_network, rshortcode, 
                                  season_length_in_sec, sol_in_sec, solarflux, speciesbclist, speciescolor, speciesstyle, 
                                  Tn=Tn_arr, Ti=Ti_arr, Te=Te_arr, Tp=Tplasma_arr, Tprof_for_diffusion, transport_species, opt="",
-                                 upper_lower_bdy_i, use_ambipolar, use_molec_diff, zmax)
+                                 upper_lower_bdy_i, use_ambipolar, use_molec_diff, use_mahieux2021, zmax)
 catch y
     XLSX.writetable(xlsx_parameter_log, param_df_dict...)
     write_to_log(logfile, "Terminated before completion at $(format_sec_or_min(time()-ti))", mode="a")
@@ -1764,7 +1764,8 @@ elseif problem_type == "Gear"
                                   hot_H_network, hot_D_network, hot_H2_network, hot_HD_network, hrshortcode, ion_species, Jratedict, M_P, 
                                   molmass, monospace_choice, neutral_species, non_bdy_layers, num_layers, n_all_layers, n_alt_index, polarizability, planet,
                                   plot_grid, q, R_P, rshortcode, reaction_network, sansserif_choice, speciesbclist, Tn=Tn_arr, Ti=Ti_arr, Te=Te_arr, Tp=Tplasma_arr, 
-                                  Tprof_for_Hs, Tprof_for_diffusion, transport_species, upper_lower_bdy_i, upper_lower_bdy, use_ambipolar, use_molec_diff, zmax)
+                                  Tprof_for_Hs, Tprof_for_diffusion, transport_species, upper_lower_bdy_i, upper_lower_bdy, use_ambipolar, use_molec_diff, 
+                                  use_mahieux2021, zmax)
     end
 
 else

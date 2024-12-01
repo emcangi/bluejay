@@ -20,7 +20,7 @@ const planet = "Mars"
 # Input and output files, directory
 # =======================================================================================================
 const results_dir = code_dir*"../Results_$(planet)/"
-const initial_atm_file = "$(planet)-Inputs/INITIAL_GUESS_MARS_bxz4YnHk.h5"  # File to use to initialize the atmosphere.
+const initial_atm_file = "$(planet)-Inputs/INITIAL_GUESS_VENUS_oUT0ZbGN.h5"  # File to use to initialize the atmosphere.
     # OPTIONS: 
     # INITIAL_GUESS_MARS.h5 --> Basic Mars starting file.
     # INITIAL_GUESS_MARS_bxz4YnHk.h5 --> A Mars atmosphere that includes N2O, NO2, and their ions;
@@ -33,7 +33,7 @@ const reaction_network_spreadsheet = code_dir*"$(planet)-Inputs/REACTION_NETWORK
 
 # Descriptive attributes of this model run
 # =======================================================================================================
-const optional_logging_note = "Enter a logging note here" # Brief summary of simulation goal
+const optional_logging_note = "RHAPS case 1 - RHAPS spectrum / normal eddy diffusion / RHAPS bcs" # Brief summary of simulation goal
 const results_version = "v0"  # Helps keep track of attempts if you need to keep changing things
 
 # Set the modifiable atmospheric parameters
@@ -69,11 +69,12 @@ const temp_scenario = "mean"  # Temperature selection for the seasonal model run
 # Solar case
 # -------------------------------------------------------------------
 const SZA = 60  # Puts the model at dayside mean. Enter in degrees please.
-const solar_scenario = "solarmean" 
-    # Solar scenario definition. You can choose from different Mars-sun distances or parts of the solar cycle.
+const solar_scenario = "rhaps-case1" 
+    # Solar scenario definition. You can choose from different planet-sun distances or parts of the solar cycle.
     # ORBITAL DISTANCE OPTIONS: "perihelion" #  "meansundist" # "aphelion"; these are defined at solar mean. 
     #     NOTE: these options are only available for Mars at present.
     # SOLAR CYCLE OPTIONS: "solarmean" # "solarmax" # "solarmin"; these are defined at the mean AU. 
+    # SPECIAL: "rhaps-case1", "rhaps-case2", "rhaps-case3": Venus around the sun, K1 Ceti, and Tau ceti.
     # NOTE: Not currently possible to mix orbital distance and solar cycle as I would have to generate more spectra.
 
     # TODO: Program the solar spectrum scaling in Julia and set AU as a parameter
@@ -175,6 +176,7 @@ elseif planet=="Venus"
 end
     
 const assume_photochem_eq = false # whether to turn on photochemical equilibrium for short-lived species
+const use_mahieux2021 = false # Whether to use mahieux 2021 eddy diffusion for Venus, if it's a Venus model
 
 # Turn plots off and on
 # =======================================================================================================

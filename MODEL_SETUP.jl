@@ -352,10 +352,10 @@ if planet=="Mars"
                         :D=> Dict("f"=>[0., NaN], "v"=>[NaN, effusion_velocity(Tn_arr[end], 2.0; M_P, R_P, zmax)], "ntf"=>[NaN, "see boundaryconditions()"]),
                        );
 elseif planet=="Venus"
-    const ntot_at_lowerbdy = 9.5e15 # Based on Fox & Sung 2001
+    const ntot_at_lowerbdy = 1.74e15 # RHAPS
 
-    H2O_lowerbdy = h2o_vmr_low * ntot_at_lowerbdy
-    HDO_lowerbdy = hdo_vmr_low * ntot_at_lowerbdy
+    H2O_lowerbdy = 3.9e9 # h2o_vmr_low * ntot_at_lowerbdy # RHAPS 
+    HDO_lowerbdy = 2 * DH * H2O_lowerbdy #Q hdo_vmr_low * ntot_at_lowerbdy #  RHAPS
     
     # END SPECIAL
     # MRs
@@ -374,7 +374,7 @@ elseif planet=="Venus"
     SOmr = 1e-7
 
     
-    const KoverH_lowerbdy = Keddy([zmin], [ntot_at_lowerbdy]; planet)[1]/scaleH_lowerboundary(zmin, Tn_arr[1]; molmass, M_P, R_P, zmin)
+    const KoverH_lowerbdy = Keddy([zmin], [ntot_at_lowerbdy]; planet, use_mahieux2021)[1]/scaleH_lowerboundary(zmin, Tn_arr[1]; molmass, M_P, R_P, zmin)
     const manual_speciesbclist=Dict(# major species neutrals at lower boundary (estimated from Fox&Sung 2001, Hedin+1985, agrees pretty well with VIRA)
                                     :CO2=>Dict("n"=>[CO2mr*ntot_at_lowerbdy, NaN], "f"=>[NaN, 0.]),
                                     :Ar=>Dict("n"=>[5e11, NaN], "f"=>[NaN, 0.]),
