@@ -985,7 +985,7 @@ const hot_D_rc_funcs = Dict([rxn => mk_function(:((Tn, Ti, Te, M) -> $(rxn[3])))
 const hot_H2_rc_funcs = Dict([rxn => mk_function(:((Tn, Ti, Te, M) -> $(rxn[3]))) for rxn in hot_H2_network]);
 const hot_HD_rc_funcs = Dict([rxn => mk_function(:((Tn, Ti, Te, M) -> $(rxn[3]))) for rxn in hot_HD_network]);
 
-#                          Change the vertical extent                           #
+#           Load starting atmosphere; change alt grid if requested              #
 #===============================================================================#
 if make_new_alt_grid==true
     throw("The code for extending the altitude grid needs to be redone.")
@@ -1001,14 +1001,28 @@ if make_new_alt_grid==true
     # end
 
     # const alt = convert(Array, (0:dz:new_zmax*1e5))
-
     # const max_alt = new_zmax*1e5
+elseif make_new_alt_grid==false 
+    println("$(Dates.format(now(), "(HH:MM:SS)")) Loading atmosphere")
+    n_current = get_ncurrent(initial_atm_file)
 end
 
-#                        Load starting atmosphere                               #
+
+#                 Set the boundary altitude below which water is fixed          #
 #===============================================================================#
-println("$(Dates.format(now(), "(HH:MM:SS)")) Loading atmosphere")
-n_current = get_ncurrent(initial_atm_file)
+
+H2Osatfrac = H2Osat ./ map(z->n_tot(n_current, z; all_species, n_alt_index), alt)  # get SVP as fraction of total atmo
+const upper_lower_bdy = alt[something(findfirst(isequal(minimum(H2Osatfrac)), H2Osatfrac), 0)] # in cm
+const upper_lower_bdy_i = n_alt_index[upper_lower_bdy]  # the uppermost layer at which water will be fixed, in cm
+# Control whether the removal of rates etc at "Fixed altitudes" runs. If the boundary is 
+# the bottom of the atmosphere, we shouldn't do it at all.
+const remove_rates_flag = true
+if upper_lower_bdy == zmin
+    const remove_rates_flag = false 
+end
+# Add these to the logging dataframes
+push!(PARAMETERS_ALT_INFO, ("upper_lower_bdy", upper_lower_bdy, "cm", "Altitude at which water goes from being fixed to calculated"));
+push!(PARAMETERS_ALT_INFO, ("upper_lower_bdy_i", upper_lower_bdy_i, "", "Index of the line above within the alt grid"));
 
 
 #                       Establish new species profiles                          #

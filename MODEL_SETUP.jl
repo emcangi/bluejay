@@ -329,15 +329,15 @@ const H2Oi = findfirst(x->x==:H2O, active_longlived)
 const HDOi = findfirst(x->x==:HDO, active_longlived)
 
 # Altitude at which water transitions from fixed to freely solved for
-H2Osatfrac = H2Osat ./ map(z->n_tot(get_ncurrent(initial_atm_file), z; all_species=setdiff(all_species, new_species), n_alt_index), alt)  # get SVP as fraction of total atmo
-const upper_lower_bdy = alt[something(findfirst(isequal(minimum(H2Osatfrac)), H2Osatfrac), 0)] # in cm
-const upper_lower_bdy_i = n_alt_index[upper_lower_bdy]  # the uppermost layer at which water will be fixed, in cm
-# Control whether the removal of rates etc at "Fixed altitudes" runs. If the boundary is 
-# the bottom of the atmosphere, we shouldn't do it at all.
-const remove_rates_flag = true
-if upper_lower_bdy == zmin
-    const remove_rates_flag = false 
-end
+# H2Osatfrac = H2Osat ./ map(z->n_tot(get_ncurrent(initial_atm_file), z; all_species=setdiff(all_species, new_species), n_alt_index), alt)  # get SVP as fraction of total atmo
+# const upper_lower_bdy = alt[something(findfirst(isequal(minimum(H2Osatfrac)), H2Osatfrac), 0)] # in cm
+# const upper_lower_bdy_i = n_alt_index[upper_lower_bdy]  # the uppermost layer at which water will be fixed, in cm
+# # Control whether the removal of rates etc at "Fixed altitudes" runs. If the boundary is 
+# # the bottom of the atmosphere, we shouldn't do it at all.
+# const remove_rates_flag = true
+# if upper_lower_bdy == zmin
+#     const remove_rates_flag = false 
+# end
 
 #                              Species-specific scale heights
 # =======================================================================================================
@@ -596,8 +596,8 @@ push!(PARAMETERS_ALT_INFO, ("dz", dz, "cm", "Height of a discretized altitude la
 push!(PARAMETERS_ALT_INFO, ("zmax", zmax, "cm", "Max altitude (altitude of top boundary)"));
 push!(PARAMETERS_ALT_INFO, ("n_all_layers", n_all_layers, "", "Number of discretized altitude layers, including boundary layers (i.e. length(alt))"));
 push!(PARAMETERS_ALT_INFO, ("num_layers", num_layers, "", "Number of discretized altitude layers, excluding boundary layers (i.e. length(alt)-2)"));
-push!(PARAMETERS_ALT_INFO, ("upper_lower_bdy", upper_lower_bdy, "cm", "Altitude at which water goes from being fixed to calculated"));
-push!(PARAMETERS_ALT_INFO, ("upper_lower_bdy_i", upper_lower_bdy_i, "", "Index of the line above within the alt grid"));
+# push!(PARAMETERS_ALT_INFO, ("upper_lower_bdy", upper_lower_bdy, "cm", "Altitude at which water goes from being fixed to calculated"));
+# push!(PARAMETERS_ALT_INFO, ("upper_lower_bdy_i", upper_lower_bdy_i, "", "Index of the line above within the alt grid"));
 
 # Atmospheric conditions.
 PARAMETERS_CONDITIONS = DataFrame(Field=[], Value=[], Unit=[]);
