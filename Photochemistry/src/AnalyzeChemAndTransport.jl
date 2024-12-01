@@ -98,7 +98,7 @@ function get_volume_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}};
         species_role: whether to look for the species as a "reactant", "product", or "both".  If it has a value, so must species.
         which: "all", "Jrates", "krates". Whether to fill the dictionary with all reactions, only photochemistry/photoionization 
                (Jrates) or only chemistry (krates).
-       remove_sp_density: if set to true, the density of sp will be removed from the calculation k[sp][B][C].... Useful for chemical lifetimes.
+        remove_sp_density: if set to true, the density of sp will be removed from the calculation k[sp][B][C].... Useful for chemical lifetimes.
     Output: 
         rxn_dat: Evaluated rates, i.e. k[A][B], units #/cm^3/s for bimolecular rxns
         rate_coefs: Evaluated rate coefficients for each reaction 
