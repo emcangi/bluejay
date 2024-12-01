@@ -70,8 +70,6 @@ include(paramfile)
 # Perform the rest of the model set up
 include("MODEL_SETUP.jl")
 
-# Plot styles
-include("PLOT_STYLES.jl")
 
 # **************************************************************************** #
 #                                                                              #
@@ -79,6 +77,7 @@ include("PLOT_STYLES.jl")
 #                                                                              #
 # **************************************************************************** #
 
+include("PLOT_STYLES.jl")
 set_rc_params(sansserif=sansserif_choice, monospace=monospace_choice)
 
 # **************************************************************************** #
