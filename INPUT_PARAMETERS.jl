@@ -223,11 +223,11 @@ const dont_compute_chemistry = []
 const dont_compute_transport = []
 const dont_compute_either_chem_or_transport = []  
     # OPTIONS: Any species included in the model. 
-if planet=="Mars" # To avoid convergence problems
-    append!(dont_compute_either_chem_or_transport,[:Ar])
-elseif planet=="Venus"
-    append!(dont_compute_chemistry,[:Ar])
-end
+# if planet=="Mars" # To avoid convergence problems
+#     append!(dont_compute_either_chem_or_transport,[:Ar])
+# elseif planet=="Venus"
+append!(dont_compute_chemistry,[:Ar])
+# end
     
 const assume_photochem_eq = false # whether to turn on photochemical equilibrium for short-lived species
 const use_mahieux2021 = true # Whether to use mahieux 2021 eddy diffusion for Venus, if it's a Venus model
@@ -246,13 +246,23 @@ const abs_tol = 1e-12
 
 # Helpful options for adding new things to the model 
 # =======================================================================================================
-const do_chem = true   # Turning this or next one of will toggle chemistry or transport.
-const do_trans = true  # Often useful for troubleshooting or converging new atmospheres.
+const do_chem = true   # If false, NO CHANGES due to chemistry will be computed
+const do_trans = true  # If false, NO CHANGES due to transport will be computed
+const use_ambipolar = true # Toggle ambipolar diffusion for ions. If False, ions will use molecular diffusion.
+const use_molec_diff = true # Toggle molecular diffusion. If turned off, eddy diffusion remains active.
+
+# New species stuff
 const adding_new_species = false
-const make_new_alt_grid = false  # Set to true if extending the altitude grid. TODO: Need to re-write that code.
 const use_nonzero_initial_profiles = true
     # OPTIONS: 
     # true -- uses initial guess densities for species based on previous model output.
-    # false -- sets new species to zero density and lets the chemistry and transport build them up.
-const use_ambipolar = true # Toggle ambipolar diffusion for ions.
-const use_molec_diff = true # Toggle molecular diffusion. If turned off, eddy diffusion remains active.
+    # false -- sets species to zero density and lets the chemistry and transport build them up.
+
+# New altitude ranges
+const make_new_alt_grid = true # Set to true if extending the altitude grid.
+const which_boundary_has_changed = "zmax" # Currently, lowering the altitude is being developed on another branch so 'zmin' is not supported
+const fillval = "nearest"
+    # What to fill the new altitude entries with; OPTIONS:
+    # "zeros": 0 everywhere
+    # "nearest" : nearest value in the density array
+
