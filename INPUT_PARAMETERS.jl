@@ -33,12 +33,12 @@ const reaction_network_spreadsheet = code_dir*"$(planet)-Inputs/REACTION_NETWORK
 
 # Descriptive attributes of this model run
 # =======================================================================================================
-const short_summary = "case1_updated" 
+const short_summary = "case1_m2021_eddy" 
       # a short string that will be added to the results folder, to jog your memory of what you did.
       # Recommended not to include spaces. May be blank.
-const logged_long_description = "RHAPS case 1 - RHAPS spectrum / normal eddy diffusion / RHAPS bcs" 
+const logged_long_description = "RHAPS case 1 - RHAPS spectrum / Mahieux2021 eddy diffusion / RHAPS-specific bcs for minors + standard CO2 density + add SO bc" 
       # Brief summary of simulation goal, will be in the log file but not the results folder name.
-const results_version = "v0"  
+const results_version = "v2"  
       # Helps keep track of attempts if you need to keep changing things. Will be appended to results
       # folder name.
 
@@ -184,7 +184,7 @@ elseif planet=="Venus"
 end
     
 const assume_photochem_eq = false # whether to turn on photochemical equilibrium for short-lived species
-const use_mahieux2021 = false # Whether to use mahieux 2021 eddy diffusion for Venus, if it's a Venus model
+const use_mahieux2021 = true # Whether to use mahieux 2021 eddy diffusion for Venus, if it's a Venus model
 
 # Turn plots off and on
 # =======================================================================================================
