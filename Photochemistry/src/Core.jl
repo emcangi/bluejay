@@ -1956,7 +1956,6 @@ function Keddy(z::Vector, nt::Vector; globvars...)
         k[upperatm] .= 2e13 ./ sqrt.(nt[upperatm])
     elseif GV.planet=="Venus"
         if GV.use_mahieux2021==true
-            print("USING MAHIEUX+2021 EDDY")
             # RHAPS - from Mahieux+ 2021:
 
             # Below 110 km:
