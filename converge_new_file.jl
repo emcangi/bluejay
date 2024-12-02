@@ -932,20 +932,41 @@ const hot_HD_rc_funcs = Dict([rxn => mk_function(:((Tn, Ti, Te, M) -> $(rxn[3]))
 #           Load starting atmosphere; change alt grid if requested              #
 #===============================================================================#
 if make_new_alt_grid==true
-    throw("The code for extending the altitude grid needs to be redone.")
-    # const alt = convert(Array, (0:2e5:200e5))
-    # n_current = get_ncurrent(initial_atm_file)
+    which_to_print = which_boundary_has_changed=="zmin" ? zmin : zmax
+    println("Adjusting the altitude grid. Note that you need to have made changes in MODEL_SETUP.jl.
+            The boundary which has changed is $(which_boundary_has_changed) and the new value is $(which_to_print).")
+    n_current = get_ncurrent(initial_atm_file)
 
-    # new_zmax = parse(Int64, input("Enter the new top of the atmosphere in km: "))
-    # extra_entries = Int64((new_zmax - (zmax / 1e5))/(dz/1e5))
+    # New zmin
+    if which_boundary_has_changed == "zmin"
+        # Get old zmin
+        old_zmin = h5read(initial_atm_file, "n_current/alt")[1] # first element is the zmin
+        extra_entries = Int64( (old_zmin - zmin) / dz)
 
-    # # Extend the grid
-    # for (k,v) in zip(keys(n_current), values(n_current))
-    #    append!(v, fill(v[end], extra_entries))  # repeats the last value in the array for the upper atmo as an initial value.
-    # end
+        # Extend the grid
+        for (k,v) in zip(keys(n_current), values(n_current))
+            if fillval=="zeros"
+                fillme = 0
+            elseif fillval=="nearest"
+                fillme = v[1]
+            end
+            prepend!(v, fill(fillme, extra_entries))  # repeats the last value in the array for the upper atmo as an initial value.
+        end
+    elseif which_boundary_has_changed == "zmax"
+        # Get old zmin
+        old_zmax = h5read(initial_atm_file, "n_current/alt")[end] # first element is the zmin
+        extra_entries = Int64( ((old_zmax - zmax) / dz) / 1e5 )
 
-    # const alt = convert(Array, (0:dz:new_zmax*1e5))
-    # const max_alt = new_zmax*1e5
+        # Extend the grid
+        for (k,v) in zip(keys(n_current), values(n_current))
+            if fillval=="zeros"
+                fillme = 0
+            elseif fillval=="nearest"
+                fillme = v[end]
+            end
+            append!(v, fill(fillme, extra_entries))  # repeats the last value in the array for the upper atmo as an initial value.
+        end
+    end
 elseif make_new_alt_grid==false 
     println("$(Dates.format(now(), "(HH:MM:SS)")) Loading atmosphere")
     n_current = get_ncurrent(initial_atm_file)
