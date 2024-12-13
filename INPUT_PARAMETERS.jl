@@ -19,8 +19,8 @@ const planet = "Mars"
 
 # Input and output files, directory
 # =======================================================================================================
-const results_dir = code_dir*"../Results_$(planet)/"
-const initial_atm_file = "$(planet)-Inputs/INITIAL_GUESS_VENUS_oUT0ZbGN.h5"  # File to use to initialize the atmosphere.
+const results_dir = code_dir*"../Results_$(planet)/RHAPS/Case3/" # RHAPS # CHANGE EACH TIME
+const initial_atm_file = "$(planet)-Inputs/INITIAL_GUESS_VENUS_RHAPS.h5"  # Special RHAPS atmosphere, from Case 1 sucess.
     # OPTIONS: 
     # INITIAL_GUESS_MARS.h5 --> Basic Mars starting file.
     # INITIAL_GUESS_MARS_bxz4YnHk.h5 --> A Mars atmosphere that includes N2O, NO2, and their ions;
@@ -33,8 +33,8 @@ const reaction_network_spreadsheet = code_dir*"$(planet)-Inputs/REACTION_NETWORK
 
 # Descriptive attributes of this model run
 # =======================================================================================================
-const optional_logging_note = "RHAPS case 1 - RHAPS spectrum / Mahieux2021 eddy diffusion / RHAPS-specific bcs for minors + standard CO2 density + add SO bc" # Brief summary of simulation goal
-const results_version = "v2"  # Helps keep track of attempts if you need to keep changing things
+const optional_logging_note = "RHAPS Case 3 / RHAPS spectrum / RHAPS bcs / standard CO2" # Brief summary of simulation goal
+const results_version = "v0"  # Helps keep track of attempts if you need to keep changing things
 
 # Set the modifiable atmospheric parameters
 # =======================================================================================================
@@ -69,7 +69,7 @@ const temp_scenario = "mean"  # Temperature selection for the seasonal model run
 # Solar case
 # -------------------------------------------------------------------
 const SZA = 60  # Puts the model at dayside mean. Enter in degrees please.
-const solar_scenario = "rhaps-case1" 
+const solar_scenario = "rhaps-case3" 
     # Solar scenario definition. You can choose from different planet-sun distances or parts of the solar cycle.
     # ORBITAL DISTANCE OPTIONS: "perihelion" #  "meansundist" # "aphelion"; these are defined at solar mean. 
     #     NOTE: these options are only available for Mars at present.

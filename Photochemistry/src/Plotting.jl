@@ -256,6 +256,163 @@ function plot_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, savepath::String, a
     end
 end
 
+function plot_atm_essential(n_current, vardict; species_posdict = Dict(:CO2=>[1e12,132], :O2=>[2.5e8,135], :O=>[1.3e8,200], :CO=>[5e11,98], :N2=>[1e12,119], :Ar=>[1.5e9,119], 
+                                                :H=>[1.1e6,247.5], :D=>[1e4,247.5], :Cl=>[1e4, 100], :HCl=>[1e5, 100], :SO2=>[1e5, 100], :H2SO4=>[1e5, 100],
+                                                :H2=>[7.0e4,247.5], :HD=>[1.6e3,247.5], 
+                                                #:H2O=>[1.1e9,105], :HDO=>[1e5,105],
+                                                :H2O=>[1.3e3,152], :HDO=>[1.3e3, 119],
+                                                :O2pl=>[7.5e4,140], :Opl=>[6.5e2,210], :CO2pl=>[0.45e4,161], :N2pl=>[1.2e1,149], :COpl=>[3.2e1,168],
+                                                :HCOpl=>[5e2,142], :DCOpl=>[1.1e-1,140],
+                                                :Hpl=>[8.5e1,247.5], :Dpl=>[2.05e-1,247.5],
+                                                :H2pl=>[2.6e-2, 247.5],
+                                                :OHpl=>[7e0,194], :ODpl=>[5e-2,183],),
+                                                neutral_range=[5e2, 8e15], ion_range=[1e-3, 5e5], globvars...
+    )
+
+    GV = values(globvars)
+    required =  [:plot_grid, :ion_species, ]
+    check_requirements(keys(GV), required)
+
+    rcParams = PyCall.PyDict(matplotlib."rcParams")
+    rcParams["mathtext.fontset"] = "custom"
+    plot_font = "Louis George Caf?" # "Gillius ADF" # "Arial" #
+    rcParams["mathtext.rm"] = plot_font
+    rcParams["mathtext.it"] = plot_font*", Italic"
+    rcParams["mathtext.bf"] = plot_font*", Bold"
+    rcParams["font.sans-serif"] = plot_font
+    rcParams["font.monospace"] = "FreeMono"
+    rcParams["font.size"] = 7
+    rcParams["axes.titlesize"] = 7
+    rcParams["axes.labelsize"]= 7
+    rcParams["xtick.labelsize"] = 7
+    rcParams["ytick.labelsize"] = 7
+    rcParams["lines.linewidth"] = 1
+    
+    # Load the 3 atmospheres
+    ncur = n_current
+
+    # set up the overall plot -------------------------------------------------------------
+    ncol = 2
+    nrow = 1
+    fig, ax = subplots(nrow, ncol, 
+        figsize=(6.277, 2.09), dpi=300,
+        gridspec_kw=Dict(
+            "width_ratios"=>[
+                log10(neutral_range[2])-log10(neutral_range[1]),
+                log10(ion_range[2])-log10(ion_range[1])], 
+            "wspace"=>0.03))
+    ax[1].set_xlabel(L"Neutral density (cm$^{-3}$)")
+    ax[2].set_xlabel(L"Ion density (cm$^{-3}$)")
+    
+    for a in ax
+        plot_bg(a)
+        a.tick_params(which="both", 
+            labeltop=false, top=true, 
+            labelbottom=true, bottom=true, 
+            labelleft=true, 
+            width=0.25, length=2, pad=2)
+        a.set_ylim(90, zmax/1e5)
+        a.set_yticks(100:25:250)
+        a.set_xscale("log")
+        a.xaxis.set_major_locator(matplotlib.ticker.LogLocator(base=10.0, numticks=18))
+        locmin = matplotlib.ticker.LogLocator(base=10.0,subs=(0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9),numticks=18)
+        a.xaxis.set_minor_locator(locmin)
+        a.tick_params(which="minor", length=1, color="0.5", width=0.25)
+    end
+    ax[1].set_ylabel("Altitude (km)")
+    ax[2].tick_params(which="both", labelleft=false, left=false)
+    
+    ax[1].set_xlim(neutral_range[1], neutral_range[2])
+    ax[2].set_xlim(ion_range[1], ion_range[2])
+    
+    # remove white gridline at 250 km  
+    ax[1].get_ygridlines()[end].set_visible(false)
+    ax[2].get_ygridlines()[end].set_visible(false)
+
+    # plot the neutrals ------------------------------------------------------------
+    species_to_plot = [# neutrals
+        :CO2, :O2, :O, :CO, :N2, :Ar, 
+        :H, :D, 
+        :H2, :HD, 
+        :H2O, :HDO,
+        :Cl, :HCl, 
+        :SO2, :H2SO4,
+        # ions
+        :O2pl, :Opl, :CO2pl, :N2pl, :COpl,
+        :HCOpl, :DCOpl,
+        :Hpl, :Dpl,
+        :H2pl,
+        :OHpl, :ODpl
+    ]
+    
+    if vardict["hrshortcode"] == "vGFd5b0a"
+        species_posdict[:D] = [2e4, 248.5]
+        species_posdict[:HD] = [3.25e3, 248.5]
+        species_posdict[:HDO] = [1.3e3, 121.5]
+        species_posdict[:DCOpl] = [2.5e-1, 142]
+        species_posdict[:Dpl] = [4.1e-1, 248.5]
+        species_posdict[:ODpl] = [1.4e-1, 194]
+        species_posdict[:H2pl] = [8.5e-2, 248.5]
+    end
+    if vardict["hrshortcode"] == "C7uHvSMt"
+        species_posdict[:D] = [1.8e4, 247.5]
+        species_posdict[:HD] = [1.05*3.25e3, 247.5]
+        species_posdict[:HCOpl] = [4.3e2, 140]
+        species_posdict[:HDO] = [1.05*1.3e3, 121.5]
+        species_posdict[:DCOpl] = [2.3e-1, 142]
+        species_posdict[:Dpl] = [4.0e-1, 247.5]
+        species_posdict[:ODpl] = [1.4e-1, 194]
+        species_posdict[:H2pl] = [0.83e-1, 247.5]
+        species_posdict[:O2pl] = [7.5e4,141]
+    end
+    
+    for species in species_to_plot
+        col = occursin("pl", string(species)) ? 2 : 1 # set column based on neutral or ion
+        lw = occursin("D", string(species)) ? 0.325 : 0.75  # set line width based on D-bearing
+        la = occursin("D", string(species)) ? 0.65 : 1  # set line width based on D-bearing
+
+        # style things
+        thiscolor = speciescolor[species] #get(speciescolor, species, dimcolor)
+        # if thiscolor == "#38e278" # recolor O2+ (too green)
+        #     thiscolor = "#51AD7B"
+        # end
+        # if thiscolor == "#33bbf9" # recolor HCO+ to match reaction rate plot
+        #     thiscolor = "#CE000B"# "#891E06" #"#e23209"
+        # end
+        this_zorder = 10
+
+        # Axes showing range of values
+        ax[col].plot(ncur[species], GV.plot_grid, 
+            color=thiscolor, linewidth=lw, alpha=la,
+            label=species, zorder=this_zorder)
+        if species in keys(species_posdict)
+            ax[col].text(species_posdict[species]..., string_to_latexstr(string(species)), 
+                color=thiscolor, alpha=la,
+                zorder=999,
+                size=7, va="top", ha="left")
+        end
+    end
+    
+    # plot electron density
+    E_prof = electron_density(n_current; e_profile_type="quasineutral", GV.ion_species, GV.non_bdy_layers);
+    ax[2].plot(convert(Array{Float64}, E_prof), GV.plot_grid, color="0.5", linewidth=0.75, dashes=(16,1), zorder=9, label=L"e$^-$")
+    ax[2].text(species_posdict[:e]..., L"e^{-}", 
+                color="0.5",
+                size=7, va="top", ha="left")
+
+    # label panels with "a" and "b"
+    ax[1].annotate("a", weight="bold", size=8,
+        xy=(1.0, 1.0), xycoords=ax[1].transAxes, 
+        xytext=(-3,-2), textcoords="offset points",
+        ha="right", va="top")
+    ax[2].annotate("b", weight="bold", size=8,
+        xy=(0.0, 1.0), xycoords=ax[2].transAxes, 
+        xytext=(3,-2), textcoords="offset points",
+        ha="left", va="top")
+    
+    return fig
+end
+
 function plot_bg(axob; bg="#ededed")
     #=
     Make plots not look ugly. 
@@ -1114,7 +1271,8 @@ function plot_temp_prof(Tprof_1; opt="", cols=[medgray, "xkcd:bright orange", "c
     end
 end
 
-function plot_tophot_lineandbar(atmdict, spreadsheet; N=5, savepath=nothing, draw_arrow=true, title=nothing, lower_ylim=125, globvars...) 
+function plot_tophot_lineandbar(atmdict, spreadsheet; N=5, savepath=nothing, draw_arrow=true, title=nothing, lower_ylim=125, xlims=[[1e-4, 2e1], [3e1, 4e7]],
+                                                      Htxt_loc=[0.8, 0.2], Dtxt_loc=[0.2, 0.5], escprobtxt_loc=[0.9, 0.9], globvars...) 
     #=
     Input:
         atmdict: Atmospheric state dictionary
@@ -1200,7 +1358,7 @@ function plot_tophot_lineandbar(atmdict, spreadsheet; N=5, savepath=nothing, dra
                       width=0.25, length=2, pad=2)
     ax[1].set_xlabel(L"Escaping atom production rate (cm$^{-3}$ s$^{-1}$)")
     ax[1].set_xscale("log")
-    ax[1].set_xlim(1e-4, 2e1) # H plot limits
+    ax[1].set_xlim(xlims[1]...) # H plot limits
     ax[1].xaxis.set_major_locator(matplotlib.ticker.LogLocator(base=10.0, numticks=10))
     locmin = matplotlib.ticker.LogLocator(base=10.0,subs=(0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9), numticks=10)
     ax[1].xaxis.set_minor_locator(locmin)
@@ -1222,14 +1380,14 @@ function plot_tophot_lineandbar(atmdict, spreadsheet; N=5, savepath=nothing, dra
     D_colororder_dark = []
     # Plot the H reactions
     for row in eachrow(total_hot_H)[1:N]
-        thiscol = get(mike_reaction_colors, row.Rxn, "#000")
+        thiscol = get(mike_reaction_colors, row.Rxn, "#666")
         push!(H_colororder, thiscol)
-        ax[1].plot(H_prod_by_alt_df[!, row.Rxn], GV.plot_grid, label=row.Rxn, linewidth=0.5, color=thiscol)
+        ax[1].plot(H_prod_by_alt_df[!, row.Rxn], GV.plot_grid, label=row.Rxn, linewidth=0.6, color=thiscol)
     end
 
     # And the D reactions
     for row in eachrow(total_hot_D)[1:N]
-        thiscol =  get(mike_reaction_colors, row.Rxn, "#000")
+        thiscol =  get(mike_reaction_colors, row.Rxn, "#666")
         push!(D_colororder, thiscol)
 
         ax[1].plot(D_prod_by_alt_df[!, row.Rxn], GV.plot_grid, label=row.Rxn, linewidth=0.325, alpha=0.65, 
@@ -1254,7 +1412,7 @@ function plot_tophot_lineandbar(atmdict, spreadsheet; N=5, savepath=nothing, dra
     plot_bg(ax[2])
     ax[2].tick_params(which="both", left=false, labelleft=false, top=true,
                       width=0.25, length=2, pad=2)
-    ax[2].set_xlim(3e1, 4e7)
+    ax[2].set_xlim(xlims[2]...)
     ax[2].set_xscale("log")
     ax[2].xaxis.set_major_locator(matplotlib.ticker.LogLocator(base=10.0, numticks=10))
     locmin = matplotlib.ticker.LogLocator(base=10.0,subs=(0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9),numticks=10)
@@ -1290,15 +1448,15 @@ function plot_tophot_lineandbar(atmdict, spreadsheet; N=5, savepath=nothing, dra
     ax[2].set_xlabel(L"H & D Escape flux (cm$^{-2}$ s$^{-1}$)")
     
     # Label H and D
-    ax[1].text(5e-4, 166, "D-producing", weight="light", alpha=0.65, size=7)
-    ax[1].text(2e-1, 130, "H-producing", weight="normal", size=7)
-    ax[1].text(1.0, 248, "escape\nprobability\n(unitless)", color=esc_prob_color, size=7, va="top")
+    ax[1].text(Dtxt_loc..., "D-producing", weight="light", alpha=0.65, size=7, transform=ax[1].transAxes)
+    ax[1].text(Htxt_loc..., "H-producing", weight="normal", size=7, transform=ax[1].transAxes)
+    ax[1].text(escprobtxt_loc..., "escape\nprobability\n(unitless)", color=esc_prob_color, size=7, va="top", transform=ax[1].transAxes)
     
     # draw a line from the HCO+ loss curve to the label
     if draw_arrow
         ax[1].annotate(text="", 
-                       xy=(0.8e-1,0.85), xycoords=ax[2].transData,
-                       xytext=(3e0,172), textcoords=ax[1].transData,
+                       xy=(0.3e-1, 0.9), xycoords=ax[2].transData, # end of arrow
+                       xytext=(0.855, 0.25), textcoords=ax[1].transAxes, # star tof arrow
                        arrowprops=Dict("width"=>0.5, "lw"=>0.0, "color"=>"#E23209", "headwidth"=>2.5, "headlength"=>2.5),
                        annotation_clip=false)
     end
@@ -1320,7 +1478,7 @@ function plot_tophot_lineandbar(atmdict, spreadsheet; N=5, savepath=nothing, dra
     if savepath==nothing
         show()
     else
-        savefig(savepath*"top_hot_producing_mechanisms.png", bbox_inches="tight", dpi=300)
+        savefig(savepath*"top_hot_producing_mechanisms.png", fmt="png", bbox_inches="tight", dpi=300)
     end
     show()
 end
