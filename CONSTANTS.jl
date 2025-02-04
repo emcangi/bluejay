@@ -113,8 +113,7 @@ const molmass = Dict(:H=>1, :Hpl=>1,
 =#
 const diameters = Dict(# I think I want these in cm
 
-                # Simple molecules from Breck, D. W. Zeolite Molecular Sieves: Structure, Chemistry and Use.
-                # John Wiley & Sons, Inc.: New York, 1974.
+                # Simple molecules from Breck, D. W. Zeolite Molecular Sieves: Structure, Chemistry and Use. John Wiley & Sons, Inc.: New York, 1974.
                 :H2=> 2.89e-8, :O2=>3.46e-8, :N2=>3.64e-8, :CO=>3.76e-8, :CO2 => 3.30e-8,
 
     )
