@@ -990,20 +990,25 @@ const hot_HD_rc_funcs = Dict([rxn => mk_function(:((Tn, Ti, Te, M) -> $(rxn[3]))
 #===============================================================================#
 if make_new_alt_grid==true
     throw("The code for extending the altitude grid needs to be redone.")
-    # const alt = convert(Array, (0:2e5:200e5))
-    # n_current = get_ncurrent(initial_atm_file)
+    
+#     n_current = get_ncurrent(initial_atm_file)
 
-    # new_zmax = parse(Int64, input("Enter the new top of the atmosphere in km: "))
-    # extra_entries = Int64((new_zmax - (zmax / 1e5))/(dz/1e5))
+#     # new_zmin = parse(Int64, input("Enter the new top of the atmosphere in km: "))
+#     new_zmin = 70
+#     extra_entries = Int64(((zmin / 1e5)- new_zmin )/(dz/1e5))
 
-    # # Extend the grid
-    # for (k,v) in zip(keys(n_current), values(n_current))
-    #    append!(v, fill(v[end], extra_entries))  # repeats the last value in the array for the upper atmo as an initial value.
-    # end
-
-    # const alt = convert(Array, (0:dz:new_zmax*1e5))
-
-    # const max_alt = new_zmax*1e5
+#     # Extend the grid
+#     for (k,v) in zip(keys(n_current), values(n_current))
+#        # prepend!(v, fill(v[1], extra_entries))  # repeats the last value in the array for the upper atmo as an initial value.
+#         prepend!(v, fill(v[1], 10))
+    
+#     end
+#     println("previous length of alt  ", length(alt))
+#     const alt = convert(Array, (new_zmin*1e5:dz:zmax))
+#     println( "new length of alt  ", length(alt))
+    
+#     const min_alt = new_zmin*1e5
+#     println("the new alt", length(alt))
 end
 
 #                        Load starting atmosphere                               #
