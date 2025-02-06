@@ -1400,12 +1400,16 @@ and bottom of the atmosphere.
 
 function binary_dcoeff_inCO2(sp, T)
     #=
-    Calculate the bindary diffusion coefficient for species sp, AT^s.
+    Calculate the bindary diffusion coefficient for species sp, b = AT^s.
 
     Currently, this is set up to only work for diffusion through CO2 since that's the Mars atm.
     Could be extended to be for any gas, but that will require some work.
     =#
-    return diffparams(sp)[1] .* 1e17 .* T .^ (diffparams(sp)[2])
+    
+    A = diffparams(sp)[1] .* 1e17 # Empirical parameter (determined it by experiment)
+    s = (diffparams(sp)[2]) # Empirical parameter (det. by exp.)
+    b = A .* T .^ s # T = temperature
+    return b
 end
 
 function boundaryconditions(fluxcoef_dict, atmdict, M; nonthermal=true, globvars...)
@@ -1672,10 +1676,8 @@ function Dcoef!(D_arr, T_arr, sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncu
     if GV.use_molec_diff==true
         # Calculate as if it was a neutral - not using function above because this is faster than going into 
         # the function and using an if/else block since we know we'll always have vectors in this case.
+        # This equation is: D = b/n 
         D_arr[:] .= (binary_dcoeff_inCO2(sp, T_arr)) ./ n_tot(atmdict; GV.all_species, GV.n_alt_index)
-        if (GV.use_ambipolar==false) & (charge_type(sp)=="ion")# temporarily disallow molecular diffusion for ions
-            D_arr[:] .= 0
-        end
     else
         D_arr[:] .= 0 
     end
