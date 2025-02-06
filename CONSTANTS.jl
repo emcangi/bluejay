@@ -51,9 +51,6 @@ const polarizability = Dict(# Values available from experiment
 
                             # Assumed same as non-excited version
                             :Nup2D=>1.710e-24, 
-
-                            # IONS! Because we should include sum over ions per Garcia Munoz 2007.
-                            #:H2pl=>4.69e-25, 
                             )
 
 const molmass = Dict(:H=>1, :Hpl=>1, 

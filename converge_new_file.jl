@@ -491,7 +491,7 @@ function converge(n_current::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_start, lo
                                    :plot_grid, :polarizability, :q, :reaction_network, :season_length_in_sec, :sol_in_sec, :solarflux, :speciesbclist, :speciescolor, :speciesstyle, 
                                    :Te, :Ti, :Tn, :Tp, :timestep_type, :Tprof_for_diffusion, :upper_lower_bdy_i, :zmax])
     
-    # A combination of log timesteps when simulation time is low, and linear after
+    # A combination of log timesteps when simulation time is low, and linear after - used to simulate a single season, mainly.
     if GV.timestep_type=="log-linear"
         println("Using a combo of log and linear timesteps")
         log_timesteps = 10. .^(range(log_t_start, stop=log_t_end, length=GV.n_steps));
@@ -1333,7 +1333,7 @@ const set_concentration_arglist_typed = [:($s::ftype_chem) for s in set_concentr
         
         # This section calculates the net change but arranges entries by size, so we don't have floating point errors.
         for r in 1:size(result,1)
-            net_chem_change[r] = subtract_difflength(sort(result[r, :][1], rev=true), sort(result[r, :][2], rev=true))
+            net_chem_change[r] = subtract_difflength(sort(result[r, :][1], rev=true), sort(result[r, :][2], rev=true)) # Production - Loss from chemistry.
             net_trans_change[r] = subtract_difflength(sort(result[r, :][3], rev=true), sort(result[r, :][4], rev=true))
         end
 
@@ -1346,6 +1346,13 @@ end
 
 @eval begin
     function check_zero_distance($(set_concentration_arglist_typed...))
+        #=
+        This has to do with checking how far the given solution for a particular timestpe is from zero in the
+        n-dimensional phase space where n is the number of species (I think??). It was used to help find
+        when the model was finding "good" solutions to help with error tolerances.
+        It's currently not used.
+        But it's still here. Documenting now before I really forget it all
+        =#
 
         # M = $Mexpr
         # E = $Eexpr

@@ -289,7 +289,7 @@ if planet=="Mars"
                            "everywhere"=>Dict("standard"=>1.3e-4, "high"=>1.3e-4, "low"=>1.3e-4))
     const water_mixing_ratio = water_MRs[water_loc][water_case]
 elseif planet=="Venus"
-    const water_mixing_ratio = Dict("standard"=>1e-6)[water_case]  # parse(Float64, water_case) 
+    const water_mixing_ratio = Dict("standard"=>1e-6)[water_case]
 
     # SPECIAL: Crazy water Mahieux & Viscardy 2024
     if venus_special_water
