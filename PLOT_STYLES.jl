@@ -23,7 +23,7 @@ sansserif_choice = "Louis George Caf?"
 monospace_choice = "FreeMono"
 
 const speciescolor = Dict( # PRIMARY NEUTRALS + IONS
-                    :CO2 =>"#000000", :CO2pl=>"#000000",
+                    :CO2 =>"#333", :CO2pl=>"#333",
                     :CO =>"#ff6600", :COpl=>"#ff6600",
                     :N2=>"#aaaaaa", :N2pl=>"#aaaaaa", :Nup2D=>"#aaa",
                     :Ar=>"#808080", :Arpl=>"#808080", :ArHpl=>"#956979", :ArDpl=>"#956979",
