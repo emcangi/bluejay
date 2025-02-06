@@ -1260,7 +1260,8 @@ function T_Mars(Tsurf, Tmeso, Texo; lapserate=-1.4e-5, z_meso_top=108e5, weird_T
     return Dict("neutrals"=>NEUTRALS(), "ions"=>IONS(), "electrons"=>ELECTRONS())
 end 
 
-function T_Venus(Tsurf::Float64, Tmeso::Float64, Texo::Float64, file_for_interp; z_meso_top=80e5, lapserate=-8e-5, weird_Tn_param=8, globvars...)
+# function T_Venus(Tsurf::Float64, Tmeso::Float64, Texo::Float64, file_for_interp; z_meso_top=80e5, lapserate=-8e-5, weird_Tn_param=8, globvars...) # this is what Eryn had initially. This ment I needed to find temp values for 80 to 90km but thoses values didn't connect nicly with the temp at T_meso_top so instead i set T_meso_top to 90km
+function T_Venus(Tsurf::Float64, Tmeso::Float64, Texo::Float64, file_for_interp; z_meso_top=88e5, lapserate=-8e-5, weird_Tn_param=8, globvars...)
     #= 
     Input:
         z: altitude above surface in cm
@@ -1292,33 +1293,40 @@ function T_Venus(Tsurf::Float64, Tmeso::Float64, Texo::Float64, file_for_interp;
     function NEUTRALS(new_a)
         Tn = zeros(size(GV.alt))
 
-        Tn[i_lower] .= Tsurf .+ lapserate*GV.alt[i_lower]
-        Tn[i_meso] .= Tmeso
-
-        # upper atmo
         Tfile = readdlm(file_for_interp, ',')
         T_n = Tfile[2,:]
         alt_i = Tfile[1,:] .* 1e5
         interp_ion = LinearInterpolation(alt_i, T_n)
         Tn_interped = [interp_ion(a) for a in new_a];
-        Tn[i_upper] .= Tn_interped # upper_atmo_neutrals(GV.alt[i_upper])
 
+        Tn_interped_upper = Tn_interped[findall( x -> x > z_meso_top , interp_alts)]
+        # Tn_interped_meso = Tn_interped[findall(z->z_meso_bottom <= z <= z_meso_top, interp_alts)] # there is large shift in the temp from t_meso_bottom to t_lower_top when I interpolate the meso temperatures, so it is called out untill I can find a fix for it.
+
+        Tn[i_lower] .= Tsurf .+ lapserate*GV.alt[i_lower]
+        Tn[i_meso] .= Tmeso
+        # Tn[i_meso] .= Tn_interped_meso
+        Tn[i_upper] .= Tn_interped_upper # upper_atmo_neutrals(GV.alt[i_upper])
+        
         return Tn 
+        
     end 
 
     function ELECTRONS(new_a; spc="electron") 
         Te = zeros(size(GV.alt))
 
-        Te[i_lower] .= Tsurf .+ lapserate*GV.alt[i_lower]
-        Te[i_meso] .= Tmeso
-
-        # Upper atmo
         Tfile = readdlm(file_for_interp, ',')
         T_e = Tfile[4,:]
         alt_e = Tfile[1,:] .* 1e5
         interp_elec = LinearInterpolation(alt_e, T_e)
         Te_interped = [interp_elec(a) for a in new_a];
-        Te[i_upper] .= Te_interped
+
+        Te_interped_upper = Te_interped[findall( x -> x > z_meso_top , interp_alts)]
+        # Te_interped_meso = Te_interped[findall(z->z_meso_bottom <= z <= z_meso_top, interp_alts)] # there is large shift in the temp from t_meso_bottom to t_lower_top when I interpolate the meso temperatures, so it is called out untill I can find a fix for it.
+
+        Te[i_lower] .= Tsurf .+ lapserate*GV.alt[i_lower]
+        Te[i_meso] .= Tmeso
+        # Te[i_meso] .= Te_interped_meso
+        Te[i_upper] .= Te_interped_upper
 
         return Te
     end
@@ -1326,16 +1334,19 @@ function T_Venus(Tsurf::Float64, Tmeso::Float64, Texo::Float64, file_for_interp;
     function IONS(new_a; spc="ion") 
         Ti = zeros(size(GV.alt))
 
-        Ti[i_lower] .= Tsurf .+ lapserate*GV.alt[i_lower]
-        Ti[i_meso] .= Tmeso
-
-        # Upper atmo
         Tfile = readdlm(file_for_interp, ',')
         T_i = Tfile[3,:]
         alt_i = Tfile[1,:] .* 1e5
         interp_ion = LinearInterpolation(alt_i, T_i)
         Ti_interped = [interp_ion(a) for a in new_a];
-        Ti[i_upper] .= Ti_interped
+
+        Ti_interped_upper = Ti_interped[findall( x -> x > z_meso_top , interp_alts)]
+        # Ti_interped_meso = Ti_interped[findall(z->z_meso_bottom <= z <= z_meso_top, interp_alts)]# there is large shift in the temp from t_meso_bottom to t_lower_top when I interpolate the meso temperatures, so it is called out untill I can find a fix for it.
+
+        Ti[i_lower] .= Tsurf .+ lapserate*GV.alt[i_lower]
+        Ti[i_meso] .= Tmeso
+        # Ti[i_meso] .= Ti_interped_meso
+        Ti[i_upper] .= Ti_interped_upper
 
         return Ti
     end
@@ -1350,7 +1361,12 @@ function T_Venus(Tsurf::Float64, Tmeso::Float64, Texo::Float64, file_for_interp;
     # i_meso_top = findfirst(z->z==z_meso_top, GV.alt)
 
     # For interpolating upper atmo temperatures from Fox & Sung 2001 - only from 90 km up
-    interp_alts = collect(90e5:GV.alt[2]-GV.alt[1]:GV.alt[end])
+    # interp_alts = collect(90e5:GV.alt[2]-GV.alt[1]:GV.alt[end])
+    if GV.alt[1] > z_meso_top
+        interp_alts = collect(GV.alt[1]:GV.alt[2]-GV.alt[1]:GV.alt[end])
+    elseif GV.alt[1] <= z_meso_top       
+        interp_alts = collect((z_meso_top+(GV.alt[2]-GV.alt[1])):GV.alt[2]-GV.alt[1]:GV.alt[end])
+    end
 
     return Dict("neutrals"=>NEUTRALS(interp_alts), "ions"=>IONS(interp_alts), "electrons"=>ELECTRONS(interp_alts))
 end
@@ -1398,14 +1414,24 @@ These coefficients then describe the diffusion velocity at the top
 and bottom of the atmosphere.
 =#
 
-function binary_dcoeff_inCO2(sp, T)
+function binary_dcoeff_inCO2(sp, T, globvars...)
     #=
     Calculate the bindary diffusion coefficient for species sp, AT^s.
 
     Currently, this is set up to only work for diffusion through CO2 since that's the Mars atm.
     Could be extended to be for any gas, but that will require some work.
     =#
-    return diffparams(sp)[1] .* 1e17 .* T .^ (diffparams(sp)[2])
+
+    # GV = values(globvars)
+    # required = [:all_species, :speciesbclist, :dz, :planet, :molmass]  #I still need to figure out what is requires and make this whole thing
+    # check_requirements(keys(GV), required)
+    
+    # Vapor_mean_free_path = "something"
+    
+
+
+    
+    return diffparams(sp)[1] .* 1e17 .* T .^ (diffparams(sp)[2]) # this is b = AT^s: I can use Zhang 2012 to get an equation to calculate b differently 
 end
 
 function boundaryconditions(fluxcoef_dict, atmdict, M; nonthermal=true, globvars...)
