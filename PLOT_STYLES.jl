@@ -17,7 +17,7 @@
 # ***************************************************************************************************** #
 
 # Sans-serif font to use 
-sansserif_choice = "Louis George Caf?"
+sansserif_choice = "Arial"
 
 # Monospace font to use
 monospace_choice = "FreeMono"
@@ -64,7 +64,14 @@ const speciescolor = Dict( # PRIMARY NEUTRALS + IONS
                     :NO2=>"#a492e5", :NO2pl=>"#a492e5",  
                     :N2Hpl=>"#611115",:N2Dpl=>"#611115",
                     :HCl=>"#1F540F", :Cl=>"#2EE4EC", :ClO=>"#EEEA0C", :ClCO=>"#EDAC0D", :DCl=>"#DC8181", :Cl2=>"#89FAD6",
-                    :S=>"#FF3232", :SO=>"#E8C3FF", :SO2=>"#74B18C", :SO3=>"#C9FF55", :H2SO4=>"#542D5B", :HDSO4=>"#ACFF93"
+                    :S=>"#FF3232", :SO=>"#E8C3FF", :SO2=>"#74B18C", :SO3=>"#C9FF55", :H2SO4=>"#542D5B", :HDSO4=>"#ACFF93",
+   
+    #place holder numbers for post REU Cl and S species except for Cl2 which wass already writen above
+    :ClNO=>"#FF3232", :COCl2=>"#FF3232", :ClCO3=>"#FF3232", :ClO2=>"#FF3232", :SCl=>"#FF3232", :SCl2=>"#FF3232", :SO2Cl2=>"#FF3232",
+    :OSCl=>"#FF3232", :ClSO2=>"#FF3232", 
+    :SNO=>"#FF3232", :S2=>"#FF3232", 
+    :S3=>"#FF3232", :S2O=>"#FF3232",:S2O2=>"#FF3232", :OCS=>"#FF3232", :HSO3=>"#FF3232", :DSO3=>"#FF3232", :HO2NO2=>"#FF3232", :DO2NO2=>"#FF3232",
+    :S2Cl2=>"#FF3232", :ClS2=>"#FF3232",
                     );
 
 # NOTE: Some code is repeated here below, also occurring in get_deuterated, to figure out which species are deuterated. 
