@@ -60,13 +60,10 @@ const polarizability = Dict(# Values available from experiment
                             :DCO=>2.505e-24, :DO2=>1.858e-24, :DOCO=>3.224e-24, :HDO2=>2.143e-24, :O1D=>0.802e-24, 
                             :HDSO4=>5.533e-24, :DSO3=>5.121e-24, :DO2NO2=>4.734e-24,
                             # Assumed same as non-excited version
-                            :Nup2D=>1.710e-24, 
+                            :Nup2D=>1.710e-24,
 
-                            # placeholder for new Cl and S speices post REU  that didn't have calculations
-                            :ClCO3=>4.297e-24, :ClSO2=>4.297e-24, :SNO=>4.297e-24,  :S2O2=>4.297e-24, 
-
-                            # IONS! Because we should include sum over ions per Garcia Munoz 2007.
-                            #:H2pl=>4.69e-25, 
+                            # placeholder for new Cl and S speices post REU that didn't have calculations
+                            :ClCO3=>4.297e-24, :ClSO2=>4.297e-24, :SNO=>4.297e-24, :S2O2=>4.297e-24, 
                             )
 
 const molmass = Dict(:H=>1, :Hpl=>1, 

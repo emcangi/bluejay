@@ -70,8 +70,6 @@ include(paramfile)
 # Perform the rest of the model set up
 include("MODEL_SETUP.jl")
 
-# Plot styles
-include("PLOT_STYLES.jl")
 
 # **************************************************************************** #
 #                                                                              #
@@ -79,6 +77,7 @@ include("PLOT_STYLES.jl")
 #                                                                              #
 # **************************************************************************** #
 
+include("PLOT_STYLES.jl")
 set_rc_params(sansserif=sansserif_choice, monospace=monospace_choice)
 
 # **************************************************************************** #
@@ -492,7 +491,7 @@ function converge(n_current::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_start, lo
                                    :plot_grid, :polarizability, :q, :reaction_network, :season_length_in_sec, :sol_in_sec, :solarflux, :speciesbclist, :speciescolor, :speciesstyle, 
                                    :Te, :Ti, :Tn, :Tp, :timestep_type, :Tprof_for_diffusion, :upper_lower_bdy_i, :zmax])
     
-    # A combination of log timesteps when simulation time is low, and linear after
+    # A combination of log timesteps when simulation time is low, and linear after - used to simulate a single season, mainly.
     if GV.timestep_type=="log-linear"
         println("Using a combo of log and linear timesteps")
         log_timesteps = 10. .^(range(log_t_start, stop=log_t_end, length=GV.n_steps));
@@ -986,35 +985,58 @@ const hot_D_rc_funcs = Dict([rxn => mk_function(:((Tn, Ti, Te, M) -> $(rxn[3])))
 const hot_H2_rc_funcs = Dict([rxn => mk_function(:((Tn, Ti, Te, M) -> $(rxn[3]))) for rxn in hot_H2_network]);
 const hot_HD_rc_funcs = Dict([rxn => mk_function(:((Tn, Ti, Te, M) -> $(rxn[3]))) for rxn in hot_HD_network]);
 
-#                          Change the vertical extent                           #
+#           Load starting atmosphere; change alt grid if requested              #
 #===============================================================================#
 if make_new_alt_grid==true
     throw("The code for extending the altitude grid needs to be redone.")
     
-#     n_current = get_ncurrent(initial_atm_file)
+    n_current = get_ncurrent(initial_atm_file)
 
-#     # new_zmin = parse(Int64, input("Enter the new top of the atmosphere in km: "))
-#     new_zmin = 70
-#     extra_entries = Int64(((zmin / 1e5)- new_zmin )/(dz/1e5))
+    # new_zmin = parse(Int64, input("Enter the new top of the atmosphere in km: "))
+    # new_zmax = parse(Int64, input("Enter the new top of the atmosphere in km: "))
+    new_zmin = zmin / 1e5 # change the value of new_zmin writen here to the desired value in km if you want to lower the grid
+    new_zmax = zmax / 1e5 # change the value of new_zmax writen here to the desired value in km if you want to raise the grid
+    extra_entries_to_lower = Int64(abs((zmin / 1e5)- new_zmin )/(dz/1e5))
+    extra_entries_to_raise = Int64(abs((zmax / 1e5)- new_zmax )/(dz/1e5))
 
-#     # Extend the grid
-#     for (k,v) in zip(keys(n_current), values(n_current))
-#        # prepend!(v, fill(v[1], extra_entries))  # repeats the last value in the array for the upper atmo as an initial value.
-#         prepend!(v, fill(v[1], 10))
+    # Extend the grid
+    for (k,v) in zip(keys(n_current), values(n_current))
+       prepend!(v, fill(v[1], extra_entries_to_lower))  # repeats the first value in the array for the upper atmo as an initial value to extend the grid 
+                                                          #  downwards. 
+       append!(v, fill(v[end], extra_entries_to_raise)) # repeats the last value in the array for the upper atmo as an initial value for extending the  
+                                                          # grid upwards.
+    end
     
-#     end
-#     println("previous length of alt  ", length(alt))
-#     const alt = convert(Array, (new_zmin*1e5:dz:zmax))
-#     println( "new length of alt  ", length(alt))
+    println("previous length of alt:  ", length(alt))
+    const alt = convert(Array, (new_zmin*1e5:dz:new_zmax*1e5))
+    println( "new length of alt:  ", length(alt))
+
+    const zmin = new_zmin*1e5
+    const min_alt = new_zmin*1e5
+    const zmax = new_zmax*1e5
+    const max_alt = new_zmax*1e5
     
-#     const min_alt = new_zmin*1e5
-#     println("the new alt", length(alt))
+elseif make_new_alt_grid==false 
+    println("$(Dates.format(now(), "(HH:MM:SS)")) Loading atmosphere")
+    n_current = get_ncurrent(initial_atm_file)
 end
 
-#                        Load starting atmosphere                               #
+
+#                 Set the boundary altitude below which water is fixed          #
 #===============================================================================#
-println("$(Dates.format(now(), "(HH:MM:SS)")) Loading atmosphere")
-n_current = get_ncurrent(initial_atm_file)
+
+H2Osatfrac = H2Osat ./ map(z->n_tot(n_current, z; all_species, n_alt_index), alt)  # get SVP as fraction of total atmo
+const upper_lower_bdy = alt[something(findfirst(isequal(minimum(H2Osatfrac)), H2Osatfrac), 0)] # in cm
+const upper_lower_bdy_i = n_alt_index[upper_lower_bdy]  # the uppermost layer at which water will be fixed, in cm
+# Control whether the removal of rates etc at "Fixed altitudes" runs. If the boundary is 
+# the bottom of the atmosphere, we shouldn't do it at all.
+const remove_rates_flag = true
+if upper_lower_bdy == zmin
+    const remove_rates_flag = false 
+end
+# Add these to the logging dataframes
+push!(PARAMETERS_ALT_INFO, ("upper_lower_bdy", upper_lower_bdy, "cm", "Altitude at which water goes from being fixed to calculated"));
+push!(PARAMETERS_ALT_INFO, ("upper_lower_bdy_i", upper_lower_bdy_i, "", "Index of the line above within the alt grid"));
 
 
 #                       Establish new species profiles                          #
@@ -1325,7 +1347,7 @@ const set_concentration_arglist_typed = [:($s::ftype_chem) for s in set_concentr
         
         # This section calculates the net change but arranges entries by size, so we don't have floating point errors.
         for r in 1:size(result,1)
-            net_chem_change[r] = subtract_difflength(sort(result[r, :][1], rev=true), sort(result[r, :][2], rev=true))
+            net_chem_change[r] = subtract_difflength(sort(result[r, :][1], rev=true), sort(result[r, :][2], rev=true)) # Production - Loss from chemistry.
             net_trans_change[r] = subtract_difflength(sort(result[r, :][3], rev=true), sort(result[r, :][4], rev=true))
         end
 
@@ -1338,6 +1360,13 @@ end
 
 @eval begin
     function check_zero_distance($(set_concentration_arglist_typed...))
+        #=
+        This has to do with checking how far the given solution for a particular timestpe is from zero in the
+        n-dimensional phase space where n is the number of species (I think??). It was used to help find
+        when the model was finding "good" solutions to help with error tolerances.
+        It's currently not used.
+        But it's still here. Documenting now before I really forget it all
+        =#
 
         # M = $Mexpr
         # E = $Eexpr
@@ -1465,15 +1494,6 @@ const crosssection = populate_xsect_dict(photochem_data_files, xsecfolder; ion_x
 # **************************************************************************** #
 solarflux = readdlm(code_dir*solarfile,'\t', Float64, comments=true, comment_char='#')[1:2000,:]
 solarflux[:,2] = solarflux[:,2] * cosd(SZA)  # Adjust the flux according to specified SZA
-
-lambdas = Float64[]
-for j in Jratelist, ialt in 1:length(alt)
-    global lambdas = union(lambdas, crosssection[j][ialt][:,1])
-end
-
-if !(setdiff(solarflux[:,1],lambdas)==[])
-    throw("Solar flux wavelengths don't match cross section wavelengths!")
-end
 
 # pad all cross-sections to solar
 for j in Jratelist, ialt in 1:length(alt)

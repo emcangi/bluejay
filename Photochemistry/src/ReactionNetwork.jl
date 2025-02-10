@@ -533,7 +533,8 @@ function format_neutral_network(reactions_spreadsheet, used_species; saveloc=not
     @assert all(x->x>=0, n_table."k0A")
     
     # Get all the counts of each type 
-    counts = Dict([i=>count(x->x==i, n_table[:, "type"]) for i in 1:6])
+    # counts = Dict([i=>count(x->x==i, n_table[:, "type"]) for i in 1:6])
+        counts = Dict([i=>count(x->x==i, n_table[:, "type"]) for i in 1:7])
 
     n = 1 # Keeps track of iteration, since some counts may be 0.
 
@@ -606,6 +607,16 @@ function format_neutral_network(reactions_spreadsheet, used_species; saveloc=not
         n += 1
     end
 
+    for i in n:n+counts[7]-1 # Type 7: This is Simon making a note, ClCO3 was given a weird reaction in Yung and Demore 1982 so a type 7 reaction was added 
+                             # to include it
+        @assert n_table[i, "type"]==7
+        reactants = [Symbol(j) for j in filter!(j->j!="none", [n_table[i, "R1"], n_table[i, "R2"], n_table[i, "R3"]])]
+        products = [Symbol(j) for j in filter!(j->j!="none", [n_table[i, "P1"], n_table[i, "P2"], n_table[i, "P3"]])]
+        neutral_network[i] = [reactants, products, make_k_for_ClCO3(n_table[i, "kA"], n_table[i, "kB"], n_table[i, "kC"], "Tn", n_table[i, "M2"],
+                              n_table[i, "M1"], n_table[i, "pow"], n_table[i, "BR"])]
+        n += 1
+    end 
+    
     return neutral_network
 end
 
@@ -835,6 +846,20 @@ function troe_expr(k0, kinf, F)
     FF = :(10 .^ (($(outer_numer)) ./ ($(outer_denom))))
     return FF
 end
+
+function make_k_for_ClCO3(A, B, C, T::String, M2, M1, pow, BR)
+    #= the reaction rate for ClCO3 is not too dissimilar from the usual type 2 reaction.
+    it goes by A * e^(C/T) / (1*10^(17) + 0.05M)
+    It is like type 2 but has the extra term in the denominator
+    =#
+    k = make_k_expr(A, B, C, T::String, M2, M1, pow, BR)
+    k_ClCO3 = :($(k) ./ (1e17 .+ 0.05 .* M))
+    println( "this is the k expression for ClCO3   ", k_ClCO3)
+    return k_ClCO3
+end
+    
+
+    
 
 #                        Functions to calculate enthalpies                      #
 #                                                                               #

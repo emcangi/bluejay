@@ -98,7 +98,7 @@ function get_volume_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}};
         species_role: whether to look for the species as a "reactant", "product", or "both".  If it has a value, so must species.
         which: "all", "Jrates", "krates". Whether to fill the dictionary with all reactions, only photochemistry/photoionization 
                (Jrates) or only chemistry (krates).
-       remove_sp_density: if set to true, the density of sp will be removed from the calculation k[sp][B][C].... Useful for chemical lifetimes.
+        remove_sp_density: if set to true, the density of sp will be removed from the calculation k[sp][B][C].... Useful for chemical lifetimes.
     Output: 
         rxn_dat: Evaluated rates, i.e. k[A][B], units #/cm^3/s for bimolecular rxns
         rate_coefs: Evaluated rate coefficients for each reaction 
@@ -307,25 +307,27 @@ function diffusion_timescale(s::Symbol, T_arr::Array, atmdict; globvars...)
     =#
     
     GV = values(globvars)
-    required = [:all_species, :alt, :molmass, :n_alt_index, :neutral_species, :polarizability, :planet, :q, :speciesbclist, :use_ambipolar, :use_molec_diff]
+    required = [:all_species, :alt, :molmass, :M_P, :n_alt_index, :neutral_species, :polarizability, :planet, :q, :R_P, 
+                :speciesbclist, :use_ambipolar, :use_molec_diff]
     check_requirements(keys(GV), required)
 
     # Get diffusion coefficient array template
     Dcoef_template = zeros(size(T_arr)) 
 
     # Other stuff
-    Hs = scaleH(GV.alt, s, T_arr; globvars...)
-    ncur_with_bdys =  ncur_with_boundary_layers(atmdict; GV.all_species, GV.n_alt_index)
+    ncur_with_bdys = ncur_with_boundary_layers(atmdict; GV.all_species, GV.n_alt_index)
     
     # Molecular diffusion timescale: H_s^2 / D, scale height over diffusion constant
+    Hs = scaleH(GV.alt, s, T_arr; globvars...)
     D = Dcoef!(Dcoef_template, T_arr, s, ncur_with_bdys; globvars...)
     molec_or_ambi_timescale = (Hs .^ 2) ./ D
    
     # Eddy timescale... this was in here only as scale H... 
-    K = Keddy(alt, n_tot(ncur_with_bdys; GV.all_species, GV.molmass); globvars...) 
-    eddy_timescale = (Hs .^ 2) ./ K
+    H0 = scaleH(ncur_with_bdys, T_arr; globvars...)
+    K = Keddy(GV.alt, n_tot(ncur_with_bdys; GV.all_species); globvars...)
+    eddy_timescale = (H0 .^ 2) ./ K
 
-    # Combined timescale?!??
+    # Combined timescale
     combined_timescale = (Hs .^ 2) ./ (K .+ D)
 
     return molec_or_ambi_timescale, eddy_timescale, combined_timescale
@@ -530,7 +532,7 @@ function get_directional_fluxes(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_n
 
     # Fill array 
     flux = fill(convert(ftype_ncur, NaN), (length(GV.alt), 1)) # will store positive and negative values at each alt, with + meaning up, - meaning down.
-    up = fill(convert(ftype_ncur, NaN), (length(GV.alt), 1)) # Bethan asked for just up fluxes on time so now I also track them separately. 
+    up = fill(convert(ftype_ncur, NaN), (length(GV.alt), 1)) # Bethan asked for just up fluxes one time so now I also track them separately. 
     down = fill(convert(ftype_ncur, NaN), (length(GV.alt), 1))
     flux[1] = NaN # 0 alt
     up[1] = NaN

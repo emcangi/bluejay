@@ -1416,7 +1416,7 @@ and bottom of the atmosphere.
 
 function binary_dcoeff_inCO2(sp, T, globvars...)
     #=
-    Calculate the bindary diffusion coefficient for species sp, AT^s.
+    Calculate the bindary diffusion coefficient for species sp, b = AT^s.
 
     Currently, this is set up to only work for diffusion through CO2 since that's the Mars atm.
     Could be extended to be for any gas, but that will require some work.
@@ -1428,10 +1428,10 @@ function binary_dcoeff_inCO2(sp, T, globvars...)
     
     # Vapor_mean_free_path = "something"
     
-
-
-    
-    return diffparams(sp)[1] .* 1e17 .* T .^ (diffparams(sp)[2]) # this is b = AT^s: I can use Zhang 2012 to get an equation to calculate b differently 
+    A = diffparams(sp)[1] .* 1e17 # Empirical parameter (determined it by experiment)
+    s = (diffparams(sp)[2]) # Empirical parameter (det. by exp.)
+    b = A .* T .^ s # T = temperature
+    return b # this is b = AT^s: I can use Zhang 2012 to get an equation to calculate b differently 
 end
 
 function boundaryconditions(fluxcoef_dict, atmdict, M; nonthermal=true, globvars...)
@@ -1679,7 +1679,7 @@ function Dcoef!(D_arr, T_arr, sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncu
     15.30 and table 15.2 footnote.
     For ions, it returns ambipolar diffusion coefficients according to Krasnopolsky 2002 and 
     Schunk & Nagy equation 5.55. Yes, the equation is done in one line and it's ugly, but it works.
-    Units: cm/s
+    Units: cm^2/s
 
     Inputs:
         D_arr: the container for the diffusion coefficients for ONE species.
@@ -1698,10 +1698,8 @@ function Dcoef!(D_arr, T_arr, sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncu
     if GV.use_molec_diff==true
         # Calculate as if it was a neutral - not using function above because this is faster than going into 
         # the function and using an if/else block since we know we'll always have vectors in this case.
+        # This equation is: D = b/n 
         D_arr[:] .= (binary_dcoeff_inCO2(sp, T_arr)) ./ n_tot(atmdict; GV.all_species, GV.n_alt_index)
-        if (GV.use_ambipolar==false) & (charge_type(sp)=="ion")# temporarily disallow molecular diffusion for ions
-            D_arr[:] .= 0
-        end
     else
         D_arr[:] .= 0 
     end
@@ -1966,6 +1964,7 @@ function Keddy(z::Vector, nt::Vector; globvars...)
         nt: Total atmospheric density
     Ouptut:
         k: eddy diffusion coefficients at all altitudes.
+           Units: cm^2/s
     =#
 
     GV = values(globvars)

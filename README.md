@@ -57,11 +57,12 @@ Julia packages the model depends on:
 - IterativeSolvers
 - JLD
 - LaTeXStrings
+- Latexify
 - LinearAlgebra
+- PlotUtils
 - Printf
 - PyPlot
 - PyCall
-- PlotUtils
 - Revise
 - SparseArrays
 - XLSX
