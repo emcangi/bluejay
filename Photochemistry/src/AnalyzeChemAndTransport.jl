@@ -148,7 +148,7 @@ function get_volume_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}};
     return rxn_dat, rate_coefs
 end
 
-function get_volume_rates(sp::Symbol, source_rxn::Vector{Any}, source_rxn_rc_func, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Mtot; globvars...)
+function get_volume_rates(sp::Symbol, source_rxn::Vector{Any}, source_rxn_rc_func, atmdict::Dict{Symbol, Vector{ftype_ncur}}, Mtot; remove_sp_density=false, globvars...)
     #=
     Override to call for a single reaction. Useful for doing non-thermal flux boundary conditions.
     Input:
@@ -177,10 +177,18 @@ function get_volume_rates(sp::Symbol, source_rxn::Vector{Any}, source_rxn_rc_fun
         # Honestly I could probably rewrite everything so that photochem eq is possible with the Gear solver and ditch
         # the Julia solvers entirely but I like having the option and would rather get my PhD and get a pay raise
         # println(keys(GV.Jratedict))
-        vol_rates = atmdict[source_rxn[1][1]] .* GV.Jratedict[source_rxn[3]] 
+        if remove_sp_density==false
+            vol_rates = atmdict[source_rxn[1][1]] .* GV.Jratedict[source_rxn[3]]
+        else 
+            vol_rates = 1 .* GV.Jratedict[source_rxn[3]]  # this will functionally be the same as the rate coefficient for photodissociation.
+        end
     else                        # bi- and ter-molecular chemistry
+        remove_me = remove_sp_density==true ? sp : nothing
+        density_prod = reactant_density_product(atmdict, source_rxn[1]; removed_sp=remove_me, globvars...)
+        thisrate = typeof(rxn[3]) != Expr ? :($source_rxn[3] + 0) : source_rxn[3]
         rate_coef = source_rxn_rc_func(GV.Tn, GV.Ti, GV.Te, Mtot)
-        vol_rates = reactant_density_product(atmdict, source_rxn[1]; globvars...) .* rate_coef # This is k * [R1] * [R2] where [] is density of a reactant. 
+
+        vol_rates = density_prod .* rate_coef # This is k * [R1] * [R2] where [] is density of a reactant. 
     end
     return vol_rates
 end

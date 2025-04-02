@@ -145,7 +145,7 @@ function evolve_atmosphere(atm_init::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_s
     find_nonfinites(example_jacobian, collec_name="example_jacobian")
     sparsity = round(length(example_jacobian.nzval)*100/(size(example_jacobian)[1] * size(example_jacobian)[2]), digits=2)
     if sparsity > 1
-        println("Warning! Sparsity of the jacobian is rather high: $(sparsity)%")
+        println("Warning! Percent of nonzero elements in the jacobian is rather high: $(sparsity)%")
     end
 
     # Now define the problem function to be solved

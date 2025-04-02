@@ -202,7 +202,7 @@ function load_network_and_make_functions(rxn_sheet; globvars...)
     return reaction_network, hHnet, hDnet, hH2net, hHDnet, hot_H_rc_funcs, hot_D_rc_funcs, hot_H2_rc_funcs, hot_HD_rc_funcs
 end
 
-function load_reaction_network(spreadsheet; saveloc=nothing, write_rxns=false, to_return="all", ions_on=true, get_hot_rxns=false, globvars...)
+function load_reaction_network(spreadsheet; saveloc=nothing, write_rxns=false, to_return="all", ions_on=true, get_hot_rxns=true, globvars...)
     #=
     Inputs:
         spreadsheet: path and filename of the reaction network spreadsheet
