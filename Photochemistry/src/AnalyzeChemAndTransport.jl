@@ -185,7 +185,7 @@ function get_volume_rates(sp::Symbol, source_rxn::Vector{Any}, source_rxn_rc_fun
     else                        # bi- and ter-molecular chemistry
         remove_me = remove_sp_density==true ? sp : nothing
         density_prod = reactant_density_product(atmdict, source_rxn[1]; removed_sp=remove_me, globvars...)
-        thisrate = typeof(rxn[3]) != Expr ? :($source_rxn[3] + 0) : source_rxn[3]
+        thisrate = typeof(source_rxn[3]) != Expr ? :($source_rxn[3] + 0) : source_rxn[3]
         rate_coef = source_rxn_rc_func(GV.Tn, GV.Ti, GV.Te, Mtot)
 
         vol_rates = density_prod .* rate_coef # This is k * [R1] * [R2] where [] is density of a reactant. 
