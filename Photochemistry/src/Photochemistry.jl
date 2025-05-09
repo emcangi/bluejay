@@ -197,6 +197,7 @@ turn_off_borders,
     load_network_and_make_functions,
     load_reaction_network, 
     log_reactions, 
+    make_k_expr,
     rxns_where_species_is_observer, 
 
     ## Formatting the reaction network object

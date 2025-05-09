@@ -920,8 +920,8 @@ function plot_reaction_on_demand(atmdict, reactants; print_col_total=false, prod
 end
 
 function plot_species_on_demand(atmdict, spclist, filename; second_atm=nothing, savepath=nothing, showonly=false, shaded_region=nothing, 
-                                axh_text="", mixing_ratio=false, plot_e=false, lw=1,
-                                xlab=L"Number density (cm$^{-3}$)", xlims=(1e-12, 1e18), figsz=(16,6), ylims=(0,zmax/1e5), titl=nothing,
+                                axh_text="", mixing_ratio=false, plot_e=false, lw=1, lw_callout=3, callout_sp=[], col_override_gray=[],
+                                xlab=L"Number density (cm$^{-3}$)", xlims=(1e-12, 1e18), figsz=(16,6), ylims=(0, 250), titl=nothing,
                                 overridestyle=false, posdict = Dict(), extratext=nothing, LL=(0.9,0.9), titlcol="black", plot_hline=nothing,
                                 globvars...)
     #=
