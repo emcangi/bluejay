@@ -580,7 +580,7 @@ function format_neutral_network(reactions_spreadsheet, used_species; saveloc=not
         n += 1
     end 
 
-    for i in n:n+counts[5]-1 # Three body reactions 
+    for i in n:n+counts[5]-1 # Three body reactions (Association: A + B --M--> AB )
         @assert n_table[i, "type"]==5
         reactants = [Symbol(j) for j in filter!(j->j!="none", [n_table[i, "R1"], n_table[i, "R2"], n_table[i, "R3"]])]
         products = [Symbol(j) for j in filter!(j->j!="none", [n_table[i, "P1"], n_table[i, "P2"], n_table[i, "P3"]])]
@@ -594,7 +594,7 @@ function format_neutral_network(reactions_spreadsheet, used_species; saveloc=not
         n += 1
     end 
 
-    for i in n:n+counts[6]-1 # Three body reactions 
+    for i in n:n+counts[6]-1 # Three body reactions  (Dissociation: A + B --M--> C + D)
         @assert n_table[i, "type"]==6
         reactants = [Symbol(j) for j in filter!(j->j!="none", [n_table[i, "R1"], n_table[i, "R2"], n_table[i, "R3"]])]
         products = [Symbol(j) for j in filter!(j->j!="none", [n_table[i, "P1"], n_table[i, "P2"], n_table[i, "P3"]])]
@@ -854,7 +854,6 @@ function make_k_for_ClCO3(A, B, C, T::String, M2, M1, pow, BR)
     =#
     k = make_k_expr(A, B, C, T::String, M2, M1, pow, BR)
     k_ClCO3 = :($(k) ./ (1e17 .+ 0.05 .* M))
-    println( "this is the k expression for ClCO3   ", k_ClCO3)
     return k_ClCO3
 end
     

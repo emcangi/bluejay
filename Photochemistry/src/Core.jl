@@ -1260,8 +1260,7 @@ function T_Mars(Tsurf, Tmeso, Texo; lapserate=-1.4e-5, z_meso_top=108e5, weird_T
     return Dict("neutrals"=>NEUTRALS(), "ions"=>IONS(), "electrons"=>ELECTRONS())
 end 
 
-# function T_Venus(Tsurf::Float64, Tmeso::Float64, Texo::Float64, file_for_interp; z_meso_top=80e5, lapserate=-8e-5, weird_Tn_param=8, globvars...) # this is what Eryn had initially. This ment I needed to find temp values for 80 to 90km but thoses values didn't connect nicly with the temp at T_meso_top so instead i set T_meso_top to 90km
-function T_Venus(Tsurf::Float64, Tmeso::Float64, Texo::Float64, file_for_interp; z_meso_top=88e5, lapserate=-8e-5, weird_Tn_param=8, globvars...)
+    function T_Venus(Tsurf::Float64, Tmeso::Float64, Texo::Float64, file_for_interp; z_meso_top=68e5, lapserate=-7.3e-5, weird_Tn_param=8, globvars...)
     #= 
     Input:
         z: altitude above surface in cm
@@ -1977,7 +1976,9 @@ function Keddy(z::Vector, nt::Vector; globvars...)
         k[findall(i->i .<= 60e5, z)] .= 10. ^ 6
         k[upperatm] .= 2e13 ./ sqrt.(nt[upperatm])
     elseif GV.planet=="Venus"
-        k = 8e12*(nt .^ -0.5)
+        upperatm = findall(i->i .> 116e5, z)
+        k[findall(i->i .<= 116e5, z)] .= 3.54e6
+        k[upperatm] .= 8e12 .* (nt[upperatm] .^ -0.5)
     end
 
     return k

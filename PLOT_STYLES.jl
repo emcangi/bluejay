@@ -65,18 +65,22 @@ const speciescolor = Dict( # PRIMARY NEUTRALS + IONS
                     :N2Hpl=>"#611115",:N2Dpl=>"#611115",
                     :HO2NO2=>"#FF3232", :DO2NO2=>"#FF3232",
 
-                    # many post REU Cl and S species still have place holder numbers
-                    :Cl=>"#2EE4EC", :Cl2=>"#89FAD6",
-                    :HCl=>"#1F540F", :DCl=>"#DC8181",  
-                    :ClO=>"#EEEA0C", :ClCO=>"#EDAC0D", :ClO2=>"#FF3232", :ClCO3=>"#FF3232",
-                    :ClNO=>"#FF3232", :COCl2=>"#FF3232",
-                    :S=>"#FF3232", :S2=>"#FF3232", :S3=>"#FF3232",
-                    :SO=>"#E8C3FF", :SO2=>"#74B18C", :SO3=>"#C9FF55", 
-                    :S2O=>"#FF3232",:S2O2=>"#FF3232",
-                    :H2SO4=>"#542D5B", :HDSO4=>"#ACFF93", :HSO3=>"#FF3232", :DSO3=>"#FF3232",
-                    :SCl=>"#FF3232", :SCl2=>"#FF3232", :S2Cl2=>"#FF3232", :ClS2=>"#FF3232",
-                    :SO2Cl2=>"#FF3232", :OSCl=>"#FF3232", :ClSO2=>"#FF3232", 
-                    :SNO=>"#FF3232",   :OCS=>"#FF3232", 
+                    # Chlorine species
+                    :Cl=>"#ff0000", :Cl2=>"#ff9797",
+                    :HCl=>"#ff8000", :DCl=>"#ff8000",
+                    :ClO=>"#7d6e68", :ClCO=>"#ffe000", :ClO2=>"#b07cff", :ClCO3=>"#7503bb",
+                    :ClNO=>"#9bff00", :COCl2=>"#b7e175",
+
+                    # Sulfur species
+                    :S=>"#ff1e99", :S2=>"#dc67a7", :S3=>"#87526f",
+                    :SO=>"#1c72f7", :SO2=>"#6995d8", :SO3=>"#294979",
+                    :S2O=>"#0dd7c2",:S2O2=>"#208278",
+                    :H2SO4=>"#43ea36", :HDSO4=>"#43ea36", :HSO3=>"#b2e5ae", :DSO3=>"#b2e5ae",
+                    :SNO=>"#c8e01b",   :OCS=>"#99a44b",
+
+                    # Chlorine and Sulfur species
+                    :SCl=>"#7ea93a", :SCl2=>"#2bfc8d", :S2Cl2=>"#fc1fe8", :ClS2=>"#148147",
+                    :SO2Cl2=>"#09c0ff", :OSCl=>"#93dbf4", :ClSO2=>"#0359c7",
                     );
 
 # NOTE: Some code is repeated here below, also occurring in get_deuterated, to figure out which species are deuterated. 

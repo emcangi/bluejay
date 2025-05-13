@@ -20,8 +20,10 @@ const planet = "Venus"
 # Input and output files, directory
 # =======================================================================================================
 const results_dir = code_dir*"../Results_$(planet)/"
-const initial_atm_file = "$(planet)-Inputs/added type 7 reaction and ClCO3.h5"  # File to use to initialize the atmosphere.
-
+# const initial_atm_file = "$(planet)-Inputs/INITIAL_GUESS_VENUS_vGFd5b0a.h5"  # File to use to initialize the atmosphere.
+# const initial_atm_file = "$(planet)-Inputs/V0.1 48km CO2 disffusion keddy fix.h5"  # CO2 diffusion atm
+# const initial_atm_file = "$(planet)-Inputs/added type 7 reaction and ClCO3.h5"  # 90km with all the new cl and s
+const initial_atm_file = "$(planet)-Inputs/V0.6a.2.B added now added COCl2 and ClCO3.h5"
     # OPTIONS: 
     # INITIAL_GUESS_MARS.h5 --> Basic Mars starting file.
     # INITIAL_GUESS_MARS_bxz4YnHk.h5 --> A Mars atmosphere that includes N2O, NO2, and their ions;
@@ -135,15 +137,12 @@ const conv_neutrals = Dict("Mars"=>[:Ar, :C, :CO, :CO2, # Argon and carbon speci
                                     :N, :N2, :NO, :Nup2D, :N2O, :NO2, # Nitrogen species
                                     :O, :O1D, :O2, :O3, :OH, :OD], # Oxygen species
                            "Venus"=>[
-                                     # Ar
+                                     # Ar itself
                                      :Ar,
         
                                      # C species
-                                     :C, :CO2, :CO,
-
-                                     # Chlorine species
-                                     :Cl, :Cl2, :HCl, :DCl, :ClNO, 
-                                     :ClO, :COCl2, :ClCO, :ClO2, :ClCO3,           
+                                     :CO2,
+                                     :C, :CO,
                                                                  
                                      # H and D species
                                      :H, :D, :H2, :HD, :H2O, :HDO,
@@ -153,21 +152,27 @@ const conv_neutrals = Dict("Mars"=>[:Ar, :C, :CO, :CO2, # Argon and carbon speci
 
                                      # N species
                                      :N, :N2, :NO, :Nup2D, :N2O, :NO2,
-                                     :HO2NO2, :DO2NO2,
+                                     # :HO2NO2, :DO2NO2,
 
                                      # O species
-                                     :O2, :O, :O1D,  
+                                     :O2,
+                                     :O, :O1D,
                                      :O3, :OH, :OD,
 
+                                     # Chlorine species
+                                     :Cl, :Cl2, :HCl, :DCl,
+                                     :ClO, :COCl2, :ClCO, :ClO2, :ClCO3,
+                                     # :ClNO,
+        
                                      # Sulfur species
-                                     :S, :S2, :S3,
-                                     :SO, :SO2, :SO3, :H2SO4, :HDSO4, :HSO3, :DSO3,
-                                     :SNO,  :S2O, :S2O2, :OCS, 
+                                     # :S, :S2, :S3,
+                                     # :SO, :SO2, :SO3, :H2SO4, :HDSO4, :HSO3, :DSO3,
+                                     # :SNO,  :S2O, :S2O2, :OCS,
 
                                      # Cl and S species
-                                     :SCl, :SCl2, :S2Cl2, :ClS2,
-                                     :OSCl, :ClSO2, :SO2Cl2,
-                           ]); 
+                                     # :SCl, :SCl2, :S2Cl2, :ClS2,
+                                     # :OSCl, :ClSO2, :SO2Cl2,
+                                    ]);
 
 
 const conv_ions = Dict("Mars"=>[:Arpl, :ArHpl, :ArDpl, 
@@ -178,8 +183,8 @@ const conv_ions = Dict("Mars"=>[:Arpl, :ArHpl, :ArDpl,
                                 :HO2pl, :HCOpl, :HCO2pl, :HOCpl, :HNOpl,   
                                 :Npl, :NHpl, :N2pl, :N2Hpl, :N2Dpl, :NOpl, :N2Opl, :NO2pl,
                                 :Opl, :O2pl, :OHpl, :ODpl],
-                       "Venus"=>[:CO2pl, :H2Opl, :HDOpl, :COpl, :O2pl, :Hpl, :Dpl, :Opl, :H2pl, :HDpl,
-        
+                       "Venus"=>[
+                                :CO2pl, :H2Opl, :HDOpl, :COpl, :O2pl, :Hpl, :Dpl, :Opl, :H2pl, :HDpl,
                                 :ArHpl, :ArDpl, :Arpl,
                                 :N2pl,
                                 :Cpl, 
@@ -188,16 +193,16 @@ const conv_ions = Dict("Mars"=>[:Arpl, :ArHpl, :ArDpl,
                                 :H3pl, :H2Dpl, 
                                 :H3Opl, :H2DOpl, 
                                 :HO2pl, 
-                                :HCOpl, :HCO2pl, :HOCpl, :HNOpl,   
-                                :Npl, :NHpl, :N2Hpl, :N2Dpl, 
+                                :HCOpl, :HCO2pl, :HOCpl,
+                                :Npl, :NHpl, :N2Hpl, :N2Dpl, :HNOpl,
                                 :NOpl, 
                                 :N2Opl, :NO2pl,
                                 :OHpl, :ODpl
-                      ]);
+                                ]);
 
 # More specific settings for controling the modeling of species
 # -------------------------------------------------------------------
-const dont_compute_chemistry = [] #  :Ar for Venus has been used historically
+const dont_compute_chemistry = [:Ar,] #  :Ar for Venus has been used historically
 const dont_compute_transport = []
 const dont_compute_either_chem_or_transport = []  # Chemical species which should never update their densities, but may participate in chem+transport.
     # OPTIONS: Any species included in the model. 
@@ -219,9 +224,13 @@ const abs_tol = 1e-12
 # =======================================================================================================
 const do_chem = true   # Turning this or next one of will toggle chemistry or transport.
 const do_trans = true  # Often useful for troubleshooting or converging new atmospheres.
-const adding_new_species = false
-const make_new_alt_grid = false  # Set to true if extending the altitude grid. TODO: Need to re-write that code.
-const use_nonzero_initial_profiles = true
+const adding_new_species = true
+const make_new_alt_grid = false  # Set to true if extending the altitude grid. if true values for old_zmin and old_zmax in km will be needed to be input below
+                                 # Put what you want the final zmax and zmin to be as the constants zmax and zmin in modle setup
+                                 #This part of the code can be improved.
+    const old_zmax = 250
+    const old_zmin = 90
+const use_nonzero_initial_profiles = false
     # OPTIONS: 
     # true -- uses initial guess densities for species based on previous model output.
     # false -- sets species to zero density and lets the chemistry and transport build them up.
