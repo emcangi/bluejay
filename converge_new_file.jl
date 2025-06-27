@@ -133,8 +133,8 @@ function evolve_atmosphere(atm_init::Dict{Symbol, Array{ftype_ncur, 1}}, log_t_s
     find_nonfinites(nstart, collec_name="nstart")
 
     # Set up parameters
-    M = n_tot(n_current; GV.all_species)
-    E = electron_density(n_current; GV.e_profile_type, GV.non_bdy_layers, GV.ion_species)
+    M = n_tot(atm_init; GV.all_species)
+    E = electron_density(atm_init; GV.e_profile_type, GV.non_bdy_layers, GV.ion_species)
     params_Gear = [GV.Dcoef_arr_template, M, E]
     params_J = [globvars, GV.Dcoef_arr_template, M, E] # kwargs can't be passed to the julia ODE solver functions 
     params_exjac = deepcopy(params_Gear)  # make sure not to have a pointer problem

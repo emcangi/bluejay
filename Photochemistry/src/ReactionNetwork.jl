@@ -564,7 +564,7 @@ function format_neutral_network(reactions_spreadsheet, used_species; saveloc=not
                                                              [n_table[i, "kA"], n_table[i, "kB"], n_table[i, "kC"]],
                                                               n_table[i, "F"], n_table[i, "M2"], n_table[i, "M1"], 
                                                               n_table[i, "pow"], n_table[i, "BR"])]
-        n =+ 1
+        n += 1
     end 
 
     for i in n:n+counts[4]-1 # Type 4: P dependent association rxns
