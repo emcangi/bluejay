@@ -17,7 +17,7 @@
 # ***************************************************************************************************** #
 
 # Sans-serif font to use 
-sansserif_choice = "Louis George Caf?"
+sansserif_choice = "Louis George Cafe"
 
 # Monospace font to use
 monospace_choice = "FreeMono"
