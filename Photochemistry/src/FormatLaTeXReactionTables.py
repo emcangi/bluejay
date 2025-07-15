@@ -35,11 +35,16 @@ def participant_str(r1, r2="", r3=""):
         return ""
 
 def br_str(br):
-    """
-    Fills a string with the branching ratio, if present.
-    """
-    if (br == "") | (int(float(br)) == 1):
-        return "" 
+    # """
+    # Fills a string with the branching ratio, if present.
+    # """
+    # if (br == "") | (int(float(br)) == 1):
+    #     return "" 
+    """Fills a string with the branching ratio, if present."""
+    # Avoid evaluating the second condition when ``br`` is empty. Using
+    # ``or`` prevents ``int(float(br))`` from raising ``ValueError``.
+    if br == "" or int(float(br)) == 1:
+        return ""
     else:
         return f"{br}"
     

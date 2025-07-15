@@ -22,7 +22,7 @@ end
 function deletefirst(A, v)
     #=
     returns: list A with its first element equal to v removed. Used to make the derivative for 
-    the chemical jacboian 
+    the chemical jacobian 
     =#
     index = something(findfirst(isequal(v), A), 0)  # this horrible syntax introduced by Julia devs
     keep = setdiff([1:length(A);],index)
@@ -188,9 +188,26 @@ function logrange(x1, x2, n::Int64)
 
     =#
     return (10.0^y for y in range(log10(x1), log10(x2), length=n))
-end 
+end
 
 nans_present(a) = any(x->isnan(x), a)
+
+"""
+    arrays_equal_with_nan(A, B)
+
+Compare two arrays elementwise while treating `NaN` pairs as matching.
+
+`A` and `B` may be any `AbstractArray` types.  The function first
+checks that their axes are identical; if not, it immediately returns
+`false`.  It then tests each corresponding element, returning `true`
+only when every pair is either equal (`==`) or both `NaN`.
+
+Returns `false` if the dimensions differ or any comparison fails.
+"""
+function arrays_equal_with_nan(A::AbstractArray, B::AbstractArray)
+    axes(A) == axes(B) || return false
+    return all(((x, y) -> x == y || (isnan(x) && isnan(y))).(A, B))
+end
 
 function next_in_loop(i::Int64, n::Int64)
     #=

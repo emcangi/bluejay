@@ -1,4 +1,3 @@
-
 # **************************************************************************** #
 #                                                                              #
 #                             PLOTTING FUNCTIONS                               #
@@ -9,12 +8,12 @@
 #                        Basic model mechanical functions                       #
 #===============================================================================#
 
-function make_seasonal_cycle_plots_inclusive(season_folders; mainalt=250, savepath=nothing, resolution="high", extrafn="", 
+function make_seasonal_cycle_plots_inclusive(season_folders; mainalt=250, savepath=nothing, resolution="high", extrafn="",
                                                         make_main_cycle_plot=true, make_frac_plot=false, make_flux_plot=false, make_3panel=false,
-                                                        make_6panel=false, make_reincorp_cycle_plot=false, make_flux_and_pct_plot=false, 
-                                                        make_DH_of_escaping=false, plot_pct=false, 
+                                                        make_6panel=false, make_reincorp_cycle_plot=false, make_flux_and_pct_plot=false,
+                                                        make_DH_of_escaping=false, plot_pct=false,
                                                         flux_colormap="plasma", show_all_flux=false,
-                                                        alt2=200, alt3=250, subplot_lbl_loc=[0, 0.95], subplot_lbl_sz=20, globvars...)
+                                                        alt2=200, alt3=250, subplot_lbl_loc=[0, 0.95], subplot_lbl_sz=20, ihoriz=1, globvars...)
     #=
     Does all the work to load files and make plots for temp seasonal cycle. Made because we have two cases, one standard and one with 
     identical crosssections for HDO and H2O.
@@ -89,7 +88,7 @@ function make_seasonal_cycle_plots_inclusive(season_folders; mainalt=250, savepa
 
         for i in 1:length(state_files)
             nc = get_ncurrent(state_files[i])
-            ntot = n_tot(nc; GV.all_species, GV.non_bdy_layers)
+            ntot = n_tot(nc, ihoriz; GV.all_species, GV.non_bdy_layers)
             H2O_profile_array[:, i] = nc[:H2O] ./ ntot
             HDO_profile_array[:, i] = nc[:HDO] ./ ntot
         end
@@ -212,18 +211,19 @@ function make_equilibrium_plots_temp(case_folders; savepath=nothing, extrafn="",
 
         vardicts[atm_keys[i]] = load_from_paramlog(thefolder; GV.alt)
 
-        Tn_all[:, i] = vardicts[atm_keys[i]]["Tn_arr"];
-        Ti_all[:, i] = vardicts[atm_keys[i]]["Ti_arr"];
-        Te_all[:, i] = vardicts[atm_keys[i]]["Te_arr"];
+        # Store the first column (ihoriz=1) for each temperature array for backward compatibility
+        Tn_all[:, i] = vardicts[atm_keys[i]]["Tn_arr"][1, :];
+        Ti_all[:, i] = vardicts[atm_keys[i]]["Ti_arr"][1, :];
+        Te_all[:, i] = vardicts[atm_keys[i]]["Te_arr"][1, :];
     end
     
     esc_df_lowT = final_escape(case_folders[1], "final_atmosphere.h5"; globvars...)
     esc_df_midT = final_escape(case_folders[2], "final_atmosphere.h5"; globvars...)
     esc_df_highT = final_escape(case_folders[3], "final_atmosphere.h5"; globvars...);
     
-    DH_of_escaping(esc_df_lowT; t=L"T$_{exo}=175$ K" )
-    DH_of_escaping(esc_df_midT; t=L"T$_{exo}=225$ K" )
-    DH_of_escaping(esc_df_midT; t=L"T$_{exo}=400$ K" )
+    DH_of_escaping(esc_df_lowT, case_folders; t=L"T$_{exo}=175$ K" )
+    DH_of_escaping(esc_df_midT, case_folders; t=L"T$_{exo}=225$ K" )
+    DH_of_escaping(esc_df_midT, case_folders; t=L"T$_{exo}=400$ K" )
     
     make_3panel_figure([atm_states["lowT"], atm_states["midT"], atm_states["highT"]], tempcols_dict, "temp", ["cold", "mean", "hot"]; 
                        savepath=savepath, fn="3panel_equilibrium_temps$(extrafn).png", Tn_all, Ti_all, Te_all, GV.alt, GV.speciesstyle)
@@ -401,9 +401,9 @@ function make_equilibrium_plots_water(case_folders; extrafn="", water_where="mes
     esc_df_mean = final_escape(case_folders[2], "final_atmosphere.h5"; globvars...)
     esc_df_high = final_escape(case_folders[3], "final_atmosphere.h5"; globvars...)
     
-    DH_of_escaping(esc_df_low; t="Dry" )
-    DH_of_escaping(esc_df_mean; t="Mean" )
-    DH_of_escaping(esc_df_mean; t="Wet" )
+    DH_of_escaping(esc_df_low, case_folders; t="Dry" )
+    DH_of_escaping(esc_df_mean, case_folders; t="Mean" )
+    DH_of_escaping(esc_df_mean, case_folders; t="Wet" )
     
     # Define some colors
     watercolors = get_colors(3, "Blues"; strt=0.4, stp=1) # starts with lighter one and progresses to darker. 
@@ -493,7 +493,7 @@ function make_seasonal_cycle_plots_water(season_folders; mainalt=250, savepath=n
 
         for i in 1:length(state_files)
             nc = get_ncurrent(state_files[i])
-            ntot = n_tot(nc; GV.all_species, GV.non_bdy_layers)
+            ntot = n_tot(nc, ihoriz; GV.all_species, GV.non_bdy_layers)
             H2O_profile_array[:, i] = nc[:H2O] ./ ntot
             HDO_profile_array[:, i] = nc[:HDO] ./ ntot
         end
@@ -640,18 +640,18 @@ function plot_limiting_flux(atm_states, atm_keys, Tn_all; savepath=nothing, simp
     # Limiting flux
     if all_carriers
         
-        limflux_H = [limiting_flux(:H, atm_states[atm_keys[i]], Tn_all[2:end-1, i]; globvars...) +
-                     limiting_flux(:H2, atm_states[atm_keys[i]], Tn_all[2:end-1, i]; globvars...) +
-                     2 * limiting_flux(:H2O, atm_states[atm_keys[i]], Tn_all[2:end-1, i]; globvars...) +
-                     limiting_flux(:HDO, atm_states[atm_keys[i]], Tn_all[2:end-1, i]; globvars...) +
-                     limiting_flux(:OH, atm_states[atm_keys[i]], Tn_all[2:end-1, i]; globvars...) for i in therange]
-        limflux_D = [limiting_flux(:D, atm_states[atm_keys[i]], Tn_all[2:end-1, i]; globvars...) +
-                     limiting_flux(:HD, atm_states[atm_keys[i]], Tn_all[2:end-1, i]; globvars...) +
-                     limiting_flux(:HDO, atm_states[atm_keys[i]], Tn_all[2:end-1, i]; globvars...) +
-                     limiting_flux(:OD, atm_states[atm_keys[i]], Tn_all[2:end-1, i]; globvars...) for i in therange]
+        limflux_H = [limiting_flux(:H, atm_states[atm_keys[i]], Tn_all[2:end-1, i]; ihoriz=i, globvars...) +
+                     limiting_flux(:H2, atm_states[atm_keys[i]], Tn_all[2:end-1, i]; ihoriz=i, globvars...) +
+                     2 * limiting_flux(:H2O, atm_states[atm_keys[i]], Tn_all[2:end-1, i]; ihoriz=i, globvars...) +
+                     limiting_flux(:HDO, atm_states[atm_keys[i]], Tn_all[2:end-1, i]; ihoriz=i, globvars...) +
+                     limiting_flux(:OH, atm_states[atm_keys[i]], Tn_all[2:end-1, i]; ihoriz=i, globvars...) for i in therange]
+        limflux_D = [limiting_flux(:D, atm_states[atm_keys[i]], Tn_all[2:end-1, i]; ihoriz=i, globvars...) +
+                     limiting_flux(:HD, atm_states[atm_keys[i]], Tn_all[2:end-1, i]; ihoriz=i, globvars...) +
+                     limiting_flux(:HDO, atm_states[atm_keys[i]], Tn_all[2:end-1, i]; ihoriz=i, globvars...) +
+                     limiting_flux(:OD, atm_states[atm_keys[i]], Tn_all[2:end-1, i]; ihoriz=i, globvars...) for i in therange]
     else
-        limflux_H = [limiting_flux(:H, atm_states[atm_keys[i]], Tn_all[2:end-1, i]; globvars...) for i in therange]
-        limflux_D = [limiting_flux(:D, atm_states[atm_keys[i]], Tn_all[2:end-1, i]; globvars...) for i in therange]
+        limflux_H = [limiting_flux(:H, atm_states[atm_keys[i]], Tn_all[2:end-1, i]; ihoriz=i, globvars...) for i in therange]
+        limflux_D = [limiting_flux(:D, atm_states[atm_keys[i]], Tn_all[2:end-1, i]; ihoriz=i, globvars...) for i in therange]
     end
 
     # Typical escape fluxes for these files:
@@ -1168,10 +1168,11 @@ function flux_vs_time(thefiles, IVAR_array, change_indices, sp; fn="flux_vs_time
         Jratedict = Dict([j=>thisatm[j] for j in Jratelist])
         
         # Get flux
-        flux_heatmap[:, c] = get_directional_fluxes(sp, thisatm; nonthermal=true, Jratedict, speciesbclist=vardict["speciesbclist"], 
+        n_horiz = length(thisatm[GV.all_species[1]])
+        flux_heatmap[:, c] = get_directional_fluxes(sp, thisatm, n_horiz; nonthermal=true, Jratedict, speciesbclist=vardict["speciesbclist"],
                                                          Tprof_for_Hs=vardict["Tprof_for_Hs"], Tprof_for_diffusion=vardict["Tprof_for_diffusion"],
                                                          Hs_dict = vardict["Hs_dict"], Tn = vardict["Tn_arr"], Ti = vardict["Ti_arr"],
-                                                         Te = vardict["Te_arr"], Tp = vardict["Tplasma_arr"], 
+                                                         Te = vardict["Te_arr"], Tp = vardict["Tplasma_arr"],
                                                          transport_species=vardict["transport_species"], globvars...)[2:end-1]
         c += 1
     end
@@ -1619,9 +1620,9 @@ function make_water_panel(ax, atms, colors, txtlbls; spclbl_x = [0.8, 0.45], lin
 
     plot_bg(ax)
     for w in 1:length(atms)
-        ax.plot(atms[w][:H2O][1:GV.upper_lower_bdy_i]./n_tot(atms[w]; GV.all_species, GV.alt)[1:GV.upper_lower_bdy_i], GV.plot_grid[1:GV.upper_lower_bdy_i], 
+        ax.plot(atms[w][:H2O][1:GV.upper_lower_bdy_i]./n_tot(atms[w], ihoriz; GV.all_species, GV.alt)[1:GV.upper_lower_bdy_i], GV.plot_grid[1:GV.upper_lower_bdy_i],
                 color=colors[w, :])
-        ax.plot(atms[w][:HDO][1:GV.upper_lower_bdy_i]./n_tot(atms[w]; GV.all_species, GV.alt)[1:GV.upper_lower_bdy_i], GV.plot_grid[1:GV.upper_lower_bdy_i], 
+        ax.plot(atms[w][:HDO][1:GV.upper_lower_bdy_i]./n_tot(atms[w], ihoriz; GV.all_species, GV.alt)[1:GV.upper_lower_bdy_i], GV.plot_grid[1:GV.upper_lower_bdy_i],
                 color=colors[w, :], linestyle=GV.speciesstyle[:HDO])
     end
     ax.set_xscale("log")
@@ -2120,9 +2121,11 @@ function reincorp_vs_time(fax, fax2, t, thefiles, cols, change_indices; typeflag
         
         # Need to get the temperature arrays, but we have stored them all for every file
         if typeflag=="temp"
-            this_Tn = GV.Tn[2:end-1, ti]
+            # Extract the first column for backward compatibility with 1-D analysis
+            this_Tn = GV.Tn[1, 2:end-1]
         else
-            this_Tn = GV.Tn
+            # Extract the first column for backward compatibility with 1-D analysis
+            this_Tn = GV.Tn[1, :]
         end
             
         println(length(this_Tn))

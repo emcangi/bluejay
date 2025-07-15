@@ -6,8 +6,8 @@
 # 
 # Eryn Cangi
 # Created April 2024
-# Last edited: May 2024
-# Currently tested for Julia: 1.8.5
+# Last edited: June 2025
+# Currently tested for Julia: 1.11.2
 ################################################################################
 
 # ***************************************************************************************************** #
@@ -16,11 +16,11 @@
 #                                                                                                       #
 # ***************************************************************************************************** #
 
-# Sans-serif font to use 
-sansserif_choice = "Louis George Cafe"
+# Sans-serif font to use
+sansserif_choice = "Arial"
 
 # Monospace font to use
-monospace_choice = "FreeMono"
+monospace_choice = "Menlo"
 
 const speciescolor = Dict( # PRIMARY NEUTRALS + IONS
                     :CO2 =>"#333", :CO2pl=>"#333",
