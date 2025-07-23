@@ -197,9 +197,16 @@ const use_molec_diff = true # Toggle molecular diffusion. If turned off, eddy di
 # Number of vertical columns in the simulation. Set this to 1 for a single-column run or >1 for a multicolumn model.
 const n_horiz = 2
 
+# Horizontal column width in cm. This determines the physical scale of horizontal transport.
+# For day-night transport setups (n_horiz=2), use larger values for physically realistic transport rates.
+# Day-night transport (n_horiz=2): Use 1000e5-2000e5 cm (1,000-2,000 km) for Venus, 500e5-1000e5 cm (500-1,000 km) for Mars.
+# The advection coefficient scales as horiz_wind_speed / horiz_column_width
+const horiz_column_width = planet == "Venus" ? 1000e5 : 500e5  # 1,000 km for Venus, 500 km for Mars
+
 # Default horizontal wind speed in cm/s used to initialize wind profiles in
 # `MODEL_SETUP.jl`. Set to zero for no horizontal advection.
-const horiz_wind_speed = 25000.0  # 20 - 30 km/s for Venus
+# Venus has strong winds, while Mars has much weaker winds
+const horiz_wind_speed = planet == "Venus" ? 10000.0 : 0.0  # 0.1 km/s for Venus, 0 km/s for Mars
 
 # Whether to allow horizontal transport between columns. When set to `false`
 # the model does not compute any cross-column mixing, matching the behaviour of
