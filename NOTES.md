@@ -73,6 +73,8 @@ Note that this is a simplified version with 4 species and 7 altitude bins.
 
 ## How to create diff files in my local computer
 
+- From multicolumn branch
+<!-- (master in red and multicolumn in green) -->
 git diff master multicolumn -- Photochemistry/src/Core.jl > Core.diff
 git diff master multicolumn -- Photochemistry/src/AnalyzeChemAndTransport.jl > AnalyzeChemAndTransport.diff
 git diff master multicolumn -- Photochemistry/src/BasicUtilities.jl > BasicUtilities.diff
@@ -93,3 +95,45 @@ git diff master multicolumn -- SeasonsAnalysis/src/Support.jl > Support.diff
 git diff master multicolumn -- Solar\ spectra/scale_solar_spectrum.py > scale_solar_spectrum.diff
 <!-- git diff master multicolumn -- SeasonsAnalysis/src/SeasonsAnalysis.jl > SeasonsAnalysis.diff -->
 <!-- git diff master multicolumn -- scale_solar_spectrum.py > scale_solar_spectrum.diff -->
+
+- From master branch
+
+<!-- OPTION 1 (master in red and multicolumn in green) -->
+git diff master..multicolumn -- Photochemistry/src/Core.jl > Core.diff
+git diff master..multicolumn -- Photochemistry/src/AnalyzeChemAndTransport.jl > AnalyzeChemAndTransport.diff
+git diff master..multicolumn -- Photochemistry/src/BasicUtilities.jl > BasicUtilities.diff
+git diff master..multicolumn -- Photochemistry/src/Crosssections.jl > Crosssections.diff
+git diff master..multicolumn -- Photochemistry/src/FileIO.jl > FileIO.diff
+git diff master..multicolumn -- Photochemistry/src/JuliaODEsolver.jl > JuliaODEsolver.diff
+git diff master..multicolumn -- Photochemistry/src/Photochemistry.jl > Photochemistry.diff
+git diff master..multicolumn -- Photochemistry/src/Plotting.jl > Plotting.diff
+git diff master..multicolumn -- Photochemistry/src/ReactionNetwork.jl > ReactionNetwork.diff
+git diff master..multicolumn -- Photochemistry/src/UnitConversions.jl > UnitConversions.diff
+git diff master..multicolumn -- CONSTANTS.jl > CONSTANTS.diff
+git diff master..multicolumn -- MODEL_SETUP.jl > MODEL_SETUP.diff
+git diff master..multicolumn -- converge_new_file.jl > converge_new_file.diff
+git diff master..multicolumn -- PLOT_STYLES.jl > PLOT_STYLES.diff
+git diff master..multicolumn -- INPUT_PARAMETERS.jl > INPUT_PARAMETERS.diff
+git diff master..multicolumn -- SeasonsAnalysis/src/MakePlots.jl > MakePlots.diff
+git diff master..multicolumn -- SeasonsAnalysis/src/Support.jl > Support.diff
+git diff master..multicolumn -- "Solar spectra/scale_solar_spectrum.py" > scale_solar_spectrum.diff
+
+<!-- OPTION 2 (master in green and multicolumn in red, useful after resolving merge conflicts) -->
+git diff multicolumn..master -- Photochemistry/src/Core.jl > Core.diff
+git diff multicolumn..master -- Photochemistry/src/AnalyzeChemAndTransport.jl > AnalyzeChemAndTransport.diff
+git diff multicolumn..master -- Photochemistry/src/BasicUtilities.jl > BasicUtilities.diff
+git diff multicolumn..master -- Photochemistry/src/Crosssections.jl > Crosssections.diff
+git diff multicolumn..master -- Photochemistry/src/FileIO.jl > FileIO.diff
+git diff multicolumn..master -- Photochemistry/src/JuliaODEsolver.jl > JuliaODEsolver.diff
+git diff multicolumn..master -- Photochemistry/src/Photochemistry.jl > Photochemistry.diff
+git diff multicolumn..master -- Photochemistry/src/Plotting.jl > Plotting.diff
+git diff multicolumn..master -- Photochemistry/src/ReactionNetwork.jl > ReactionNetwork.diff
+git diff multicolumn..master -- Photochemistry/src/UnitConversions.jl > UnitConversions.diff
+git diff multicolumn..master -- CONSTANTS.jl > CONSTANTS.diff
+git diff multicolumn..master -- MODEL_SETUP.jl > MODEL_SETUP.diff
+git diff multicolumn..master -- converge_new_file.jl > converge_new_file.diff
+git diff multicolumn..master -- PLOT_STYLES.jl > PLOT_STYLES.diff
+git diff multicolumn..master -- INPUT_PARAMETERS.jl > INPUT_PARAMETERS.diff
+git diff multicolumn..master -- SeasonsAnalysis/src/MakePlots.jl > MakePlots.diff
+git diff multicolumn..master -- SeasonsAnalysis/src/Support.jl > Support.diff
+git diff multicolumn..master -- "Solar spectra/scale_solar_spectrum.py" > scale_solar_spectrum.diff

@@ -1119,14 +1119,6 @@ function plot_species_on_demand(atmdict, spclist, filename; second_atm=nothing, 
         end
         ax.plot(plot_me, GV.plot_grid, color=col, linewidth=lw, label=sp, linestyle=ls, zorder=10)
 
-        if second_atm != nothing
-            ax.plot(second_atm[sp], GV.plot_grid, color=col, linewidth=lw-1.5, label=sp, linestyle=ls, zorder=10)
-        end
-
-        if plot_hline != nothing
-            ax.axhline(plot_hline, color="black", zorder=10)
-        end
-
         
         if second_atm != nothing
             ax.plot(second_atm[sp], GV.plot_grid, color=col, linewidth=lw-1.5, label=sp, linestyle=ls, zorder=10)

@@ -14,13 +14,13 @@
 
 # Set the planet 
 # =======================================================================================================
-const planet = "Mars"
+const planet = "Venus"
     # OPTIONS: "Mars", "Venus"
 
 # Input and output files, directory
 # =======================================================================================================
 const results_dir = code_dir*"../Results_$(planet)/"
-const initial_atm_file = "$(planet)-Inputs/INITIAL_GUESS_MARS_bxz4YnHk.h5"  # File to use to initialize the atmosphere.
+const initial_atm_file = "$(planet)-Inputs/INITIAL_GUESS_VENUS_oUT0ZbGN.h5"  # File to use to initialize the atmosphere.
     # OPTIONS: 
     # INITIAL_GUESS_MARS.h5 --> Basic Mars starting file.
     # INITIAL_GUESS_MARS_bxz4YnHk.h5 --> A Mars atmosphere that includes N2O, NO2, and their ions;
@@ -178,8 +178,8 @@ const make_P_and_L_plots = true  # Makes a 3-panel plot showing production and l
 
 # Algorithm tolerances
 # =======================================================================================================
-const rel_tol = 1e-3
-const abs_tol = 1e-9 
+const rel_tol = planet == "Venus" ? 1e-6 : 1e-3  # Venus: original values, Mars: relaxed for multicolumn stability
+const abs_tol = planet == "Venus" ? 1e-12 : 1e-9  # Venus: original values, Mars: relaxed for multicolumn stability
 
 # Helpful options for adding new things to the model 
 # =======================================================================================================
@@ -195,13 +195,13 @@ const use_ambipolar = true # Toggle ambipolar diffusion for ions.
 const use_molec_diff = true # Toggle molecular diffusion. If turned off, eddy diffusion remains active.
 
 # Number of vertical columns in the simulation. Set this to 1 for a single-column run or >1 for a multicolumn model.
-const n_horiz = 1
+const n_horiz = 2
 
 # Default horizontal wind speed in cm/s used to initialize wind profiles in
 # `MODEL_SETUP.jl`. Set to zero for no horizontal advection.
-const horiz_wind_speed = 0.0 # 20000.0 - 30000.0 cm/s in the case of Venus?
+const horiz_wind_speed = 25000.0  # 20 - 30 km/s for Venus
 
 # Whether to allow horizontal transport between columns. When set to `false`
 # the model does not compute any cross-column mixing, matching the behaviour of
 # the single-column set-up even when multiple columns are present.
-const enable_horiz_transport = false
+const enable_horiz_transport = true

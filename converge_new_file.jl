@@ -809,7 +809,7 @@ function next_timestep(nstart, params, t, dt; reltol=1e-2, abstol=1e-12, verbose
     iter = 0
     while !converged
         # println("iter = $iter")
-        if iter>50
+        if iter>50 # changed from 20 to 50 for Mars multicolumn to converge (but Venus runs fine with original 20)
             println("Recording last known good atmospheric state")
             record_atmospheric_state(t, nthis, GV.active_longlived, params[3]; opt=GV.opt, globvars...)
             write_to_log(GV.logfile, ["Too many iterations exception reached at t=$(t), dt=$(dt)"])
@@ -2070,4 +2070,3 @@ XLSX.writetable(xlsx_parameter_log, param_df_dict...)
 println("Saved parameter spreadsheet")
 write_to_log(logfile, "Simulation total runtime $(format_sec_or_min(t7-t1))", mode="a")
 println("Simulation finished!")
-
