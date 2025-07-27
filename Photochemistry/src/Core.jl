@@ -2318,21 +2318,23 @@ function fluxcoefs_horiz(
                     end
                 end
 
-                # v = horiz_wind_v[ihoriz][ialt]
-                # adv_front = v > 0 ? v / GV.dx : 0.0
-                # adv_back  = v < 0 ? -v / GV.dx : 0.0
-
+                # Calculate velocities at the interfaces for proper upwind scheme
                 v_local = horiz_wind_v[ihoriz][ialt]
                 v_front = infront_idx <= n_horiz ? horiz_wind_v[infront_idx][ialt] : 0.0
                 v_back  = behind_idx >= 1     ? horiz_wind_v[behind_idx][ialt]  : 0.0
 
+                # Interface velocities (average of adjacent cell velocities)
+                v_interface_front = (v_local + v_front) / 2  # Velocity at interface i+½
+                v_interface_back  = (v_back + v_local) / 2   # Velocity at interface i-½
+
                 adv_front = 0.0
                 adv_back  = 0.0
                 if GV.enable_horiz_transport
-                    adv_front = (v_local > 0 ? v_local : 0.0) / GV.dx +
-                                (v_front < 0 ? -v_front : 0.0) / GV.dx
-                    adv_back  = (v_local < 0 ? -v_local : 0.0) / GV.dx +
-                                (v_back  > 0 ? v_back  : 0.0) / GV.dx
+                    # Upwind scheme: flux depends on velocity direction at the interface
+                    # adv_front: flux from current column to next column (interface i+½)
+                    # adv_back: flux from previous column to current column (interface i-½)
+                    adv_front = (v_interface_front > 0 ? v_interface_front : 0.0) / GV.dx
+                    adv_back  = (v_interface_back < 0 ? -v_interface_back : 0.0) / GV.dx
                 end
 
                 fluxcoef_dict[s][ihoriz][ialt, 1] = diff_back + adv_back

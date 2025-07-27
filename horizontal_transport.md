@@ -54,18 +54,22 @@ $$
 \text{diffusion flux} = \frac{K_{avg} + D_{avg}}{\Delta x^2}
 $$
 
-**Horizontal Advection (Upwind Scheme):** Upwind advection ensures numerical stability by considering the wind direction:
+**Horizontal Advection (Upwind Scheme):** Upwind advection ensures numerical stability by considering the wind direction at interfaces:
 
-- Forward advection coefficient:
+- Interface velocities (average of adjacent cell velocities):
+  - $v_{\text{interface front}} = \frac{v_{\text{local}} + v_{\text{front}}}{2}$ (velocity at interface $i+\frac{1}{2}$)
+  - $v_{\text{interface back}} = \frac{v_{\text{back}} + v_{\text{local}}}{2}$ (velocity at interface $i-\frac{1}{2}$)
 
-$$
-\text{adv front} = \frac{\max(v_{local},0) + \max(-v_{front},0)}{\Delta x}
-$$
-
-- Backward advection coefficient:
+- Forward advection coefficient (flux from current column to next column):
 
 $$
-\text{adv back} = \frac{\max(-v_{local},0) + \max(v_{back},0)}{\Delta x}
+\text{adv front} = \frac{\max(v_{\text{interface front}},0)}{\Delta x}
+$$
+
+- Backward advection coefficient (flux from previous column to current column):
+
+$$
+\text{adv back} = \frac{\max(-v_{\text{interface back}},0)}{\Delta x}
 $$
 
 ### Scaling of Horizontal Transport Coefficients
