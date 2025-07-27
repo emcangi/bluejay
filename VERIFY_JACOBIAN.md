@@ -33,4 +33,4 @@ This note documents that the multicolumn model keeps a consistent ordering of sp
   for each column and altitude before integrating with column‑specific cross
   sections. -->
 
-These observations verify that the original Julia code consistently follows the species → altitude → horizontal convention across the major files.
+These observations verify that the Julia code consistently follows the species → altitude → horizontal convention across the major files.
