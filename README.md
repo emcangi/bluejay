@@ -44,6 +44,7 @@ At this time, there are no compiled binaries. The model is provided as a collect
 
 Julia packages the model depends on:
 
+- CSV
 - DataFrames
 - DataStructures
 - Dates
