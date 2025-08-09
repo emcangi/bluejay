@@ -8,87 +8,100 @@
 #                      Functions to load and manipulate the network             #
 #===============================================================================#
 
-function calculate_and_write_column_rates(rxn_filename, atm_state; globvars...)
+function calculate_and_write_column_rates(rxn_filename, atm_state, n_horiz; globvars...)
     #=
-    Calculates the column rates for all the reactions in rxn_filename on the species densities in atm_state 
-    and writes them back out in a column to rxn_filename. Loops over each sheet. 
+    Calculates the column rates for all reactions in rxn_filename based on species densities in atm_state
+    and writes them back out into rxn_filename. Creates separate columns for each horizontal position (ihoriz).
     =#
-    
+
     GV = values(globvars)
-    required = [:all_species, :dz, :ion_species, :num_layers, :reaction_network, :results_dir, :sim_folder_name, :Tn, :Ti, :Te]
+    required = [:all_species, :dz, :ion_species, :num_layers, :reaction_network,
+                :results_dir, :sim_folder_name, :Tn, :Ti, :Te]
     check_requirements(keys(GV), required)
-    
+
     flush(stdout)
     println("Writing out column rates to the reaction log...")
     flush(stdout)
-    
-    # Get the Jrates, needed later
-    Jratedict = Dict([j=>atm_state[j] for j in keys(atm_state) if occursin("J", string(j))]);
-    
-    Mtot = n_tot(atm_state; GV.all_species);
-    
-    # Open the active reactions file
-    the_spreadsheet_file = GV.results_dir*GV.sim_folder_name*"/"*rxn_filename
+
+    # Jrates needed for photochemical reactions
+    Jratedict = Dict([j => atm_state[j] for j in keys(atm_state) if occursin("J", string(j))])
+
+    # Loop through sheets in the spreadsheet
+    the_spreadsheet_file = GV.results_dir * GV.sim_folder_name * "/" * rxn_filename
     active_rxns_original = XLSX.readxlsx(the_spreadsheet_file)
     original_sheets = XLSX.sheetnames(active_rxns_original)
-    
-    # Loop through the sheets
-    for (j, sheet) in enumerate(original_sheets)
 
-        if occursin("Unused", sheet)
+    for sheet in original_sheets
+        if occursin("Unused", sheet) || occursin("Sheet1", sheet)
             continue
-        elseif occursin("Sheet1", sheet)
-            continue
-        else
-            flush(stdout)
-            println("Working on sheet $(sheet)")
-            flush(stdout)
-            df = DataFrame(XLSX.readtable(the_spreadsheet_file, sheet));
-
-            # Create a new excel column for column rate at the next column
-            insertcols!(df, size(df)[2]+1, :ColumnRate=>[0. for i in collect(1:size(df)[1])])
-
-            # Loop through the reactions in each sheet
-            for row in eachrow(df)
-                # collect the reactant names from the sheet;
-                rcols, pcols = get_product_and_reactant_cols(df)
-
-                these_reactants = [Symbol(row.:($r)) for r in rcols]
-                these_products = [Symbol(row.:($p)) for p in pcols]
-
-                filter!(x->x!=:none, these_reactants)
-                filter!(x->x!=:none, these_products)
-
-                # Find the relevant reaction within the vector of functions;
-                rxn_i = findfirst(s->(s[1]==these_reactants && s[2]==these_products), GV.reaction_network)
-                this_rxn = GV.reaction_network[rxn_i]
-
-                this_rxn_func = mk_function(:((Tn, Ti, Te, M) -> $(this_rxn[3])))
-
-                # Call get_volume_rates(sp, source_rxn, source_rxn_rc_func, Mtot)
-                vol_rate_by_alt = get_volume_rates(these_reactants[1], this_rxn, this_rxn_func, atm_state, Mtot; Jratedict, globvars...)  #all_species, ion_species, 
-                                                                                                                 #num_layers, Tn=Tn_arr[2:end-1], Ti=Ti_arr[2:end-1], Te=Te_arr[2:end-1])
-
-                # sum over the result and multiply by dz to get the column rate
-                col_rate = sum(vol_rate_by_alt .* GV.dz)
-
-                # Fill in the column
-                # do it unformatted so Excel can sort if it wants to
-                row.ColumnRate = col_rate
-
-                if col_rate==0
-                    println("$(this_rxn) has a 0 col rate. This may or may not be expected.")
-                end
-
-            end
-
-            # write column directly to spreadsheet
-            add_column(df.ColumnRate, "ColumnRate", sheet, the_spreadsheet_file)
-            println("Completed sheet $(sheet)")
         end
 
+        flush(stdout)
+        println("Working on sheet $(sheet)")
+        flush(stdout)
+
+        df = DataFrame(XLSX.readtable(the_spreadsheet_file, sheet))
+
+        # Add new columns for each horizontal column separately
+        for ihoriz in 1:n_horiz
+            insertcols!(df, size(df)[2]+1, Symbol("ColumnRate_$(ihoriz)") => zeros(Float64, size(df)[1]))
+        end
+
+        # Loop through reactions
+        for (row_index, row) in enumerate(eachrow(df))
+            rcols, pcols = get_product_and_reactant_cols(df)
+
+            these_reactants = [Symbol(row[r]) for r in rcols if row[r] != "none"]
+            these_products = [Symbol(row[p]) for p in pcols if row[p] != "none"]
+
+            # Find matching reaction
+            rxn_i = findfirst(s -> (s[1] == these_reactants && s[2] == these_products), GV.reaction_network)
+            this_rxn = GV.reaction_network[rxn_i]
+
+            this_rxn_func = mk_function(:((Tn, Ti, Te, M) -> $(this_rxn[3])))
+
+            # Loop over horizontal columns to calculate rates
+            for ihoriz in 1:n_horiz
+                # explicitly get temperatures [horizontal, vertical]
+                Tn_col = GV.Tn[ihoriz, :]
+                Ti_col = GV.Ti[ihoriz, :]
+                Te_col = GV.Te[ihoriz, :]
+
+                # Total atmospheric density explicitly for this horizontal column
+                Mtot = n_tot(atm_state, ihoriz; GV.all_species)
+
+                vol_rate_by_alt = get_volume_rates(
+                    these_reactants[1], this_rxn, this_rxn_func,
+                    atm_state, Mtot, ihoriz;
+                    Jratedict,
+                    Tn = Tn_col[2:end-1],
+                    Ti = Ti_col[2:end-1],
+                    Te = Te_col[2:end-1],
+                    globvars...
+                )
+
+                # Calculate and store column rates for each horizontal column separately
+                col_rate = sum(vol_rate_by_alt .* GV.dz)
+
+                # Insert column-specific rate into its corresponding new column
+                df[row_index, Symbol("ColumnRate_$(ihoriz)")] = col_rate
+
+                if col_rate == 0
+                    println("$(this_rxn) in column $(ihoriz) has a 0 col rate. This may or may not be expected.")
+                end
+            end
+        end
+
+        # Write the updated DataFrame back to the spreadsheet (now multiple columns)
+        for ihoriz in 1:n_horiz
+            col_symbol = Symbol("ColumnRate_$(ihoriz)")
+            add_column(df[!, col_symbol], string(col_symbol), sheet, the_spreadsheet_file)
+        end
+
+        println("Completed sheet $(sheet)")
     end
-    println("Finished adding column rates to $(the_spreadsheet_file)")     
+
+    println("Finished adding column rates to $(the_spreadsheet_file)")
 end
 
 function filter_network(sp::Symbol, rate_type::String, species_role::String; globvars...)

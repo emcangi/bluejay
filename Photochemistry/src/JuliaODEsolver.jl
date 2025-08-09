@@ -25,12 +25,12 @@ function make_jacobian(n, p, t)
     #                                ])
 
     # get the concentrations of species assumed to be in photochemical equilibrium. 
-    n_short = flatten_atm(external_storage, GV.active_shortlived; GV.num_layers)  # retrieve the shortlived species from their storage and flatten them
+    n_short = flatten_atm(external_storage, GV.active_shortlived, n_horiz; GV.num_layers)  # retrieve the shortlived species from their storage and flatten them
 
     # Update Jrates
     n_cur_all = compile_ncur_all(n, n_short, GV.n_inactive; GV.active_longlived, GV.active_shortlived, GV.inactive_species, GV.num_layers)
 
-    update_Jrates!(n_cur_all; GV.Jratelist, GV.crosssection, GV.num_layers, GV.absorber, GV.dz, GV.solarflux)
+    update_Jrates!(n_cur_all, n_horiz; GV.Jratelist, GV.crosssection, GV.num_layers, GV.absorber, GV.dz, GV.solarflux, enable_horiz_transport=GV.enable_horiz_transport)
     # copy all the Jrates into an external dictionary for storage
     for jr in GV.Jratelist                # time for this is ~0.000005 s
         global external_storage[jr] = n_cur_all[jr]
@@ -43,12 +43,18 @@ function make_jacobian(n, p, t)
     # n_short_updated = set_concentrations!(external_storage, n, n_short, n_inactive, active_longlived, active_shortlived, inactive_species, Jrates, Tn, Ti, Te)
 
     tlower, tup, tdown, tupper = update_transport_coefficients(GV.transport_species, # Species for which to update coefficients so it's not a mistake to pass it twice.
-                                                               n_cur_all, D_arr, M; calc_nonthermal=nontherm, globvars...)
+                                                               n_cur_all, D_arr, M, n_horiz; calc_nonthermal=nontherm, globvars...)
                                                                # Tn, Tp, Hs_dict, bcdict=speciesbclist, 
                                                                # all_species, neutral_species, transport_species, molmass, n_alt_index, 
                                                                # polarizability, alt, num_layers, n_all_layers, dz, T_for_diff=Tprof_for_diffusion, q)
+
+    tbackedge, tforwards, tbackwards, tfrontedge =
+        update_horiz_transport_coefficients(
+            GV.transport_species, n_cur_all, D_arr, M, n_horiz;
+            calc_nonthermal=nontherm, globvars...
+        )
     
-    return chemJmat(n, n_short, GV.n_inactive, Jrates, tup, tdown, tlower, tupper, M, E; globvars...)
+    return chemJmat(n, n_short, GV.n_inactive, Jrates, tup, tdown, tlower, tupper, tforwards, tbackwards, tfrontedge, tbackedge, M, E; globvars...)
                     # active_longlived, active_shortlived, inactive_species, Tn, Ti, Te, num_layers, H2Oi, HDOi, upper_lower_bdy_i)
 end
 
@@ -93,7 +99,7 @@ function PnL_eqn(dndt, n, p, t)
     end
 
     # retrieve the shortlived species from their storage and flatten them
-    n_short = flatten_atm(external_storage, GV.active_shortlived; GV.num_layers)
+    n_short = flatten_atm(external_storage, GV.active_shortlived, n_horiz; GV.num_layers)
 
     # Retrieve the Jrates
     Jrates = deepcopy(ftype_ncur[external_storage[jr][ialt] for jr in GV.Jratelist, ialt in 1:GV.num_layers])
@@ -107,8 +113,14 @@ function PnL_eqn(dndt, n, p, t)
 
     # Get the updated transport coefficients, taking into account short-lived species update
     updated_ncur_all = compile_ncur_all(n, n_short_updated, GV.n_inactive; GV...)#active_longlived, active_shortlived, inactive_species, num_layers)
-    tlower, tup, tdown, tupper = update_transport_coefficients(GV.transport_species, updated_ncur_all, D_arr, M; 
+    tlower, tup, tdown, tupper = update_transport_coefficients(GV.transport_species, updated_ncur_all, D_arr, M, n_horiz;
                                                                calc_nonthermal=nontherm, globvars...)
 
-    dndt .= ratefn(n, n_short_updated, GV.n_inactive, Jrates, tup, tdown, tlower, tupper, M, E; globvars...)
+    tbackedge, tforwards, tbackwards, tfrontedge =
+        update_horiz_transport_coefficients(
+            GV.transport_species, updated_ncur_all, D_arr, M, n_horiz;
+            calc_nonthermal=nontherm, globvars...
+        )
+
+    dndt .= ratefn(n, n_short_updated, GV.n_inactive, Jrates, tup, tdown, tlower, tupper, tforwards, tbackwards, tfrontedge, tbackedge, M, E; globvars...)
 end

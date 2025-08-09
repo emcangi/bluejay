@@ -8,19 +8,19 @@
 # 
 # Eryn Cangi
 # Created April 2024
-# Last edited: August 2024
-# Currently tested for Julia: 1.8.5
+# Last edited: June 2025
+# Currently tested for Julia: 1.11.2
 ################################################################################
 
 # Set the planet 
 # =======================================================================================================
-const planet = "Mars"
+const planet = "Venus"
     # OPTIONS: "Mars", "Venus"
 
 # Input and output files, directory
 # =======================================================================================================
 const results_dir = code_dir*"../Results_$(planet)/"
-const initial_atm_file = "$(planet)-Inputs/INITIAL_GUESS_MARS_bxz4YnHk.h5"  # File to use to initialize the atmosphere.
+const initial_atm_file = "$(planet)-Inputs/INITIAL_GUESS_VENUS_oUT0ZbGN.h5"  # File to use to initialize the atmosphere.
     # OPTIONS: 
     # INITIAL_GUESS_MARS.h5 --> Basic Mars starting file.
     # INITIAL_GUESS_MARS_bxz4YnHk.h5 --> A Mars atmosphere that includes N2O, NO2, and their ions;
@@ -163,7 +163,7 @@ const conv_ions = Dict("Mars"=>[:Arpl, :ArHpl, :ArDpl,
 
 # More specific settings for controling the modeling of species
 # -------------------------------------------------------------------
-const dont_compute_chemistry = [] #  :Ar for Venus has been used historically
+const dont_compute_chemistry = planet == "Mars" ? [:Ar] : [] #  :Ar should be in this list if running Mars.
 const dont_compute_transport = []
 const dont_compute_either_chem_or_transport = []  # Chemical species which should never update their densities, but may participate in chem+transport.
     # OPTIONS: Any species included in the model. 
@@ -178,8 +178,8 @@ const make_P_and_L_plots = true  # Makes a 3-panel plot showing production and l
 
 # Algorithm tolerances
 # =======================================================================================================
-const rel_tol = 1e-6
-const abs_tol = 1e-12 
+const rel_tol = planet == "Venus" ? 1e-6 : 1e-3  # Venus: original values, Mars: relaxed for multicolumn stability
+const abs_tol = planet == "Venus" ? 1e-12 : 1e-9  # Venus: original values, Mars: relaxed for multicolumn stability
 
 # Helpful options for adding new things to the model 
 # =======================================================================================================
@@ -193,3 +193,29 @@ const use_nonzero_initial_profiles = true
     # false -- sets species to zero density and lets the chemistry and transport build them up.
 const use_ambipolar = true # Toggle ambipolar diffusion for ions.
 const use_molec_diff = true # Toggle molecular diffusion. If turned off, eddy diffusion remains active.
+
+# Number of vertical columns in the simulation. Set this to 1 for a single-column run or >1 for a multicolumn model.
+const n_horiz = 2
+
+# Cross-terminator (day-to-night) thermospheric transport timescales at Venus are around 23 to 44 hours,
+# corresponding to wind speeds of 230 to 120 m/s (2.3e4 to 1.2e4 cm/s), with 30 hours being typical.
+# This assumes semi-circumference of Venus ~19,000 km as the characteristic width for day-to-night transport.
+
+# Horizontal column width in cm. This determines the physical scale of horizontal transport.
+# For day-night transport setups (n_horiz=2), use larger values for physically realistic transport rates.
+# Day-night transport (n_horiz=2): Use 19000e5 cm (19,000 km, approx. Venus semi-circumference) for Venus.
+const horiz_column_width = planet == "Venus" ? 19000e5 : 10000e5  # 19,000 km for Venus, 10,000 km for Mars
+
+# Horizontal transport timescale in hours. This determines the wind speed via: wind_speed = horiz_column_width / (timescale * 3600)
+# For Venus: 23-44 hours corresponds to 230-120 m/s wind speeds
+# For Mars: Set to 0 for no horizontal transport
+const horiz_transport_timescale = planet == "Venus" ? 30.0 : 0.0  # 30 hours for Venus, 0 for Mars
+
+# Horizontal wind speed in cm/s calculated from timescale: wind_speed = width / (timescale * 3600)
+# This is used to initialize wind profiles in `MODEL_SETUP.jl`
+const horiz_wind_speed = horiz_transport_timescale > 0 ? horiz_column_width / (horiz_transport_timescale * 3600) : 0.0
+
+# Whether to allow horizontal transport between columns. When set to `false`
+# the model does not compute any cross-column mixing, matching the behaviour of
+# the single-column set-up even when multiple columns are present.
+const enable_horiz_transport = true

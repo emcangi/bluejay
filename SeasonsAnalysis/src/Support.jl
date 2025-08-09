@@ -30,15 +30,13 @@ end
 
 function parent_folders_from_full_path(list_of_full_paths)
     #=
-    Given a list of full file pathnames, grab out the parent folders containing just the files.
+    Given a list of full file pathnames, return their parent directories.
+    Using `dirname` avoids reliance on fragile regular expressions.
     =#
-    folder_pattern = r".+v\d\/"
-    file_pattern = r"/[a-z]+_.+\.h5"
-    thefolders = [String(match(folder_pattern, f).match) for f in list_of_full_paths]
-    return thefolders
+    return [dirname(f) * "/" for f in list_of_full_paths]
 end
 
-function DH_of_escaping(df; t="")
+function DH_of_escaping(df, thefiles; t="")
     
     SMOW = 1.6e-4
 
