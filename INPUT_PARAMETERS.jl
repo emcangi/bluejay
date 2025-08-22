@@ -19,22 +19,24 @@ const planet = "Mars"
 
 # Input and output files, directory
 # =======================================================================================================
-const results_dir = code_dir*"../Results_$(planet)/RHAPS/Case3/" # RHAPS # CHANGE EACH TIME
-const initial_atm_file = "$(planet)-Inputs/INITIAL_GUESS_VENUS_RHAPS.h5"  # Special RHAPS atmosphere, from Case 1 sucess.
+const rhapscase = 1
+const results_dir = code_dir*"../Results_$(planet)/RHAPS/Case$(rhapscase)/" # RHAPS # CHANGE EACH TIME
+const initial_atm_file = "$(planet)-Inputs/INITIAL_GUESS_VENUS_oUT0ZbGN.h5"
     # OPTIONS: 
     # INITIAL_GUESS_MARS.h5 --> Basic Mars starting file.
     # INITIAL_GUESS_MARS_bxz4YnHk.h5 --> A Mars atmosphere that includes N2O, NO2, and their ions;
     #                                    not particularly motivated by any present-day data.                                         
     # INITIAL_GUESS_VENUS_vGFd5b0a.h5 --> Best Venus initial atmosphere  without sulfur/chlorine
     # INITIAL_GUESS_VENUS_oUT0ZbGN.h5 --> Venus initial atmosphere with basic chlorine and sulfur species included.
+    # INITIAL_GUESS_VENUS_RHAPS.h5 --> Old RHAPS initial guess for Case 2 and Case 3. It's the output of Case 1. Now deprecated I think because I used a bad spectrum.
 const final_atm_file = "final_atmosphere.h5"
 const reaction_network_spreadsheet = code_dir*"$(planet)-Inputs/REACTION_NETWORK_$(uppercase(planet)).xlsx"
     # OPTIONS: "REACTION_NETWORK_MIN_IONOSPHERE.xlsx", code_dir*"REACTION_NETWORK_$(uppercase(planet)).xlsx"
 
 # Descriptive attributes of this model run
 # =======================================================================================================
-const optional_logging_note = "RHAPS Case 3 / RHAPS spectrum / RHAPS bcs / standard CO2" # Brief summary of simulation goal
-const results_version = "v0"  # Helps keep track of attempts if you need to keep changing things
+const optional_logging_note = "RHAPS Case $(rhapscase) / updated spectrum / RHAPS bcs / standard CO2" # Brief summary of simulation goal
+const results_version = "v3"  # Helps keep track of attempts if you need to keep changing things
 
 # Set the modifiable atmospheric parameters
 # =======================================================================================================
@@ -69,7 +71,7 @@ const temp_scenario = "mean"  # Temperature selection for the seasonal model run
 # Solar case
 # -------------------------------------------------------------------
 const SZA = 60  # Puts the model at dayside mean. Enter in degrees please.
-const solar_scenario = "rhaps-case3" 
+const solar_scenario = "rhaps-case$(rhapscase)" 
     # Solar scenario definition. You can choose from different planet-sun distances or parts of the solar cycle.
     # ORBITAL DISTANCE OPTIONS: "perihelion" #  "meansundist" # "aphelion"; these are defined at solar mean. 
     #     NOTE: these options are only available for Mars at present.
