@@ -328,17 +328,6 @@ const HDOsat = map(x->Psat_HDO(x), Tn_meanSVP)
 const H2Oi = findfirst(x->x==:H2O, active_longlived)
 const HDOi = findfirst(x->x==:HDO, active_longlived)
 
-# Altitude at which water transitions from fixed to freely solved for
-# H2Osatfrac = H2Osat ./ map(z->n_tot(get_ncurrent(initial_atm_file), z; all_species=setdiff(all_species, new_species), n_alt_index), alt)  # get SVP as fraction of total atmo
-# const upper_lower_bdy = alt[something(findfirst(isequal(minimum(H2Osatfrac)), H2Osatfrac), 0)] # in cm
-# const upper_lower_bdy_i = n_alt_index[upper_lower_bdy]  # the uppermost layer at which water will be fixed, in cm
-# # Control whether the removal of rates etc at "Fixed altitudes" runs. If the boundary is 
-# # the bottom of the atmosphere, we shouldn't do it at all.
-# const remove_rates_flag = true
-# if upper_lower_bdy == zmin
-#     const remove_rates_flag = false 
-# end
-
 #                              Species-specific scale heights
 # =======================================================================================================
 const Hs_dict = Dict{Symbol, Vector{Float64}}([sp=>scaleH(alt, sp, Tprof_for_Hs[charge_type(sp)]; molmass, M_P, R_P) for sp in all_species])
