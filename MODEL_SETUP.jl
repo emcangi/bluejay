@@ -352,26 +352,47 @@ if planet=="Mars"
                         :D=> Dict("f"=>[0., NaN], "v"=>[NaN, effusion_velocity(Tn_arr[end], 2.0; M_P, R_P, zmax)], "ntf"=>[NaN, "see boundaryconditions()"]),
                        );
 elseif planet=="Venus"
-    const ntot_at_lowerbdy = 9.5e15 # at 90 km
+    const ntot_at_lowerbdy = 9.5e15 
+    # Supposed to be used for RHAPS, but I didn't: 1.68e15 # Mahieux 2023 (approx). See appendix A, page 24, rows marked Alt = 89.79 and 90.79 km. Midway between these.
+    # Used generally and for RHAPS, although it shouldnt be  used for RHAPS: 9.5e15 # at 90 km
 
     H2O_lowerbdy = h2o_vmr_low * ntot_at_lowerbdy
     HDO_lowerbdy = hdo_vmr_low * ntot_at_lowerbdy
     
     # END SPECIAL
+    # MRs
+    SO2mr = 1e-7
+    # Simon's notes: Belyaev 2012: this was 0.1 ppmv at 165–170 K to 0.5–1 ppmv at 190–192 K; 
+    # It said 0.1ppm was related to the most common temperature reading so I went with that 
+    # (this is either 1E-7 or 6.79E-8 depending on the calculation)
+    N2mr = 0.032
+    H2SO4mr = 3e-9
+    O2mr = 3e-3
+    COmr = 4.5e-6
+    CO2mr = 0.965
+    HClmr = 3.66e-7
+    # Simon's notes: Krasnopolsky, 2010a: this was 400ppb at 74km in altitude, and the actual number is likely lower 
+    # (is either 4.0E-7, or 4.8E-7 depending on the calculation); and according to Zhang 2012 it is 3.66e-7
+    SOmr = 1e-7
+
     
     const KoverH_lowerbdy = Keddy([zmin], [ntot_at_lowerbdy]; planet)[1]/scaleH_lowerboundary(zmin, Tn_arr[1]; molmass, M_P, R_P, zmin)
     const manual_speciesbclist=Dict(# major species neutrals at lower boundary (estimated from Fox&Sung 2001, Hedin+1985, agrees pretty well with VIRA)
-                                    :CO2=>Dict("n"=>[0.965*ntot_at_lowerbdy, NaN], "f"=>[NaN, 0.]),
+                                    :CO2=>Dict("n"=>[CO2mr*ntot_at_lowerbdy, NaN], "f"=>[NaN, 0.]),
                                     :Ar=>Dict("n"=>[5e11, NaN], "f"=>[NaN, 0.]),
-                                    :CO=>Dict("n"=>[4.5e-6*ntot_at_lowerbdy, NaN], "f"=>[NaN, 0.]),
-                                    :O2=>Dict("n"=>[3e-3*ntot_at_lowerbdy, NaN], "f"=>[NaN, 0.]),
-                                    :N2=>Dict("n"=>[0.032*ntot_at_lowerbdy, NaN]),
+                                    :CO=>Dict("n"=>[COmr*ntot_at_lowerbdy, NaN], "f"=>[NaN, 0.]),
+                                    :O2=>Dict("n"=>[O2mr*ntot_at_lowerbdy, NaN], "f"=>[NaN, 0.]),
+                                    :N2=>Dict("n"=>[N2mr*ntot_at_lowerbdy, NaN]),
 
-                                    #Krasnopolsky, 2010a: this was 400ppb at 74km in altitude, and the actual number is likely lower (is either 4.0E-7, or 4.8E-7 depending on the calculation); and according to Zhang 2012 it is 3.66e-7
-                                    :HCl=>Dict("n"=>[3.66e-7 * ntot_at_lowerbdy, NaN]),
+                                    
+                                    :HCl=>Dict("n"=>[HClmr * ntot_at_lowerbdy, NaN]),
+                                    :DCl=>Dict("n"=>[HClmr * DH * ntot_at_lowerbdy, NaN]),
 
-                                    #Denis A. Belyaev 2012: this was 0.1 ppmv at 165–170 K to 0.5–1 ppmv at 190–192 K; It said 0.1ppm was related to the most common temperature reading so I went with that (this is either 1E-7 or 6.79E-8 depending on the calculation)
-                                    :SO2=>Dict("n"=>[1.0e-7 * ntot_at_lowerbdy, NaN]),
+
+                                    :H2SO4=>Dict("n"=>[H2SO4mr * ntot_at_lowerbdy, NaN]), 
+
+                                    :SO2=>Dict("n"=>[SO2mr * ntot_at_lowerbdy, NaN]),
+                                    :SO=>Dict("n"=>[SOmr * ntot_at_lowerbdy, NaN]),
 
                                     # water mixing ratio is fixed at lower boundary
                                     :H2O=>Dict("n"=>[H2O_lowerbdy, NaN], "f"=>[NaN, 0.]),
