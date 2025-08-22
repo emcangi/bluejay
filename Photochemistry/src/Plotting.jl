@@ -295,8 +295,8 @@ function plot_directional_flux(sp, atmdict; xlims=((1e0, 1e10), (1e3, 1e12)), ti
 
     fig, ax = subplots()
     plot_bg(ax)
-    ax.plot(up[2:end-1], GV.plot_grid, color="red", label="Upward flux")
-    ax.plot(down[2:end-1], GV.plot_grid, color="blue", label="Downward flux")
+    ax.scatter(up[2:end-1], GV.plot_grid, marker="^", color="red", label="Upward flux", zorder=5)
+    ax.scatter(down[2:end-1], GV.plot_grid, color="blue", marker="v", label="Downward flux", zorder=5)
     ax.legend()
     ax.set_xscale("log")
     ax.set_ylabel("Alt (km)")
@@ -955,12 +955,15 @@ function plot_species_on_demand(atmdict, spclist, filename; second_atm=nothing, 
     plot_bg(ax)
     
     for sp in spclist
-        col = GV.speciescolor[sp]
+        col = sp in col_override_gray ? "#898989" : GV.speciescolor[sp]
         if overridestyle
             ls = "-"
         else
             ls = get(GV.speciesstyle, sp, "-")
         end
+
+        # Set callout species to emphasize
+        thislw = sp in callout_sp ? lw_callout : lw 
 
         plot_me = atmdict[sp]
         if mixing_ratio
@@ -968,10 +971,10 @@ function plot_species_on_demand(atmdict, spclist, filename; second_atm=nothing, 
             check_requirements(keys(GV), required)
             plot_me = plot_me ./ n_tot(atmdict; GV.all_species)
         end
-        ax.plot(plot_me, GV.plot_grid, color=col, linewidth=lw, label=sp, linestyle=ls, zorder=10)
+        ax.plot(plot_me, GV.plot_grid, color=col, linewidth=thislw, label=sp, linestyle=ls, zorder=10)
         
         if second_atm != nothing
-            ax.plot(second_atm[sp], GV.plot_grid, color=col, linewidth=lw-1.5, label=sp, linestyle=ls, zorder=10)
+            ax.plot(second_atm[sp], GV.plot_grid, color=col, linewidth=lw_callout, label=sp, linestyle=ls, zorder=10)
         end
 
         if plot_hline != nothing
@@ -985,9 +988,18 @@ function plot_species_on_demand(atmdict, spclist, filename; second_atm=nothing, 
         end
     end
 
+    # Optional legend
+    L2D = PyPlot.matplotlib.lines.Line2D
+    lines = [L2D([0], [0], linewidth=lw, color="black"),
+              L2D([0], [0], linewidth=lw_callout, color="black"),
+             ]
+    lbls = ["t=0", "t=60s"]
+    ax.legend(lines, lbls, fontsize=12)
+
+    # Electron Profiles
     if plot_e==true
         electron_linestyle = (0, (15, 3))
-        e_lw = 1
+        e_lw = lw
         required =  [:non_bdy_layers]
         check_requirements(keys(GV), required)
         ionsp = [sp for sp in keys(atmdict) if charge_type(sp)=="ion"]
@@ -995,7 +1007,7 @@ function plot_species_on_demand(atmdict, spclist, filename; second_atm=nothing, 
                 color="black", linewidth=e_lw, linestyle=electron_linestyle, zorder=10)
         if second_atm != nothing
             ax.plot(electron_density(second_atm; e_profile_type="quasineutral", ion_species=ionsp, GV.non_bdy_layers), GV.plot_grid, 
-                color="black", linewidth=e_lw, linestyle=electron_linestyle, zorder=10)
+                color="black", linewidth=e_lw-1, linestyle=electron_linestyle, zorder=10)
         end
         if get(posdict, "e^-", nothing) != nothing
             ax.text(posdict["e^-"]..., L"$\mathrm{e^-}$", transform=ax.transAxes, color="black", fontsize=17)
