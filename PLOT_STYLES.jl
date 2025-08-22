@@ -35,7 +35,7 @@ const speciescolor = Dict( # PRIMARY NEUTRALS + IONS
                     :O2 => "#1BAD53", :O2pl=>"#1BAD53",
                     :O3 =>"#1c4bb4",
 
-                    # ODD HYDROGEN + IONS
+                    # ODD HYDROGEN + IONS   
                     :H => "#ed3e7e", :Hpl=>"#ed3e7e", :D => "#ed3e7e", :Dpl=>"#ed3e7e", 
                     :H2 => "#964550", :H2pl=>"#964550", :HD => "#964550", :HDpl=>"#964550", 
                     :H3pl=> "#A81047", :H2Dpl=>"#A81047", # :HD2pl=>"#A81047",
@@ -65,10 +65,11 @@ const speciescolor = Dict( # PRIMARY NEUTRALS + IONS
                     :N2Hpl=>"#611115",:N2Dpl=>"#611115",
 
                     :HCl=>"#1F540F", :DCl=>"#1F540F", 
-                    :Cl=>"#2EE4EC", :Cl2=>"#89FAD6", :ClO=>"#EEEA0C", :ClCO=>"#EDAC0D", 
-                    :S=>"#FF3232", :SO=>"#E8C3FF", :SO2=>"#74B18C", :SO3=>"#C9FF55", 
-                    :H2SO4=>"#542D5B", :HDSO4=>"#542D5B",
+                    :Cl=>"#2EE4EC", :Cl2=>"#89FAD6", :ClO=>"#7B6AFB", :ClCO=>"#14839F", 
+                    :S=>"#CCC900", :SO=>"#A3A000", :SO2=>"#7A7800", :SO3=>"#3D3C00", 
+                    :H2SO4=>"#E57906", :HDSO4=>"#542D5B",
                     );
+
 
 # NOTE: Some code is repeated here below, also occurring in get_deuterated, to figure out which species are deuterated. 
 # This is because this file needs to be called by Photochemistry.jl, and I couldn't bear to not have a plot style variable
