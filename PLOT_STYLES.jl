@@ -35,7 +35,7 @@ const speciescolor = Dict( # PRIMARY NEUTRALS + IONS
                     :O2 => "#1BAD53", :O2pl=>"#1BAD53",
                     :O3 =>"#1c4bb4",
 
-                    # ODD HYDROGEN + IONS
+                    # ODD HYDROGEN + IONS   
                     :H => "#ed3e7e", :Hpl=>"#ed3e7e", :D => "#ed3e7e", :Dpl=>"#ed3e7e", 
                     :H2 => "#964550", :H2pl=>"#964550", :HD => "#964550", :HDpl=>"#964550", 
                     :H3pl=> "#A81047", :H2Dpl=>"#A81047", # :HD2pl=>"#A81047",
@@ -66,22 +66,23 @@ const speciescolor = Dict( # PRIMARY NEUTRALS + IONS
                     :HO2NO2=>"#FF3232", :DO2NO2=>"#FF3232",
 
                     # Chlorine species
-                    :Cl=>"#ff0000", :Cl2=>"#ff9797",
-                    :HCl=>"#ff8000", :DCl=>"#ff8000",
-                    :ClO=>"#7d6e68", :ClCO=>"#ffe000", :ClO2=>"#b07cff", :ClCO3=>"#7503bb",
+                    :Cl=>"#2EE4EC", :Cl2=>"#89FAD6",
+                    :HCl=>"#1F540F", :DCl=>"#1F540F", 
+                    :ClO=>"#7B6AFB", :ClCO=>"#14839F",  :ClO2=>"#b07cff", :ClCO3=>"#7503bb",
                     :ClNO=>"#9bff00", :COCl2=>"#b7e175",
 
                     # Sulfur species
-                    :S=>"#ff1e99", :S2=>"#dc67a7", :S3=>"#87526f",
-                    :SO=>"#1c72f7", :SO2=>"#6995d8", :SO3=>"#294979",
+                    :S=>"#CCC900", :S2=>"#dc67a7", :S3=>"#87526f",
+                    :SO=>"#A3A000", :SO2=>"#7A7800", :SO3=>"#3D3C00",
                     :S2O=>"#0dd7c2",:S2O2=>"#208278",
-                    :H2SO4=>"#43ea36", :HDSO4=>"#43ea36", :HSO3=>"#b2e5ae", :DSO3=>"#b2e5ae",
+                    :H2SO4=>"#E57906", :HDSO4=>"#542D5B", :HSO3=>"#b2e5ae", :DSO3=>"#b2e5ae",
                     :SNO=>"#c8e01b",   :OCS=>"#99a44b",
 
                     # Chlorine and Sulfur species
                     :SCl=>"#7ea93a", :SCl2=>"#2bfc8d", :S2Cl2=>"#fc1fe8", :ClS2=>"#148147",
-                    :SO2Cl2=>"#09c0ff", :OSCl=>"#93dbf4", :ClSO2=>"#0359c7",
+                    :SO2Cl2=>"#09c0ff", :OSCl=>"#93dbf4", :ClSO2=>"#0359c7"
                     );
+
 
 # NOTE: Some code is repeated here below, also occurring in get_deuterated, to figure out which species are deuterated. 
 # This is because this file needs to be called by Photochemistry.jl, and I couldn't bear to not have a plot style variable

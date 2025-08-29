@@ -1,0 +1,65 @@
+Species,Enthalpy of formation (kJ/mol),Source Name,Source link,Note
+Ar,0,NIST,https://cccbdb.nist.gov/xp1.asp?prop=1,Compounds in stable form have enthalpy=0 by definition.
+CO,-113.8,UMIST,https://umistdatabase.net/,"TODO: Update to -110.53, NIST"
+CO2,-393.1,UMIST,https://umistdatabase.net/,"TODO: Update to -393.51, NIST"
+D,221.72,NIST,https://cccbdb.nist.gov/xp1.asp?prop=1,D/H = 1.02648
+H,216,UMIST,https://umistdatabase.net/,"TODO: Update to 218, NIST"
+HD,0.32,NIST,https://webbook.nist.gov/cgi/cbook.cgi?ID=C13983205&Units=SI&Mask=1#Thermo-Gas,-
+H2,0,UMIST,https://umistdatabase.net/,-
+DCO (as CDO),40.945,Burcat,https://respecth.elte.hu/burcat.php,DCO/HCO = 0.91
+HCO,44.8,UMIST,https://umistdatabase.net/,-
+HDO,-245.28,NIST,https://cccbdb.nist.gov/xp1.asp?prop=1,D/H = 1.0267
+H2O,-238.9,UMIST,https://umistdatabase.net/,-
+H2O2,-130,UMIST,https://umistdatabase.net/,-
+DO2,6.487,Burcat,https://respecth.elte.hu/burcat.php,DO2/HO2 = 0.48
+HO2,13.4,UMIST,https://umistdatabase.net/,-
+DOCO,185.8,Est.,Est.,Estimated with H analogue x 1.01
+HOCO,183.97,KIDA,https://kida.astrochem-tools.org/,-
+N2,0,NIST,https://cccbdb.nist.gov/xp1.asp?prop=1,-
+O,246.8,UMIST,https://umistdatabase.net/,-
+O1D,439,Schunk and Nagy 2009,Book,-
+O2,0,UMIST,https://umistdatabase.net/,-
+O3,141.8,NIST,https://cccbdb.nist.gov/xp1.asp?prop=1,-
+OD,37.23,NIST,https://cccbdb.nist.gov/xp1.asp?prop=1,"OD/OH = 0.96. TODO: Update to 36.60, NIST"
+OH,38.4,UMIST,https://umistdatabase.net/,-
+HDO2,-140.242,Burcat,https://respecth.elte.hu/burcat.php,-
+C,711.2,UMIST,https://umistdatabase.net/,-
+N,470.8,UMIST,https://umistdatabase.net/,-
+NO,89.8,UMIST,https://umistdatabase.net/,-
+Nup2D,470.8,Est.,Est.,Assumed same as N
+CO2pl,935.7,UMIST,https://umistdatabase.net/,-
+DCO2pl,594.9,Est.,Est.,Estimated with H analogue x 1.01
+HCO2pl,589,UMIST,https://umistdatabase.net/,-
+Opl,1560.7,UMIST,https://umistdatabase.net/,-
+O2pl,1164.7,UMIST,https://umistdatabase.net/,-
+Arpl,166.4,NIST,https://cccbdb.nist.gov/xp1.asp?prop=1,-
+ArDpl,1176.9,Est.,Est.,Estimated with H analogue x 1.01
+ArHpl,1165.2,Burcat,https://respecth.elte.hu/burcat.php,-
+Cpl,1797.6,UMIST,https://umistdatabase.net/,-
+CHpl,1619.1,UMIST,https://umistdatabase.net/,-
+COpl,1238.3,UMIST,https://umistdatabase.net/,-
+Dpl,1540.32,Burcat,https://respecth.elte.hu/burcat.php,Dpl/Hpl = 1.008
+Hpl,1528,UMIST,https://umistdatabase.net/,-
+HDpl,1496.793,Burcat,https://respecth.elte.hu/burcat.php,HDpl/H2pl = 1.0057
+H2pl,1488.3,UMIST,https://umistdatabase.net/,-
+H2Dpl,1118.1,Est.,Est.,Estimated with H analogue x 1.01
+H3pl,1107,UMIST,https://umistdatabase.net/,-
+HDOpl,987.7,Est.,Est.,Estimated with H analogue x 1.01
+H2Opl,977.9,UMIST,https://umistdatabase.net/,-
+H3Opl,597,UMIST,https://umistdatabase.net/,-
+H2DOpl,1119.6,Est.,Est.,Estimated with H analogue x 1.01
+HO2pl,1108.5,UMIST,https://umistdatabase.net/,-
+DCOpl,833.9,Est.,Est.,Estimated with H analogue x 1.01
+HCOpl,825.6,UMIST,https://umistdatabase.net/,-
+DOCpl,972.6,Est.,Est.,Estimated with H analogue x 1.01
+HOCpl,963,UMIST,https://umistdatabase.net/,-
+HNOpl,1074.4,UMIST,https://umistdatabase.net/,-
+Npl,1873.1,UMIST,https://umistdatabase.net/,-
+NHpl,1359,UMIST,https://umistdatabase.net/,-
+N2pl,1503.3,UMIST,https://umistdatabase.net/,-
+N2Dpl,1045.9,Est.,Est.,Estimated with H analogue x 1.01
+N2Hpl,1035.5,UMIST,https://umistdatabase.net/,-
+NOpl,984,UMIST,https://umistdatabase.net/,-
+ODpl,1305.6,Est.,Est.,Estimated with H analogue x 1.01
+OHpl,1292.7,UMIST,https://umistdatabase.net/,-
+e-,0,Burcat,https://respecth.elte.hu/burcat.php,-
