@@ -1272,7 +1272,8 @@ function plot_temp_prof(Tprof_1; opt="", cols=[medgray, "xkcd:bright orange", "c
 end
 
 function plot_tophot_lineandbar(atmdict, spreadsheet; N=5, savepath=nothing, draw_arrow=true, title=nothing, lower_ylim=125, xlims=[[1e-4, 2e1], [3e1, 4e7]],
-                                                      Htxt_loc=[0.8, 0.2], Dtxt_loc=[0.2, 0.5], escprobtxt_loc=[0.9, 0.9], globvars...) 
+                                                      Htxt_loc=[0.8, 0.2], Dtxt_loc=[0.2, 0.5], escprobtxt_loc=[0.9, 0.9],
+                                                      arrow_tip_loc=(0.3e-1, 0.9), arrow_base_loc=(0.855, 0.25),  globvars...) 
     #=
     Input:
         atmdict: Atmospheric state dictionary
@@ -1455,8 +1456,8 @@ function plot_tophot_lineandbar(atmdict, spreadsheet; N=5, savepath=nothing, dra
     # draw a line from the HCO+ loss curve to the label
     if draw_arrow
         ax[1].annotate(text="", 
-                       xy=(0.3e-1, 0.9), xycoords=ax[2].transData, # end of arrow
-                       xytext=(0.855, 0.25), textcoords=ax[1].transAxes, # star tof arrow
+                       xy=arrow_tip_loc, xycoords=ax[2].transData, # end of arrow
+                       xytext=arrow_base_loc, textcoords=ax[1].transAxes, # start of arrow
                        arrowprops=Dict("width"=>0.5, "lw"=>0.0, "color"=>"#E23209", "headwidth"=>2.5, "headlength"=>2.5),
                        annotation_clip=false)
     end
