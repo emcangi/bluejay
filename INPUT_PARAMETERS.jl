@@ -227,7 +227,7 @@ const make_new_alt_grid = false  # Set to true if extending the altitude grid. i
                                  #This part of the code can be improved.
 const old_zmax = 250
 const old_zmin = 90
-const use_nonzero_initial_profiles = false
+const use_nonzero_initial_profiles = true
     # OPTIONS: 
     # true -- uses initial guess densities for species based on previous model output.
     # false -- sets species to zero density and lets the chemistry and transport build them up.

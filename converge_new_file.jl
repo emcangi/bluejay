@@ -322,9 +322,6 @@ function chemJmat(n_active_longlived, n_active_shortlived, n_inactive, Jrates, t
     # When it is active, this finds all the H2O and HDO indices for the lower atmosphere. 
     # It's like above where we add (ialt-1)*length(active_species), but this way it's outside the loop.
     if remove_rates_flag == true 
-        if planet=="Venus"
-            throw("Not supposed to delete things from water rates for Venus")
-        end
         if in(:H2O, GV.active_longlived) && in(:HDO, GV.active_longlived)
             H2Opositions = GV.H2Oi .+ length(GV.active_longlived)*collect(0:GV.upper_lower_bdy_i-1)
             HDOpositions = GV.HDOi .+ length(GV.active_longlived)*collect(0:GV.upper_lower_bdy_i-1)
@@ -417,9 +414,6 @@ function ratefn(n_active_longlived, n_active_shortlived, n_inactive, Jrates, tup
     # NEW: Overwrite the entries for water in the lower atmosphere with 0s so that it will behave as fixed.
     # Only runs when water is in the active_species list. If neutrals are set to inactive, it will be taken care of already.
     if remove_rates_flag == true # This won't run for Venus
-        if planet=="Venus"
-            throw("Not supposed to run for Venus")
-        end
         if in(:H2O, GV.active_longlived) && in(:HDO, GV.active_longlived)
             returnrates[GV.H2Oi, 1:GV.upper_lower_bdy_i] .= 0
             returnrates[GV.HDOi, 1:GV.upper_lower_bdy_i] .= 0
@@ -1111,15 +1105,7 @@ E = electron_density(n_current; e_profile_type, non_bdy_layers, ion_species)
 #===============================================================================#
 
 H2Osatfrac = H2Osat ./ map(z->n_tot(n_current, z; all_species, n_alt_index), alt)  # get SVP as fraction of total atmo
-# const upper_lower_bdy = alt[something(findfirst(isequal(minimum(H2Osatfrac)), H2Osatfrac), 0)] # in cm
-# const upper_lower_bdy = alt[1] # in cm
-
-const upper_lower_bdy = Dict( # in cm
-                 "Mars"=>alt[something(findfirst(isequal(minimum(H2Osatfrac)), H2Osatfrac), 0)], 
-                 "Venus"=>alt[1]
-                )[planet] 
-
-
+const upper_lower_bdy = alt[something(findfirst(isequal(minimum(H2Osatfrac)), H2Osatfrac), 0)]
 const upper_lower_bdy_i = n_alt_index[upper_lower_bdy]  # the uppermost layer at which water will be fixed, in cm
 # Control whether the removal of rates etc at "Fixed altitudes" runs. If the boundary is 
 # the bottom of the atmosphere, we shouldn't do it at all.
