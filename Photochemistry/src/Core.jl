@@ -1291,19 +1291,17 @@ end
 
     function NEUTRALS(new_a)
         Tn = zeros(size(GV.alt))
-
+        
+        Tn[i_lower] .= Tsurf .+ lapserate*GV.alt[i_lower]
+        Tn[i_meso] .= Tmeso
+        
         Tfile = readdlm(file_for_interp, ',')
         T_n = Tfile[2,:]
         alt_i = Tfile[1,:] .* 1e5
-        interp_ion = LinearInterpolation(alt_i, T_n)
-        Tn_interped = [interp_ion(a) for a in new_a];
+        interp_neu = LinearInterpolation(alt_i, T_n)
+        Tn_interped = [interp_neu(a) for a in new_a];
 
         Tn_interped_upper = Tn_interped[findall( x -> x > z_meso_top , interp_alts)]
-        # Tn_interped_meso = Tn_interped[findall(z->z_meso_bottom <= z <= z_meso_top, interp_alts)] # there is large shift in the temp from t_meso_bottom to t_lower_top when I interpolate the meso temperatures, so it is called out untill I can find a fix for it.
-
-        Tn[i_lower] .= Tsurf .+ lapserate*GV.alt[i_lower]
-        Tn[i_meso] .= Tmeso
-        # Tn[i_meso] .= Tn_interped_meso
         Tn[i_upper] .= Tn_interped_upper # upper_atmo_neutrals(GV.alt[i_upper])
         
         return Tn 
@@ -1313,6 +1311,9 @@ end
     function ELECTRONS(new_a; spc="electron") 
         Te = zeros(size(GV.alt))
 
+        Te[i_lower] .= Tsurf .+ lapserate*GV.alt[i_lower]
+        Te[i_meso] .= Tmeso
+        
         Tfile = readdlm(file_for_interp, ',')
         T_e = Tfile[4,:]
         alt_e = Tfile[1,:] .* 1e5
@@ -1320,11 +1321,6 @@ end
         Te_interped = [interp_elec(a) for a in new_a];
 
         Te_interped_upper = Te_interped[findall( x -> x > z_meso_top , interp_alts)]
-        # Te_interped_meso = Te_interped[findall(z->z_meso_bottom <= z <= z_meso_top, interp_alts)] # there is large shift in the temp from t_meso_bottom to t_lower_top when I interpolate the meso temperatures, so it is called out untill I can find a fix for it.
-
-        Te[i_lower] .= Tsurf .+ lapserate*GV.alt[i_lower]
-        Te[i_meso] .= Tmeso
-        # Te[i_meso] .= Te_interped_meso
         Te[i_upper] .= Te_interped_upper
 
         return Te
@@ -1333,6 +1329,9 @@ end
     function IONS(new_a; spc="ion") 
         Ti = zeros(size(GV.alt))
 
+        Ti[i_lower] .= Tsurf .+ lapserate*GV.alt[i_lower]
+        Ti[i_meso] .= Tmeso
+        
         Tfile = readdlm(file_for_interp, ',')
         T_i = Tfile[3,:]
         alt_i = Tfile[1,:] .* 1e5
@@ -1340,11 +1339,6 @@ end
         Ti_interped = [interp_ion(a) for a in new_a];
 
         Ti_interped_upper = Ti_interped[findall( x -> x > z_meso_top , interp_alts)]
-        # Ti_interped_meso = Ti_interped[findall(z->z_meso_bottom <= z <= z_meso_top, interp_alts)]# there is large shift in the temp from t_meso_bottom to t_lower_top when I interpolate the meso temperatures, so it is called out untill I can find a fix for it.
-
-        Ti[i_lower] .= Tsurf .+ lapserate*GV.alt[i_lower]
-        Ti[i_meso] .= Tmeso
-        # Ti[i_meso] .= Ti_interped_meso
         Ti[i_upper] .= Ti_interped_upper
 
         return Ti
@@ -1362,7 +1356,7 @@ end
     # For interpolating upper atmo temperatures from Fox & Sung 2001 - only from 90 km up
     # interp_alts = collect(90e5:GV.alt[2]-GV.alt[1]:GV.alt[end])
     if GV.alt[1] > z_meso_top
-        interp_alts = collect(GV.alt[1]:GV.alt[2]-GV.alt[1]:GV.alt[end])
+        interp_alts = GV.alt
     elseif GV.alt[1] <= z_meso_top       
         interp_alts = collect((z_meso_top+(GV.alt[2]-GV.alt[1])):GV.alt[2]-GV.alt[1]:GV.alt[end])
     end
@@ -1419,18 +1413,10 @@ function binary_dcoeff_inCO2(sp, T, globvars...)
 
     Currently, this is set up to only work for diffusion through CO2 since that's the Mars atm.
     Could be extended to be for any gas, but that will require some work.
-    =#
-
-    # GV = values(globvars)
-    # required = [:all_species, :speciesbclist, :dz, :planet, :molmass]  #I still need to figure out what is requires and make this whole thing
-    # check_requirements(keys(GV), required)
-    
-    # Vapor_mean_free_path = "something"
-    
+    =#   
     A = diffparams(sp)[1] .* 1e17 # Empirical parameter (determined it by experiment)
     s = (diffparams(sp)[2]) # Empirical parameter (det. by exp.)
     b = A .* T .^ s # T = temperature
-    return b # this is b = AT^s: I can use Zhang 2012 to get an equation to calculate b differently 
 end
 
 function boundaryconditions(fluxcoef_dict, atmdict, M; nonthermal=true, globvars...)
@@ -1977,7 +1963,7 @@ function Keddy(z::Vector, nt::Vector; globvars...)
         k[upperatm] .= 2e13 ./ sqrt.(nt[upperatm])
     elseif GV.planet=="Venus"
         upperatm = findall(i->i .> 116e5, z)
-        k[findall(i->i .<= 116e5, z)] .= 3.54e6
+        k[findall(i->i .<= 116e5, z)] .= 3.54e6 # Mahieux 2021
         k[upperatm] .= 8e12 .* (nt[upperatm] .^ -0.5)
     end
 
