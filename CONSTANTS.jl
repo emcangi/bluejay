@@ -86,25 +86,43 @@ const molmass = Dict(:H=>1, :Hpl=>1,
                      :HCO=>29, :HCOpl=>29, :HOCpl=>29, :N2Hpl=>29, 
                      :DCO=>30, :DCOpl=>30, :DOCpl=>30, :NO=>30,  :NOpl=>30, :N2Dpl=>30, 
                      :HNO=>31, :HNOpl=>31, 
-                     :O2=>32, :O2pl=>32, 
+                     :O2=>32, :O2pl=>32, :S=>32,
                      :HO2=>33, :HO2pl=>33, 
                      :DO2=>34, :H2O2=>34, 
-                     :HDO2=>35,
+                     :HDO2=>35, :Cl=>35,
+                     :HCl=>36,
+                     :DCl=>37,
                      :Ar=>40, :Arpl=>40, 
                      :ArHpl=>41, 
                      :ArDpl=>42,
                      :CO2=>44, :CO2pl=>44, :N2O=>44, :N2Opl=>44, 
                      :HOCO=>45, :HCO2pl=>45, :HN2Opl=>45,  
                      :DOCO=>46, :DCO2pl=>46, :NO2=>46, :NO2pl=>46,
-                     :O3=>48, :HCl=>36, :Cl=>35, :ClO=>51, :ClCO=>63, :Cl2=>71, :DCl=>37,
-                     :S=>32, :SO=>48, :SO2=>64, :SO3=>80, :H2SO4=>98, :HDSO4=>99,
-    
-#an ugly way to put in the Post REU Cl and S species except for Cl2 which was alreaddy writen above
-    :ClNO=>67, :COCl2=>99, :ClCO3=>95, :ClO2=>67, :SCl=>68, :SCl2=>103, :SO2Cl2=>135, :OSCl=>84, :ClSO2=>100, :SNO=>62, :S2=>64, :S3=>96, :S2O=>80,
-    :S2O2=>96, :OCS=>60, :HSO3=>81, :DSO3=>82, :HO2NO2=>79, :DO2NO2=>80, :S2Cl2=>135, :ClS2=>100
+                     :O3=>48, :SO=>48,
+                     :ClO=>51, 
+                     :OCS=>60,
+                     :SNO=>62,
+                     :ClCO=>63, 
+                     :SO2=>64, :S2=>64,
+                     :ClNO=>65, 
+                     :ClO2=>67,
+                     :SCl=>68,
+                     :Cl2=>71, 
+                     :HO2NO2=>79,
+                     :SO3=>80, :S2O=>80, :DO2NO2=>80,
+                     :HSO3=>81,
+                     :DSO3=>82,
+                     :OSCl=>84,
+                     :ClCO3=>95,
+                     :S3=>96, :S2O2=>96,
+                     :H2SO4=>98, 
+                     :HDSO4=>99, :COCl2=>99,
+                     :SCl2=>103,
+                     :ClSO2=>100, :ClS2=>100,
+                     :SO2Cl2=>135, :S2Cl2=>135, 
                      )
 
-#= Some links for molecule diamters 
+#= Some links for molecular diameters 
     https://pubs.acs.org/doi/full/10.1021/jp412588f?casa_token=fK7ezVqJuxUAAAAA%3AzrZ_oV-cDO5_XfoiZVB9mvF3arIfkANbBuVdcarx62ZJkyP-mpBPs8QwlIQeS_kBzj-6JCoyHirOK1m_ 
     Quantum Mechanical Basis for Kinetic Diameters of Small Gaseous Molecules.Nada Mehio†Sheng Dai†‡De-en Jiang*‡. ACS publications
 =#
