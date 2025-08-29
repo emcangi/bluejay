@@ -201,6 +201,6 @@ const make_new_alt_grid = false  # Set to true if extending the altitude grid. T
 const use_nonzero_initial_profiles = true
     # OPTIONS: 
     # true -- uses initial guess densities for species based on previous model output.
-    # false -- sets species to zero density and lets the chemistry and transport build them up.
+    # false -- sets new species to zero density and lets the chemistry and transport build them up.
 const use_ambipolar = true # Toggle ambipolar diffusion for ions.
 const use_molec_diff = true # Toggle molecular diffusion. If turned off, eddy diffusion remains active.

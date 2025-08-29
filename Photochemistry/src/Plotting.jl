@@ -1478,7 +1478,7 @@ function plot_tophot_lineandbar(atmdict, spreadsheet; N=5, savepath=nothing, dra
     if savepath==nothing
         show()
     else
-        savefig(savepath*"top_hot_producing_mechanisms.png", fmt="png", bbox_inches="tight", dpi=300)
+        savefig(savepath*"top_hot_producing_mechanisms.png", format="png", bbox_inches="tight", dpi=300)
     end
     show()
 end

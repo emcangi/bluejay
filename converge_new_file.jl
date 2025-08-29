@@ -450,7 +450,7 @@ function record_atmospheric_state(t, n, actively_solved, E_prof; opt="", globvar
     # This is just to change how many decimal places to include depending if t >= 1.
     rounding_digits = t <= 1 ? Int64(ceil(abs(log10(t)))) : 0 
 
-    progress_alert = "$(Dates.format(now(), "(HH:MM:SS)")) reached timestep $(t), total elapsed time=$(format_sec_or_min(time() - ti))"
+    progress_alert = "$(Dates.format(now(), "(HH:MM:SS)")) reached simulation time $(t), total elapsed wall time=$(format_sec_or_min(time() - ti))"
     write_to_log(logfile, progress_alert)
     println(progress_alert)
     
@@ -1007,6 +1007,24 @@ elseif make_new_alt_grid==false
     n_current = get_ncurrent(initial_atm_file)
 end
 
+# PLOT EDDY _---___------------------------
+# SPECIAL CASE: PLot eddy diffusion to check it.
+if occursin("rhaps", solar_scenario)
+    println("Plotting eddy diffusion for making sure I'm not dumb")
+    fig, ax = subplots()
+    if use_mahieux2021==true 
+        Karr = Keddy(non_bdy_layers, [1]; planet, use_mahieux2021=true)
+    else
+        Karr = Keddy(non_bdy_layers, n_tot(n_current; all_species); planet, use_mahieux2021)
+    end
+    ax.plot(Karr, plot_grid)
+    ax.set_xscale("log")
+    ax.set_ylabel("Alt (km)")
+    ax.set_xlabel(L"Eddy diffusion coefficient (cm$^2$/s)")
+    savefig(results_dir * sim_folder_name*"/eddy_diffusion.png", format="png", dpi=300, bbox_inches="tight")
+    close(fig)
+end
+
 #                       Establish new species profiles                          #
 #===============================================================================#
 
@@ -1116,6 +1134,22 @@ E = electron_density(n_current; e_profile_type, non_bdy_layers, ion_species)
 
 #                          Set up the water profile                             #
 #===============================================================================#
+
+
+H2Osatfrac = H2Osat ./ map(z->n_tot(n_current, z; all_species, n_alt_index), alt)  # get SVP as fraction of total atmo
+const upper_lower_bdy = alt[something(findfirst(isequal(minimum(H2Osatfrac)), H2Osatfrac), 0)] # in cm
+const upper_lower_bdy_i = n_alt_index[upper_lower_bdy]  # the uppermost layer at which water will be fixed, in cm
+# Control whether the removal of rates etc at "Fixed altitudes" runs. If the boundary is 
+# the bottom of the atmosphere, we shouldn't do it at all.
+const remove_rates_flag = true
+if upper_lower_bdy == zmin
+    const remove_rates_flag = false 
+end
+# Add these to the logging dataframes
+push!(PARAMETERS_ALT_INFO, ("upper_lower_bdy", upper_lower_bdy, "cm", "Altitude at which water goes from being fixed to calculated"));
+push!(PARAMETERS_ALT_INFO, ("upper_lower_bdy_i", upper_lower_bdy_i, "", "Index of the line above within the alt grid"));
+
+
 # If you want to completely wipe out the water profile and install the initial one
 # (i.e. when running a stand alone simulation)
 if reinitialize_water_profile
