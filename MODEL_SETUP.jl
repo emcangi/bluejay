@@ -352,7 +352,7 @@ if planet=="Mars"
                         :D=> Dict("f"=>[0., NaN], "v"=>[NaN, effusion_velocity(Tn_arr[end], 2.0; M_P, R_P, zmax)], "ntf"=>[NaN, "see boundaryconditions()"]),
                        );
 elseif planet=="Venus"
-    const ntot_at_lowerbdy = 9.5e15 # standard 1.74e15 # RHAPS
+    const ntot_at_lowerbdy = 1.74e15 # RHAPS # 9.5e15 # what we used in the past....
 
     H2O_lowerbdy = 3.9e9 # RHAPS  
                    # h2o_vmr_low * ntot_at_lowerbdy  # Standard #
