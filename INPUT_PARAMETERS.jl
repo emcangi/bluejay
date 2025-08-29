@@ -14,29 +14,41 @@
 
 # Set the planet 
 # =======================================================================================================
-const planet = "Mars"
+const planet = "Venus"
     # OPTIONS: "Mars", "Venus"
 
 # Input and output files, directory
 # =======================================================================================================
-const rhapscase = 1
-const results_dir = code_dir*"../Results_$(planet)/RHAPS/Case$(rhapscase)/" # RHAPS # CHANGE EACH TIME
-const initial_atm_file = "$(planet)-Inputs/INITIAL_GUESS_VENUS_oUT0ZbGN.h5"
+const rhapscase = 3 # Change each time
+const results_dir = code_dir*"../Results_$(planet)/RHAPS/Case$(rhapscase)/converge_from_0/" # NewAtmDensity/"#  For making a new atmosphere: NewAtmDensity/
+const initial_atm_file = code_dir * "../Results_$(planet)/RHAPS/Case$(rhapscase)/converge_from_0/atms/atmv0.5_minorneutrals.h5"  
+    # Folder for making a new atmosphere: code_dir*"../Results_$(planet)/RHAPS/NewAtmDensity/StartingFiles/atmv0.5_allin.h5"# 
+    # normal: "$(planet)-Inputs/INITIAL_GUESS_VENUS_RHAPS_v2.h5" 
+    # ---- CONVERGING A NEW ATMOSPHERE FROM SCRATCH ----
+    # Recommended to use the following file names:
+    # 1. atmv0.1_co2.h5: a CO2-only atmosphere converged with diffusion on and no chemistry.
+    # 2. atmv0.2_neutrals.h5: Neutrals that don't include nitrogen, and N2, but no other nitrogen neutrals. Converged "neutrals" with chemistry and diffusion.
+    # 3. atmv0.3_ions.h5: atmosphere with the basic ionosphere added in. converged "ions" with chemistry. 
+    # 4. atmv0.4_moreions.h5: more ions added in plus nitrogen neutrals
+    # 
     # OPTIONS: 
+    # --------- Mars ----------
     # INITIAL_GUESS_MARS.h5 --> Basic Mars starting file.
     # INITIAL_GUESS_MARS_bxz4YnHk.h5 --> A Mars atmosphere that includes N2O, NO2, and their ions;
-    #                                    not particularly motivated by any present-day data.                                         
-    # INITIAL_GUESS_VENUS_vGFd5b0a.h5 --> Best Venus initial atmosphere  without sulfur/chlorine
+    #                                    not particularly motivated by any present-day data.    
+    # --------- Venus ----------                                     
+    # INITIAL_GUESS_VENUS_vGFd5b0a.h5 --> Best Venus initial atmosphere 
     # INITIAL_GUESS_VENUS_oUT0ZbGN.h5 --> Venus initial atmosphere with basic chlorine and sulfur species included.
     # INITIAL_GUESS_VENUS_RHAPS.h5 --> Old RHAPS initial guess for Case 2 and Case 3. It's the output of Case 1. Now deprecated I think because I used a bad spectrum.
+    # INITIAL_GUESS_VENUS_RHAPS_v2.h5 --> Initial atmosphere using Kevin France's spectrum for Case 1 (Venus around the Sun) and the proper lower boundary condition of ntot=1.74e15.
 const final_atm_file = "final_atmosphere.h5"
 const reaction_network_spreadsheet = code_dir*"$(planet)-Inputs/REACTION_NETWORK_$(uppercase(planet)).xlsx"
     # OPTIONS: "REACTION_NETWORK_MIN_IONOSPHERE.xlsx", code_dir*"REACTION_NETWORK_$(uppercase(planet)).xlsx"
 
 # Descriptive attributes of this model run
 # =======================================================================================================
-const optional_logging_note = "RHAPS Case $(rhapscase) / updated spectrum / RHAPS bcs / standard CO2" # Brief summary of simulation goal
-const results_version = "v3"  # Helps keep track of attempts if you need to keep changing things
+const optional_logging_note = "RHAPS Case 3 (Venus around quiescent star): updated spectrum from Kevin France, updated lower boundary condition on ntot. final all-together convergence" # Brief summary of simulation goal
+const results_version = "v0.6"  # Helps keep track of attempts if you need to keep changing things
 
 # Set the modifiable atmospheric parameters
 # =======================================================================================================
@@ -136,14 +148,16 @@ const conv_neutrals = Dict("Mars"=>[:Ar, :C, :CO, :CO2, # Argon and carbon speci
                                     :H2O2, :HDO2, :HOCO, :DOCO, 
                                     :N, :N2, :NO, :Nup2D, :N2O, :NO2, # Nitrogen species
                                     :O, :O1D, :O2, :O3, :OH, :OD], # Oxygen species
-                           "Venus"=>[:Ar, :C, :CO, :CO2, 
+                           "Venus"=>[
+                                     :Ar, :C, :CO, :CO2, 
                                      :Cl, :ClO, :ClCO, :HCl, :DCl,  # Chlorine species
                                      :H, :D, :H2, :HD, :H2O, :HDO,  # H and D species
                                      :HCO, :DCO, :HO2, :DO2,        
-                                     :H2O2, :HDO2, :HOCO, :DOCO, 
-                                     :N, :N2, :NO, :Nup2D, :N2O, :NO2,
-                                     :O, :O1D, :O2, :O3, :OH, :OD,
-                                     :S, :SO, :SO2, :SO3, :H2SO4, :HDSO4] # Sulfur species
+                                      :H2O2, :HDO2, :HOCO, :DOCO, 
+                                      :N, :N2, :NO, :Nup2D, :N2O, :NO2,
+                                      :O, :O1D, :O2, :O3, :OH, :OD,
+                                      :S, :SO, :SO2, :SO3, :H2SO4, :HDSO4 # Sulfur species
+                                    ] 
                            ); 
 
 const conv_ions = Dict("Mars"=>[:Arpl, :ArHpl, :ArDpl, 
@@ -154,14 +168,16 @@ const conv_ions = Dict("Mars"=>[:Arpl, :ArHpl, :ArDpl,
                                 :HO2pl, :HCOpl, :HCO2pl, :HOCpl, :HNOpl,   
                                 :Npl, :NHpl, :N2pl, :N2Hpl, :N2Dpl, :NOpl, :N2Opl, :NO2pl,
                                 :Opl, :O2pl, :OHpl, :ODpl],
-                       "Venus"=>[:Arpl, :ArHpl, :ArDpl, 
-                                :Cpl, :CHpl, :COpl, :CO2pl, 
-                                :Dpl, :DCOpl, :DOCpl, :DCO2pl, 
-                                :Hpl,  :H2pl, :HDpl, :H3pl, :H2Dpl, 
-                                :H2Opl, :HDOpl, :H3Opl, :H2DOpl, 
-                                :HO2pl, :HCOpl, :HCO2pl, :HOCpl, :HNOpl,   
-                                :Npl, :NHpl, :N2pl, :N2Hpl, :N2Dpl, :NOpl, :N2Opl, :NO2pl,
-                                :Opl, :O2pl, :OHpl, :ODpl]
+                       "Venus"=>[
+                                 :Arpl, :ArHpl, :ArDpl, 
+                                 :Cpl, :CHpl, :COpl, :CO2pl, 
+                                 :Dpl, :DCOpl, :DOCpl, :DCO2pl, 
+                                 :Hpl,  :H2pl, :HDpl, :H3pl, :H2Dpl, 
+                                 :H2Opl, :HDOpl, :H3Opl, :H2DOpl, :HO2pl, 
+                                 :HCOpl, :HCO2pl, :HOCpl, :HNOpl,   
+                                 :Npl, :NHpl, :N2pl, :N2Hpl, :N2Dpl, :NOpl, :N2Opl, :NO2pl,
+                                :Opl, :O2pl, :OHpl, :ODpl
+                                ]
                       );
 
 # More specific settings for controling the modeling of species
