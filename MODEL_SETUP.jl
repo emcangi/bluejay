@@ -36,8 +36,6 @@ const R_P = Dict( # Planetary radius in cm
                 )[planet] 
 const DH = Dict( # Atmospheric D/H ratio 
                 "Mars"=>5.5 * SMOW, # Yung 1988
-                # "Venus"=>240 * SMOW, # value at 90km from Fedorova 2008
-                # "Venus"=> 1519 * SMOW, # value at 108km from A. Mahieux 2024
                 "Venus"=> 162 * SMOW, # value at 70km from A. Mahieux 2024
                )[planet]
 const sol_in_sec = Dict(
@@ -255,8 +253,6 @@ if planet=="Mars"
 elseif planet=="Venus"
     const T_array_dict = T_Venus(controltemps[1], controltemps[2], controltemps[3], "Venus-Inputs/FoxandSung2001_temps_mike_copy.txt"; alt);
     const Tn_meanSVP = T_Venus(meantemps..., "Venus-Inputs/FoxandSung2001_temps_mike_copy.txt"; alt)["neutrals"]; # Needed for boundary conditions.
-    # const T_array_dict = T_Venus(controltemps[1], controltemps[2], controltemps[3], "Venus-Inputs/FoxandSung2001_temps_mike.txt"; alt);
-    # const Tn_meanSVP = T_Venus(meantemps..., "Venus-Inputs/FoxandSung2001_temps_mike.txt"; alt)["neutrals"]; # Needed for boundary conditions.
 end
 
 const Tn_arr = T_array_dict["neutrals"]
@@ -293,9 +289,6 @@ if planet=="Mars"
                            "everywhere"=>Dict("standard"=>1.3e-4, "high"=>1.3e-4, "low"=>1.3e-4))
     const water_mixing_ratio = water_MRs[water_loc][water_case]
 elseif planet=="Venus"
-    
-    # const water_mixing_ratio = Dict("standard"=>0.778e-6)[water_case]  # parse(Float64, water_case)  # this is for  the 70km alt A. Mahieux 2024
-    # const water_mixing_ratio = Dict("standard"=>21e-6)[water_case]  # parse(Float64, water_case) # this is from krasnopolsky2012 for 48km
     const water_mixing_ratio = Dict("standard"=>1e-6)[water_case] # parse(Float64, water_case) # this is for 90km
 
     # SPECIAL: Crazy water Mahieux & Viscardy 2024
@@ -308,7 +301,6 @@ elseif planet=="Venus"
         const h2o_vmr_low = water_mixing_ratio
         const h2o_vmr_high = nothing
         const hdo_vmr_low = 2*DH*water_mixing_ratio
-        # const hdo_vmr_low = 0.0393e-6 # A. Mahieux 2024 at 70km
         const hdo_vmr_high = nothing
     end
 end
@@ -371,7 +363,6 @@ if planet=="Mars"
                         :D=> Dict("f"=>[0., NaN], "v"=>[NaN, effusion_velocity(Tn_arr[end], 2.0; M_P, R_P, zmax)], "ntf"=>[NaN, "see boundaryconditions()"]),
                        );
 elseif planet=="Venus"
-    # const ntot_at_lowerbdy = 2.74e+19 # at 48 km: A. Seiff 1985
     const ntot_at_lowerbdy = 3.6e+19 # at 48km acording to Krasnopolsky 2012
     
     H2O_lowerbdy = h2o_vmr_low * ntot_at_lowerbdy
@@ -383,19 +374,18 @@ elseif planet=="Venus"
     const manual_speciesbclist=Dict(# major species neutrals at lower boundary (estimated from Fox&Sung 2001, Hedin+1985, agrees pretty well with VIRA)
                                     :CO2=>Dict("n"=>[0.965*ntot_at_lowerbdy, NaN], "f"=>[NaN, 0.]),
                                     :Ar=>Dict("n"=>[98.0e-6 * ntot_at_lowerbdy, NaN], "f"=>[NaN, 0.]), # Hoffman 1979
-                                    :CO=>Dict("v"=>[-KoverH_lowerbdy*0.1, NaN], "f"=>[NaN, 0.]),# 68km Krasnopolsky, 2010a
-                                    :O2=>Dict("v"=>[-KoverH_lowerbdy*2, NaN], "f"=>[NaN, 0.]), # 300mbar Mills 1999
-                                    :N2=>Dict("n"=>[0.032*ntot_at_lowerbdy, NaN]), # ask about 0.032 vs 0.035
-                                    :NO=>Dict("n"=>[5.5e-9*ntot_at_lowerbdy, NaN]), # ask about 0.032 vs 0.035
-                                    :HCl=>Dict("n"=>[400e-9 * ntot_at_lowerbdy, NaN]), #75 km Krasnopolsky, 2010a
+                                    :CO=>Dict("v"=>[-KoverH_lowerbdy*0.1, NaN], "f"=>[NaN, 0.]), # 47km Krasnopolsky 2012
+                                    :O2=>Dict("v"=>[-KoverH_lowerbdy*2, NaN], "f"=>[NaN, 0.]), # 47km Krasnopolsky 2012
+                                    :N2=>Dict("n"=>[0.032*ntot_at_lowerbdy, NaN]), 
+                                    :NO=>Dict("n"=>[5.5e-9*ntot_at_lowerbdy, NaN]), # 47km Krasnopolsky 2012
+                                    :HCl=>Dict("n"=>[400e-9 * ntot_at_lowerbdy, NaN]), # 47km Krasnopolsky 2012
                                     :DCl=>Dict("n"=>[400e-9 * DH* SMOW* ntot_at_lowerbdy, NaN]),
 
                                     #Denis A. Belyaev 2012: this was 0.1 ppmv at 165–170 K to 0.5–1 ppmv at 190–192 K; It said 0.1ppm was related to the most common temperature reading so I went with that (this is either 1E-7 or 6.79E-8 depending on the calculation)
-                                    :SO2=>Dict("n"=>[9.7e-6 * ntot_at_lowerbdy, NaN]), #72km Krasnopolsky 2010
-                                    :OCS=>Dict("n"=>[260e-9 * ntot_at_lowerbdy, NaN]),
+                                    :SO2=>Dict("n"=>[9.7e-6 * ntot_at_lowerbdy, NaN]), # 47km Krasnopolsky 2012
+                                    :OCS=>Dict("n"=>[260e-9 * ntot_at_lowerbdy, NaN]), # 47km Krasnopolsky 2012
 
                                     # water mixing ratio is fixed at lower boundary
-        
                                     :H2O=>Dict("n"=>[H2O_lowerbdy, NaN], "f"=>[NaN, 0.]),
         
                                     # we assume HDO has the bulk atmosphere ratio with H2O at the lower boundary, ~consistent with Bertaux+2007 observations
@@ -415,7 +405,7 @@ elseif planet=="Venus"
                                                     #                 NaN # No thermal escape to space, appropriate for global average model
                                               "ntf"=>[NaN, "see boundaryconditions()"]),
                                     # # H2 mixing ratio at lower boundary adopted from Yung&DeMore1982 as in Fox&Sung2001
-                                    # :H2=>Dict("n"=>[4.5e-9*ntot_at_lowerbdy, NaN],),
+                                    # :H2=>Dict("n"=>[4.5e-9*ntot_at_lowerbdy, NaN],), # 47km Krasnopolsky 2012
                                     #           # "v"=>[NaN, effusion_velocity(Tn_arr[end], 2.0; zmax)],
                                     #           # "ntf"=>[NaN, "see boundaryconditions()"]),
                                     # :HD=>Dict("n"=>[DH*4.5e-9*ntot_at_lowerbdy, NaN],),
