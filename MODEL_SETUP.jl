@@ -352,9 +352,7 @@ if planet=="Mars"
                         :D=> Dict("f"=>[0., NaN], "v"=>[NaN, effusion_velocity(Tn_arr[end], 2.0; M_P, R_P, zmax)], "ntf"=>[NaN, "see boundaryconditions()"]),
                        );
 elseif planet=="Venus"
-    const ntot_at_lowerbdy = 9.5e15 
-    # Supposed to be used for RHAPS, but I didn't: 1.68e15 # Mahieux 2023 (approx). See appendix A, page 24, rows marked Alt = 89.79 and 90.79 km. Midway between these.
-    # Used generally and for RHAPS, although it shouldnt be  used for RHAPS: 9.5e15 # at 90 km
+    const ntot_at_lowerbdy = 9.5e15 # Based on Fox & Sung 2001
 
     H2O_lowerbdy = h2o_vmr_low * ntot_at_lowerbdy
     HDO_lowerbdy = hdo_vmr_low * ntot_at_lowerbdy
