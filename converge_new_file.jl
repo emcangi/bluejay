@@ -1035,6 +1035,9 @@ if adding_new_species==true
         for nn in new_neutrals
             n_current[nn] = zeros(num_layers)
         end
+        if do_trans && !do_chem && new_neutrals==[:CO2] # if doing a diffusion-only starting atmosphere
+            n_current[:CO2] = ones(num_layers) * ntot_at_lowerbdy
+        end
 
         if use_nonzero_initial_profiles
             println("Initializing non-zero profiles for $(new_neutrals)")
@@ -1245,6 +1248,13 @@ HDOprum = precip_microns(:HDO, [n_current[:HDO][1]; n_current[:HDO]; n_current[:
 # Jrates must be stored here because they have to be updated alongside evolution
 # of the atmospheric densities--the solver doesn't handle their values currently.
 # NOTE: The stored Jrates will have units of #/s.
+
+# First add Jrates to n_current, if they're not already there (e.g. when converging a new atmosphere)
+for jr in Jratelist
+    if !(jr in keys(n_current))
+        n_current[jr] = zeros(num_layers)
+    end
+end
 const external_storage = Dict{Symbol, Vector{Float64}}([j=>n_current[j] for j in union(short_lived_species, inactive_species, Jratelist)])
 const n_inactive = flatten_atm(n_current, inactive_species; num_layers)
 
