@@ -999,7 +999,7 @@ if make_new_alt_grid==true
     println("extra_entries_to_raise:  ", extra_entries_to_raise)
 
     # Extend the grid
-    for (k,v) in zip(keys(n_current), values(n_current)) # fro extrending downwards
+    for (k,v) in zip(keys(n_current), values(n_current)) # for extending downwards
         lowest_old_value = n_current[k][1]
         lowest_aprox_new_value = n_current[k][1]
         lowering_log_constant = (extra_entries_to_lower / log10( ntot_at_lowerbdy / old_ntot))
@@ -1114,7 +1114,14 @@ E = electron_density(n_current; e_profile_type, non_bdy_layers, ion_species)
 
 H2Osatfrac = H2Osat ./ map(z->n_tot(n_current, z; all_species, n_alt_index), alt)  # get SVP as fraction of total atmo
 # const upper_lower_bdy = alt[something(findfirst(isequal(minimum(H2Osatfrac)), H2Osatfrac), 0)] # in cm
-const upper_lower_bdy = alt[1] # in cm
+# const upper_lower_bdy = alt[1] # in cm
+
+const upper_lower_bdy = Dict( # in cm
+                 "Mars"=>alt[something(findfirst(isequal(minimum(H2Osatfrac)), H2Osatfrac), 0)], 
+                 "Venus"=>alt[1]
+                )[planet] 
+
+
 const upper_lower_bdy_i = n_alt_index[upper_lower_bdy]  # the uppermost layer at which water will be fixed, in cm
 # Control whether the removal of rates etc at "Fixed altitudes" runs. If the boundary is 
 # the bottom of the atmosphere, we shouldn't do it at all.
@@ -1213,11 +1220,9 @@ if update_water_profile
 end
 
 # Calculate precipitable microns, including boundary layers (assumed same as nearest bulk layer)
-if :H2O in keys(n_current)
-    if :HDO in keys(n_current)
-H2Oprum = precip_microns(:H2O, [n_current[:H2O][1]; n_current[:H2O]; n_current[:H2O][end]]; molmass, dz)
-HDOprum = precip_microns(:HDO, [n_current[:HDO][1]; n_current[:HDO]; n_current[:HDO][end]]; molmass, dz)
-    end
+if (:H2O in keys(n_current)) && (:HDO in keys(n_current))
+    H2Oprum = precip_microns(:H2O, [n_current[:H2O][1]; n_current[:H2O]; n_current[:H2O][end]]; molmass, dz)
+    HDOprum = precip_microns(:HDO, [n_current[:HDO][1]; n_current[:HDO]; n_current[:HDO][end]]; molmass, dz)
 end
 
 #           Define storage for species/Jrates not solved for actively           #
@@ -1526,16 +1531,10 @@ for k in keys(photochem_data_files)  # cross sections
     end
 end
 
-if :H2O in keys(n_current)
-    if :HDO in keys(n_current)
-push!(PARAMETERS_CONDITIONS, ("TOTAL_H2O", H2Oprum, "pr micrometers"))
-push!(PARAMETERS_CONDITIONS, ("TOTAL_HDO", HDOprum, "pr micrometers"))
-push!(PARAMETERS_CONDITIONS, ("TOTAL_WATER", H2Oprum+HDOprum, "pr micrometers"))
-    else
-        println(" we are not running H2Oprum")
-    end
-else
-    println(" we are not running H2Oprum")
+if (:H2O in keys(n_current)) && (:HDO in keys(n_current))
+    push!(PARAMETERS_CONDITIONS, ("TOTAL_H2O", H2Oprum, "pr micrometers"))
+    push!(PARAMETERS_CONDITIONS, ("TOTAL_HDO", HDOprum, "pr micrometers"))
+    push!(PARAMETERS_CONDITIONS, ("TOTAL_WATER", H2Oprum+HDOprum, "pr micrometers"))
 end
             
     

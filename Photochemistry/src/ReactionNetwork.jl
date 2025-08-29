@@ -533,8 +533,7 @@ function format_neutral_network(reactions_spreadsheet, used_species; saveloc=not
     @assert all(x->x>=0, n_table."k0A")
     
     # Get all the counts of each type 
-    # counts = Dict([i=>count(x->x==i, n_table[:, "type"]) for i in 1:6])
-        counts = Dict([i=>count(x->x==i, n_table[:, "type"]) for i in 1:7])
+    counts = Dict([i=>count(x->x==i, n_table[:, "type"]) for i in 1:7])
 
     n = 1 # Keeps track of iteration, since some counts may be 0.
 

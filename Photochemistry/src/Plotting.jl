@@ -156,9 +156,9 @@ function plot_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, savepath::String, a
     axes_by_sp = Dict()
 
     if :HCl in GV.neutral_species || :SO2 in GV.neutral_species # this changes the plot to include the Cl and S species
-    num_of_plot_rows = 4
+        num_of_plot_rows = 4
     else
-    num_of_plot_rows = 3
+        num_of_plot_rows = 3
     end
     for k in keys(species_groups)
         for sp in species_groups[k]
