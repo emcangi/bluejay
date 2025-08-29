@@ -988,8 +988,6 @@ const hot_HD_rc_funcs = Dict([rxn => mk_function(:((Tn, Ti, Te, M) -> $(rxn[3]))
 #           Load starting atmosphere; change alt grid if requested              #
 #===============================================================================#
 if make_new_alt_grid==true
-    println("The code for extending the altitude grid probably needs to be redone.")
-    
     n_current = get_ncurrent(initial_atm_file)
     old_ntot = n_current[:CO2][1]
     

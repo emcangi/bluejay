@@ -363,7 +363,7 @@ if planet=="Mars"
                         :D=> Dict("f"=>[0., NaN], "v"=>[NaN, effusion_velocity(Tn_arr[end], 2.0; M_P, R_P, zmax)], "ntf"=>[NaN, "see boundaryconditions()"]),
                        );
 elseif planet=="Venus"
-    const ntot_at_lowerbdy = 3.6e+19 # at 48km acording to Krasnopolsky 2012
+    const ntot_at_lowerbdy = 3.6e19 # at 48km acording to Krasnopolsky 2012
     
     H2O_lowerbdy = h2o_vmr_low * ntot_at_lowerbdy
     HDO_lowerbdy = hdo_vmr_low * ntot_at_lowerbdy

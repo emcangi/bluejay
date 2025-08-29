@@ -1260,7 +1260,8 @@ function T_Mars(Tsurf, Tmeso, Texo; lapserate=-1.4e-5, z_meso_top=108e5, weird_T
     return Dict("neutrals"=>NEUTRALS(), "ions"=>IONS(), "electrons"=>ELECTRONS())
 end 
 
-    function T_Venus(Tsurf::Float64, Tmeso::Float64, Texo::Float64, file_for_interp; z_meso_top=68e5, lapserate=-7.3e-5, weird_Tn_param=8, globvars...)
+function T_Venus(Tsurf::Float64, Tmeso::Float64, Texo::Float64, file_for_interp; z_meso_top=68e5, lapserate=-7.3e-5, weird_Tn_param=8, globvars...)
+    # TODO: z_meso_top and lapse_rate were changed. Review later to ensure it hasn't caused other problems.
     #= 
     Input:
         z: altitude above surface in cm
@@ -1351,10 +1352,9 @@ end
     i_lower = findall(z->z < z_meso_bottom, GV.alt)
     i_meso = findall(z->z_meso_bottom <= z <= z_meso_top, GV.alt)
     i_upper = findall(z->z > z_meso_top, GV.alt)
-    # i_meso_top = findfirst(z->z==z_meso_top, GV.alt)
+
 
     # For interpolating upper atmo temperatures from Fox & Sung 2001 - only from 90 km up
-    # interp_alts = collect(90e5:GV.alt[2]-GV.alt[1]:GV.alt[end])
     if GV.alt[1] > z_meso_top
         interp_alts = GV.alt
     elseif GV.alt[1] <= z_meso_top       

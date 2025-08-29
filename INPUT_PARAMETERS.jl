@@ -20,7 +20,7 @@ const planet = "Venus"
 # Input and output files, directory
 # =======================================================================================================
 const results_dir = code_dir*"../Results_$(planet)/"
-const initial_atm_file = "$(planet)-Inputs/V0.6a.2.B added now added COCl2 and ClCO3.h5"
+const initial_atm_file = "$(planet)-Inputs/Venus_with_chlorine_48km.h5"
     # OPTIONS: 
     # INITIAL_GUESS_MARS.h5 --> Basic Mars starting file.
     # INITIAL_GUESS_MARS_bxz4YnHk.h5 --> A Mars atmosphere that includes N2O, NO2, and their ions;
@@ -221,7 +221,7 @@ const abs_tol = 1e-12
 # =======================================================================================================
 const do_chem = true   # Turning this or next one of will toggle chemistry or transport.
 const do_trans = true  # Often useful for troubleshooting or converging new atmospheres.
-const adding_new_species = true
+const adding_new_species = false
 const make_new_alt_grid = false  # Set to true if extending the altitude grid. if true values for old_zmin and old_zmax in km will be needed to be input below
                                  # Put what you want the final zmax and zmin to be as the constants zmax and zmin in modle setup
                                  #This part of the code can be improved.
