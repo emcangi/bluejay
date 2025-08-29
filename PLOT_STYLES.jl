@@ -17,7 +17,7 @@
 # ***************************************************************************************************** #
 
 # Sans-serif font to use 
-sansserif_choice = "Louis George Cafe"
+sansserif_choice = "Arial"
 
 # Monospace font to use
 monospace_choice = "FreeMono"
@@ -63,11 +63,24 @@ const speciescolor = Dict( # PRIMARY NEUTRALS + IONS
                     :NO=>"#e639b1",:NOpl=>"#e639b1",
                     :NO2=>"#a492e5", :NO2pl=>"#a492e5",  
                     :N2Hpl=>"#611115",:N2Dpl=>"#611115",
+                    :HO2NO2=>"#FF3232", :DO2NO2=>"#FF3232",
 
+                    # Chlorine species
+                    :Cl=>"#2EE4EC", :Cl2=>"#89FAD6",
                     :HCl=>"#1F540F", :DCl=>"#1F540F", 
-                    :Cl=>"#2EE4EC", :Cl2=>"#89FAD6", :ClO=>"#7B6AFB", :ClCO=>"#14839F", 
-                    :S=>"#CCC900", :SO=>"#A3A000", :SO2=>"#7A7800", :SO3=>"#3D3C00", 
-                    :H2SO4=>"#E57906", :HDSO4=>"#542D5B",
+                    :ClO=>"#7B6AFB", :ClCO=>"#14839F",  :ClO2=>"#b07cff", :ClCO3=>"#7503bb",
+                    :ClNO=>"#9bff00", :COCl2=>"#b7e175",
+
+                    # Sulfur species
+                    :S=>"#CCC900", :S2=>"#dc67a7", :S3=>"#87526f",
+                    :SO=>"#A3A000", :SO2=>"#7A7800", :SO3=>"#3D3C00",
+                    :S2O=>"#0dd7c2",:S2O2=>"#208278",
+                    :H2SO4=>"#E57906", :HDSO4=>"#542D5B", :HSO3=>"#b2e5ae", :DSO3=>"#b2e5ae",
+                    :SNO=>"#c8e01b",   :OCS=>"#99a44b",
+
+                    # Chlorine and Sulfur species
+                    :SCl=>"#7ea93a", :SCl2=>"#2bfc8d", :S2Cl2=>"#fc1fe8", :ClS2=>"#148147",
+                    :SO2Cl2=>"#09c0ff", :OSCl=>"#93dbf4", :ClSO2=>"#0359c7"
                     );
 
 

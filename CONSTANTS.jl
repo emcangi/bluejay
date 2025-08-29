@@ -37,20 +37,33 @@ const polarizability = Dict(# Values available from experiment
                             :CH=>2.108e-24,   :CN=>3.042e-24,   :D=>0.713e-24, 
                             :H2O2=>2.143e-24, :HCO=>2.505e-24,  :HDO=>1.358e-24, :HNO=>2.123e-24, 
                             :HO2=>1.858e-24,  :HOCO=>3.224e-24, :NH=>1.418e-24,  :NH2=>1.752e-24, 
-                            :OH=>1.020e-24,   :OD=>1.020e-24,
+                            :OH=>1.020e-24,   :OD=>1.020e-24, :HO2NO2=>4.734e-24,
 
-                            #Chlorine species; ClO, DCl and ClCO are place holders
-                            :HCl=> 2.515e-24, :Cl=> 2.180e-24, :ClO=> 2.108e-24, :ClCO=>2.108e-24, 
-                            :Cl2=>4.610e-24, :DCl=>2.108e-24, 
+    # I used density functional mPW1PW91, and basis set aug-cc-pVDZ, but I dont think this was the best choice since aug-cc-pVQZ is generally considered to be better (DZ is double zeta, and QZ is quadupal zeta), and I don't know much about what are actually considered the best desnity functionals/hamaltonians and basis sets.
+
+                            #Chlorine species experiment
+                            :HCl=> 2.515e-24, :Cl=> 2.180e-24, :Cl2=> 4.610e-24, :COCl2=>6.790e-24,
     
-                            #Sulfur species SO and H2SO4 are a place holder
-                            :S=> 2.900e-24, :SO=> 2.108e-24, :SO2=> 3.882e-24, :SO3=>4.297e-24,:H2SO4=>4.297e-24, :HDSO4=>4.297e-24,
+                            # chlorine species calculated
+                            :DCl=> 2.409e-24, :ClO=> 2.907e-24, :ClCO=>4.474e-24, :ClCO3=>4.474e-24, :ClNO=>4.790e-24, :ClO2=>4.948e-24,
 
+                            #Sulfur species experiment
+                            :S=> 2.900e-24,  :SO2=> 3.882e-24, :SO3=>4.297e-24, :OCS=>5.090e-24,
+
+                            #Sulfur species calculation 
+                            :SO=> 3.351e-24, :H2SO4=>5.533e-24, :S2=>5.882e-24, :S3=>8.378e-24, :S2O=>4.297e-24, :HSO3=>5.121e-24, 
+
+                            # Chlorine and Sulfur species calculated
+                            :SCl=>4.297e-24, :SCl2=>7.448e-24, :ClS2=>8.788e-24, :SO2Cl2=>8.719e-24, :OSCl=>5.896e-24, :S2Cl2=>11.307e-24,
+    
                             # Assumed same as hydrogen analogue
                             :DCO=>2.505e-24, :DO2=>1.858e-24, :DOCO=>3.224e-24, :HDO2=>2.143e-24, :O1D=>0.802e-24, 
-
+                            :HDSO4=>5.533e-24, :DSO3=>5.121e-24, :DO2NO2=>4.734e-24,
                             # Assumed same as non-excited version
-                            :Nup2D=>1.710e-24, 
+                            :Nup2D=>1.710e-24,
+
+                            # placeholder for new Cl and S speices post REU that didn't have calculations
+                            :ClCO3=>4.297e-24, :ClSO2=>4.297e-24, :SNO=>4.297e-24, :S2O2=>4.297e-24, 
                             )
 
 const molmass = Dict(:H=>1, :Hpl=>1, 
@@ -73,19 +86,52 @@ const molmass = Dict(:H=>1, :Hpl=>1,
                      :HCO=>29, :HCOpl=>29, :HOCpl=>29, :N2Hpl=>29, 
                      :DCO=>30, :DCOpl=>30, :DOCpl=>30, :NO=>30,  :NOpl=>30, :N2Dpl=>30, 
                      :HNO=>31, :HNOpl=>31, 
-                     :O2=>32, :O2pl=>32, 
+                     :O2=>32, :O2pl=>32, :S=>32,
                      :HO2=>33, :HO2pl=>33, 
                      :DO2=>34, :H2O2=>34, 
-                     :HDO2=>35,
+                     :HDO2=>35, :Cl=>35,
+                     :HCl=>36,
+                     :DCl=>37,
                      :Ar=>40, :Arpl=>40, 
                      :ArHpl=>41, 
                      :ArDpl=>42,
                      :CO2=>44, :CO2pl=>44, :N2O=>44, :N2Opl=>44, 
                      :HOCO=>45, :HCO2pl=>45, :HN2Opl=>45,  
                      :DOCO=>46, :DCO2pl=>46, :NO2=>46, :NO2pl=>46,
-                     :O3=>48, :HCl=>36, :Cl=>35, :ClO=>51, :ClCO=>63, :Cl2=>71, :DCl=>37,
-                     :S=>32, :SO=>48, :SO2=>64, :SO3=>80, :H2SO4=>98, :HDSO4=>99
+                     :O3=>48, :SO=>48,
+                     :ClO=>51, 
+                     :OCS=>60,
+                     :SNO=>62,
+                     :ClCO=>63, 
+                     :SO2=>64, :S2=>64,
+                     :ClNO=>65, 
+                     :ClO2=>67,
+                     :SCl=>68,
+                     :Cl2=>71, 
+                     :HO2NO2=>79,
+                     :SO3=>80, :S2O=>80, :DO2NO2=>80,
+                     :HSO3=>81,
+                     :DSO3=>82,
+                     :OSCl=>84,
+                     :ClCO3=>95,
+                     :S3=>96, :S2O2=>96,
+                     :H2SO4=>98, 
+                     :HDSO4=>99, :COCl2=>99,
+                     :SCl2=>103,
+                     :ClSO2=>100, :ClS2=>100,
+                     :SO2Cl2=>135, :S2Cl2=>135, 
                      )
+
+#= Some links for molecular diameters 
+    https://pubs.acs.org/doi/full/10.1021/jp412588f?casa_token=fK7ezVqJuxUAAAAA%3AzrZ_oV-cDO5_XfoiZVB9mvF3arIfkANbBuVdcarx62ZJkyP-mpBPs8QwlIQeS_kBzj-6JCoyHirOK1m_ 
+    Quantum Mechanical Basis for Kinetic Diameters of Small Gaseous Molecules.Nada Mehio†Sheng Dai†‡De-en Jiang*‡. ACS publications
+=#
+const diameters = Dict(# I think I want these in cm
+
+                # Simple molecules from Breck, D. W. Zeolite Molecular Sieves: Structure, Chemistry and Use. John Wiley & Sons, Inc.: New York, 1974.
+                :H2=> 2.89e-8, :O2=>3.46e-8, :N2=>3.64e-8, :CO=>3.76e-8, :CO2 => 3.30e-8,
+
+    )
 
 const collision_xsect = Dict(:H=>4e-15, # Zhang 2009
                              :D=>4.5e-15, 

@@ -55,7 +55,7 @@ function get_grad_colors(L::Int64, cmap; strt=0, stp=1)
 end
 
 function plot_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, savepath::String, atol, E_prof; imgfmt="png", print_shortcodes=true, mixing_ratio=false,
-                  t="", showonly=false, xlab=L"Species density (cm$^{-3}$)", xlim_1=(1e-12, 1e18), xlim_2=(1e-5, 2.5e5), ylims=[0, 250],
+                  t="", showonly=false, xlab=L"Species density (cm$^{-3}$)", xlim_1=(1e-12, 1e20), xlim_2=(1e-5, 2.5e5), ylims=[0, 250],
                   legloc=[0.8,1], globvars...)
     #=
     Makes a "spaghetti plot" of the species concentrations by altitude in the
@@ -84,7 +84,7 @@ function plot_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, savepath::String, a
     if print_shortcodes
         required =  [:hrshortcode, :rshortcode]
         check_requirements(keys(GV), required)
-    end 
+    end
 
     set_rc_params(; fs=18, axlab=20, xtls=18, ytls=18, sansserif=GV.sansserif_choice, monospace=GV.monospace_choice)
 
@@ -111,6 +111,7 @@ function plot_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, savepath::String, a
     # Establish logical groups for axes =======================================================
 
     # This dictionary was created by hand. Species may be missing. If so, an error will automatically be thrown by the code
+
     species_groups = Dict( # PRIMARY NEUTRALS + IONS
                             1=>[:CO2,:CO2pl,
                                 :CO,:COpl,
@@ -133,7 +134,7 @@ function plot_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, savepath::String, a
                                 :H2O2,:HDO2,
                                 :HO2,:HO2pl,:DO2,
                                 :OH,:OHpl,:OD,:ODpl],
-                            # NITROGEN NEUTRALS + IONS, RARE C MOLECULES, CHLORINE, SULFUR
+                            # NITROGEN NEUTRALS + IONS, RARE C MOLECULES
                             3=>[:C,:Cpl,:CH,:CHpl,
                                 :CN,:CNpl,:HCN,:HCNpl,:HCNHpl,
                                 :HNO,:HNOpl,:HN2Opl,
@@ -141,12 +142,24 @@ function plot_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, savepath::String, a
                                 :NH,:NHpl,:NH2,:NH2pl,:NH3pl,
                                 :NO,:NOpl,:NO2,:NO2pl,
                                 :N2Hpl,:N2Dpl,
-                                :HCl, :Cl, :ClO, :ClCO, :DCl, :Cl2,
-                                :S, :SO, :SO2, :SO3, :H2SO4, :HDSO4]
-                        );
+                                :HO2NO2, :DO2NO2,
+            ],
+                            # SULFUR AND CHLORINE
+                            4=>[:HCl, :Cl, :ClO, :ClCO, :DCl, :Cl2,
+                                :S, :SO, :SO2, :SO3, :H2SO4, :HDSO4, 
+                                :Cl2, :ClNO, :COCl2, :ClCO3, :ClO2, 
+                                :SCl, :SCl2, :S2Cl2, :ClS2, :SO2Cl2, 
+                                :OSCl, :ClSO2, :SNO, :S2, :S3, :S2O, 
+                                :S2O2, :OCS, :HSO3, :DSO3, 
+        ]);
 
     axes_by_sp = Dict()
 
+    if :HCl in GV.neutral_species || :SO2 in GV.neutral_species # this changes the plot to include the Cl and S species
+        num_of_plot_rows = 4
+    else
+        num_of_plot_rows = 3
+    end
     for k in keys(species_groups)
         for sp in species_groups[k]
             axes_by_sp[sp] = k
@@ -157,35 +170,51 @@ function plot_atm(atmdict::Dict{Symbol, Vector{ftype_ncur}}, savepath::String, a
     if haskey(GV, :ion_species) # neutrals and ions 
         
         # set up the overall plot -------------------------------------------------------------
-        atm_fig, atm_ax = subplots(3, 2, sharex=false, sharey=true, figsize=(14, 16))
+        atm_fig, atm_ax = subplots(num_of_plot_rows, 2, sharex=false, sharey=true, figsize=(14/3*num_of_plot_rows, 16/3*num_of_plot_rows))
         subplots_adjust(wspace=0, hspace=0)
         tight_layout()
                 
         # only the neutral-col axes
         atm_ax[1, 1].set_title("Neutrals")
-        for i in 1:3
+        for i in 1:num_of_plot_rows
             plot_bg(atm_ax[i, 1])
             atm_ax[i, 1].set_xlim(xlim_1[1], xlim_1[2])
             atm_ax[i, 1].fill_betweenx(GV.plot_grid, xlim_1[1] .* ones(size(GV.plot_grid,)), x2=atol, alpha=0.1, color=medgray, zorder=10)
             atm_ax[i, 1].tick_params(which="both", labeltop=false, top=true, labelbottom=true, bottom=true)
             atm_ax[i, 1].set_ylabel("Altitude (km)")
         end
-        atm_ax[3, 1].set_xlabel(xlab)
-        
+        atm_ax[num_of_plot_rows, 1].set_xlabel(xlab)
         # only the ion-col axes
-        atm_ax[1, 2].set_title("Ions")
-        for i in 1:3
-            plot_bg(atm_ax[i, 2])
-            atm_ax[i, 2].set_xlim(xlim_2[1], xlim_2[2])
-            atm_ax[i, 2].fill_betweenx(GV.plot_grid, xlim_2[1] .* ones(size(GV.plot_grid)), x2=atol, alpha=0.1, color=medgray, zorder=10)
-            atm_ax[i, 2].tick_params(which="both", labeltop=false, top=true, labelbottom=true, bottom=true)
+        cl_ion_title = Dict(4 => "Ions and Chlorine",
+                    3 => "Ions") # this changes the title of the 2nd colum graph depending on if Chlorine is present in the model
+        atm_ax[1, 2].set_title(cl_ion_title[num_of_plot_rows])
+        for i in 1:num_of_plot_rows
+            if i in [1,2,3]
+                plot_bg(atm_ax[i, 2])
+                atm_ax[i, 2].set_xlim(xlim_2[1], xlim_2[2])
+                atm_ax[i, 2].fill_betweenx(GV.plot_grid, xlim_2[1] .* ones(size(GV.plot_grid)), x2=atol, alpha=0.1, color=medgray, zorder=10)
+                atm_ax[i, 2].tick_params(which="both", labeltop=false, top=true, labelbottom=true, bottom=true)
+            elseif i >= 4
+                plot_bg(atm_ax[i, 2])
+                atm_ax[i, 2].set_xlim(xlim_1[1], xlim_1[2])
+                atm_ax[i, 2].fill_betweenx(GV.plot_grid, xlim_1[1] .* ones(size(GV.plot_grid)), x2=atol, alpha=0.1, color=medgray, zorder=10)
+                atm_ax[i, 2].tick_params(which="both", labeltop=false, top=true, labelbottom=true, bottom=true)
+            end
         end
-        atm_ax[3, 2].set_xlabel(xlab)
+        atm_ax[num_of_plot_rows, 2].set_xlabel(xlab)
          
         # plot the neutrals according to logical groups -------------------------------------------------------
-        for sp in GV.neutral_species
-            atm_ax[axes_by_sp[sp], 1].plot(convert(Array{Float64}, atmdict[sp]), GV.plot_grid, color=get(GV.speciescolor, sp, "black"),
-                                           linewidth=2, label=string_to_latexstr(string(sp)), linestyle=get(GV.speciesstyle, sp, "-"), zorder=2)
+        for sp in [k for k in GV.neutral_species if !occursin("Cl", string(k))]
+                ignore_Cl = sp
+            atm_ax[axes_by_sp[ignore_Cl], 1].plot(convert(Array{Float64}, atmdict[ignore_Cl]), GV.plot_grid, color=get(GV.speciescolor, 
+                                            ignore_Cl, "black"), linewidth=2, label=string_to_latexstr(string(ignore_Cl)),
+                                            linestyle=get(GV.speciesstyle, ignore_Cl, "-"), zorder=2)
+        end
+        for sp in [k for k in GV.neutral_species if occursin("Cl", string(k))]
+                contain_Cl = sp
+            atm_ax[axes_by_sp[contain_Cl], 2].plot(convert(Array{Float64}, atmdict[contain_Cl]), GV.plot_grid, color=get(GV.speciescolor, 
+                                            contain_Cl, "black"), linewidth=2, label=string_to_latexstr(string(contain_Cl)),
+                                            linestyle=get(GV.speciesstyle, contain_Cl, "-"), zorder=2)
         end
         
         # plot the ions according to logical groups ------------------------------------------------------------

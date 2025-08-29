@@ -100,12 +100,15 @@ function populate_xsect_dict(pd_dataf, xsecfolder; ion_xsects=true, globvars...)
     ohO1Dxdata = readdlm(xsecfolder*pd_dataf[:OH]["O1D+H"],',',Float64, comments=true, comment_char='#')
     odxdata = readdlm(xsecfolder*pd_dataf[:OD]["main"],',',Float64, comments=true, comment_char='#')
 
+    # S2Cl2 and SCl2
+    S2Cl2xdata = readdlm(xsecfolder*pd_dataf[:S2Cl2]["main"],',',Float64, comments=true, comment_char='#')
+    SCl2xdata = readdlm(xsecfolder*pd_dataf[:SCl2]["main"], ',',Float64, comments=true, comment_char='#')
+
 
     # Populating the dictionary ======================================================
     # CO2 photodissociation -------------------------------------------------------------
     # CO2+hv->CO+O
     xsect_dict[get_Jrate_symb("CO2", ["CO", "O"])] = map(xs->quantumyield(xs,((l->l>167, 1), (l->95>l, 0.5))), map(t->co2xsect(co2xdata, t), GV.Tn))
-
     # CO2+hv->CO+O1D
     xsect_dict[get_Jrate_symb("CO2", ["CO", "O1D"])] = map(xs->quantumyield(xs,((l->95<l<167, 1), (l->l<95, 0.5))), map(t->co2xsect(co2xdata, t), GV.Tn))
 
@@ -220,6 +223,50 @@ function populate_xsect_dict(pd_dataf, xsecfolder; ion_xsects=true, globvars...)
     # HDO2 + hν -> HDO + O1D
     xsect_dict[get_Jrate_symb("HDO2", ["HDO", "O1D"])] = map(xs->quantumyield(xs,((x->true, 0),)), map(t->hdo2xsect(hdo2xdata, t), GV.Tn))
 
+    # S2Cl2 and SCl2 photodissociation ----------------------------------------------
+
+    # S2Cl2+hv-> ClS2 + Cl
+    xsect_dict[get_Jrate_symb("S2Cl2", ["ClS2", "Cl"])] = map(t->quantumyield(S2Cl2xdata,
+                                                                        (
+                                                                         (l->l<180, 0),
+                                                                         (l->180<=l<230, 0),
+                                                                         (l->230<=l<280, 0.15),
+                                                                         (l->280<=l<308.7, 0.75),
+                                                                         (l->308.7<=l<385.8, 0.5),
+                                                                        )), GV.Tn)
+    # S2Cl2+hv-> S2 + Cl +Cl
+       xsect_dict[get_Jrate_symb("S2Cl2", ["S2", "Cl", "Cl"])] = map(t->quantumyield(S2Cl2xdata,
+                                                                        (
+                                                                         (l->l<180, 1),
+                                                                         (l->180<=l<230, 0.5),
+                                                                         (l->230<=l<280, 0.75),
+                                                                         (l->280<=l<308.7, 0),
+                                                                         (l->308.7<=l<385.8, 0),
+                                                                        )), GV.Tn)
+    # S2Cl2+hv-> ClS2 + Cl
+       xsect_dict[get_Jrate_symb("S2Cl2", ["SCl", "SCl"])] = map(t->quantumyield(S2Cl2xdata,
+                                                                        (
+                                                                         (l->l<180, 0),
+                                                                         (l->180<=l<230, 0.5),
+                                                                         (l->230<=l<280, 0.1),
+                                                                         (l->280<=l<308.7, 0.25),
+                                                                         (l->308.7<=l<385.8, 0.5),
+                                                                        )), GV.Tn)
+    # SCl2+hc-> SCl + Cl
+           xsect_dict[get_Jrate_symb("SCl2", ["SCl", "Cl"])] = map(t->quantumyield(SCl2xdata,
+                                                                        (
+                                                                         (l->l<190.7, 0),
+                                                                         (l->190.7<=l<230, 0.25),
+                                                                         (l->230<=l<460, 1),
+                                                                        )), GV.Tn)
+        # SCl2+hc-> S + Cl + Cl
+           xsect_dict[get_Jrate_symb("SCl2", ["S", "Cl", "Cl"])] = map(t->quantumyield(SCl2xdata,
+                                                                        (
+                                                                         (l->l<190.7, 1),
+                                                                         (l->190.7<=l<230, 0.75),
+                                                                         (l->230<=l<460, 0),
+                                                                        )), GV.Tn)
+
     # The following reactions have associated files listing cross sections.
     # TODO: Ideally this should not be hard coded in; ought to be passed in based on the reaction spreadsheet.
     reactant_product_sets = Dict("CO2"=>[["CO2pl"], ["CO2plpl"], ["Cplpl", "O2"], ["Cpl", "O2"], ["COpl", "Opl"], ["COpl", "O"], ["Opl", "CO"], ["Opl", "Cpl", "O"], ["C", "O", "O"], ["C", "O2"]],
@@ -230,6 +277,8 @@ function populate_xsect_dict(pd_dataf, xsecfolder; ion_xsects=true, globvars...)
                                  "NO2"=>[["NO2pl"], ["NO", "O"]],
                                  "NO"=>[["NOpl"], ["N", "O"]],
                                  "N2O"=>[["N2Opl"], ["N2", "O1D"]],
+                                 "HO2NO2"=>[["HO2","NO2"]],
+                                 "DO2NO2"=>[["DO2","NO2"]],
                                  "H"=>[["Hpl"]],
                                  "D"=>[["Dpl"]],
                                  "H2"=>[["H2pl"], ["Hpl", "H"]],
@@ -240,14 +289,37 @@ function populate_xsect_dict(pd_dataf, xsecfolder; ion_xsects=true, globvars...)
                                  "O2"=>[["O2pl"]],
                                  "O3"=>[["O3pl"]],
 
-                                # Cl containing species
+                               
+        
+        # Cl containing species
                                 "HCl"=>[["H","Cl"]],
                                 "DCl"=>[["D","Cl"]],
-                                #S containing species
+                                "ClO"=>[["Cl","O"]],
+                                "ClO2"=>[["ClO","O"]],
+                                "ClCO3"=>[["CO2","ClO"]],
+                                "COCl2"=>[["ClCO","Cl"]],
+                                "ClNO"=>[["Cl","NO"]],
+        
+        
+        #S containing species
                                 "SO2"=>[["SO","O"], ["S","O2"]],
                                 "SO3"=>[["SO2","O"]], #there may be more possible products than what I have listed, but JPL didn't give a recomended quantum yield
+                                "SO"=>[["S","O"]],
                                 "H2SO4"=>[["SO3","H2O"]], # same issue as SO3, JPL did not give a recomended quantum yield
-                                "HDSO4"=>[["SO3","HDO"]]) # uses mass scaeling of H2SO4
+                                "HDSO4"=>[["SO3","HDO"]], # uses mass scaeling of H2SO4
+                                "OCS"=>[["CO","S"]],
+                                "S2O"=>[["SO","S"]],
+                                "S2"=>[["S","S"]],
+                                "S3"=>[["S2","S"]],
+                                "S2O2"=>[["SO2","S"]],
+                                "SNO"=>[["S","NO"]],
+
+        #S and Cl containing species
+                                "SCl"=>[["S","Cl"]],
+                                "ClS2"=>[["S2","Cl"]],
+                                "SO2Cl2"=>[["ClSO2","Cl"]],
+
+    )
     
         
 

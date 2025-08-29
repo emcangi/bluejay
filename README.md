@@ -120,7 +120,7 @@ This list may be incomplete. If you discover a necessary step that isn't written
 1. Add the species' mass in amu to the `molmass` dictionary in `CONSTANTS.jl`.
 2. Add entries for the new species to `speciescolor` variable in `PLOT_STYLES.jl`
 3. Add the species to the `species_groups` variable in PLOTTING / `plot_atm()`
-4. Add the species to either `new_neutrals` or `new_ions` variables in `MODEL_SETUP.jl`.
+4. Add the species to either `new_neutrals` or `new_ions` variables in `INPUT_PARAMETERS.jl`.
 5. Set `adding_new_species` variable in `INPUT_PARAMETERS`.jl to true
 6. If you want to provide a non-zero initial guess profile for the species, set `use_nonzero_initial_profiles` to true in `INPUT_PARAMETERS`.jl, and enter the initial guess in a file with path (relative to the code directory) equal to `../Resources/initial_profiles/{speciesname}_initial_profile.txt`. 
 7. Add related bimolecular/termolecular chemical reactions to the appropriate spreadsheet (e.g. `REACTION_NETWORK_{PlanetName}.jl`).

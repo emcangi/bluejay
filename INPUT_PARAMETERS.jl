@@ -14,13 +14,13 @@
 
 # Set the planet 
 # =======================================================================================================
-const planet = "Mars"
+const planet = "Venus"
     # OPTIONS: "Mars", "Venus"
 
 # Input and output files, directory
 # =======================================================================================================
 const results_dir = code_dir*"../Results_$(planet)/"
-const initial_atm_file = "$(planet)-Inputs/INITIAL_GUESS_MARS_bxz4YnHk.h5"  # File to use to initialize the atmosphere.
+const initial_atm_file = "$(planet)-Inputs/Venus_with_chlorine_48km.h5"
     # OPTIONS: 
     # INITIAL_GUESS_MARS.h5 --> Basic Mars starting file.
     # INITIAL_GUESS_MARS_bxz4YnHk.h5 --> A Mars atmosphere that includes N2O, NO2, and their ions;
@@ -133,15 +133,44 @@ const conv_neutrals = Dict("Mars"=>[:Ar, :C, :CO, :CO2, # Argon and carbon speci
                                     :H2O2, :HDO2, :HOCO, :DOCO, 
                                     :N, :N2, :NO, :Nup2D, :N2O, :NO2, # Nitrogen species
                                     :O, :O1D, :O2, :O3, :OH, :OD], # Oxygen species
-                           "Venus"=>[:Ar, :C, :CO, :CO2, 
-                                     :Cl, :ClO, :ClCO, :HCl, :DCl,  # Chlorine species
-                                     :H, :D, :H2, :HD, :H2O, :HDO,  # H and D species
-                                     :HCO, :DCO, :HO2, :DO2,        
+                           "Venus"=>[
+                                     # Ar itself
+                                     :Ar,
+        
+                                     # C species
+                                     :CO2,
+                                     :C, :CO,
+                                                                 
+                                     # H and D species
+                                     :H, :D, :H2, :HD, :H2O, :HDO,
+                                     :HCO, :DCO, 
+                                     :HO2, :DO2,        
                                      :H2O2, :HDO2, :HOCO, :DOCO, 
+
+                                     # N species
                                      :N, :N2, :NO, :Nup2D, :N2O, :NO2,
-                                     :O, :O1D, :O2, :O3, :OH, :OD,
-                                     :S, :SO, :SO2, :SO3, :H2SO4, :HDSO4] # Sulfur species
-                           ); 
+                                     # :HO2NO2, :DO2NO2,
+
+                                     # O species
+                                     :O2,
+                                     :O, :O1D,
+                                     :O3, :OH, :OD,
+
+                                     # Chlorine species
+                                     :Cl, :Cl2, :HCl, :DCl,
+                                     :ClO, :COCl2, :ClCO, :ClO2, :ClCO3,
+                                     # :ClNO,
+        
+                                     # Sulfur species
+                                     # :S, :S2, :S3,
+                                     # :SO, :SO2, :SO3, :H2SO4, :HDSO4, :HSO3, :DSO3,
+                                     # :SNO,  :S2O, :S2O2, :OCS,
+
+                                     # Cl and S species
+                                     # :SCl, :SCl2, :S2Cl2, :ClS2,
+                                     # :OSCl, :ClSO2, :SO2Cl2,
+                                    ]);
+
 
 const conv_ions = Dict("Mars"=>[:Arpl, :ArHpl, :ArDpl, 
                                 :Cpl, :CHpl, :COpl, :CO2pl, 
@@ -151,15 +180,22 @@ const conv_ions = Dict("Mars"=>[:Arpl, :ArHpl, :ArDpl,
                                 :HO2pl, :HCOpl, :HCO2pl, :HOCpl, :HNOpl,   
                                 :Npl, :NHpl, :N2pl, :N2Hpl, :N2Dpl, :NOpl, :N2Opl, :NO2pl,
                                 :Opl, :O2pl, :OHpl, :ODpl],
-                       "Venus"=>[:Arpl, :ArHpl, :ArDpl, 
-                                :Cpl, :CHpl, :COpl, :CO2pl, 
-                                :Dpl, :DCOpl, :DOCpl, :DCO2pl, 
-                                :Hpl,  :H2pl, :HDpl, :H3pl, :H2Dpl, 
-                                :H2Opl, :HDOpl, :H3Opl, :H2DOpl, 
-                                :HO2pl, :HCOpl, :HCO2pl, :HOCpl, :HNOpl,   
-                                :Npl, :NHpl, :N2pl, :N2Hpl, :N2Dpl, :NOpl, :N2Opl, :NO2pl,
-                                :Opl, :O2pl, :OHpl, :ODpl]
-                      );
+                       "Venus"=>[
+                                :CO2pl, :H2Opl, :HDOpl, :COpl, :O2pl, :Hpl, :Dpl, :Opl, :H2pl, :HDpl,
+                                :ArHpl, :ArDpl, :Arpl,
+                                :N2pl,
+                                :Cpl, 
+                                :CHpl, 
+                                :DCOpl, :DOCpl, :DCO2pl, 
+                                :H3pl, :H2Dpl, 
+                                :H3Opl, :H2DOpl, 
+                                :HO2pl, 
+                                :HCOpl, :HCO2pl, :HOCpl,
+                                :Npl, :NHpl, :N2Hpl, :N2Dpl, :HNOpl,
+                                :NOpl, 
+                                :N2Opl, :NO2pl,
+                                :OHpl, :ODpl
+                                ]);
 
 # More specific settings for controling the modeling of species
 # -------------------------------------------------------------------
@@ -193,7 +229,11 @@ const abs_tol = 1e-12
 const do_chem = true   # Turning this or next one of will toggle chemistry or transport.
 const do_trans = true  # Often useful for troubleshooting or converging new atmospheres.
 const adding_new_species = false
-const make_new_alt_grid = false  # Set to true if extending the altitude grid. TODO: Need to re-write that code.
+const make_new_alt_grid = false  # Set to true if extending the altitude grid. if true values for old_zmin and old_zmax in km will be needed to be input below
+                                 # Put what you want the final zmax and zmin to be as the constants zmax and zmin in modle setup
+                                 #This part of the code can be improved.
+const old_zmax = 250
+const old_zmin = 90
 const use_nonzero_initial_profiles = true
     # OPTIONS: 
     # true -- uses initial guess densities for species based on previous model output.

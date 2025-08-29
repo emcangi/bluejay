@@ -36,7 +36,7 @@ const R_P = Dict( # Planetary radius in cm
                 )[planet] 
 const DH = Dict( # Atmospheric D/H ratio 
                 "Mars"=>5.5 * SMOW, # Yung 1988
-                "Venus"=>240 * SMOW, # Fedorova 2008
+                "Venus"=> 162 * SMOW, # value at 70km from A. Mahieux 2024
                )[planet]
 const sol_in_sec = Dict(
                         "Mars"=>88775.2438,   # One Mars sol in seconds
@@ -196,7 +196,7 @@ const e_profile_type = ions_included==true ? "quasineutral" : "none"
 
 #                                       Altitude grid                  
 # =======================================================================================================
-const zmin = Dict("Venus"=>90e5, "Mars"=>0.)[planet]
+const zmin = Dict("Venus"=>48e5, "Mars"=>0.)[planet]
 const dz = 2e5  # Discretized layer thickness
 const zmax = 250e5  # Top altitude (cm)
 const alt = convert(Array, (zmin:dz:zmax)) # These are the layer centers.
@@ -251,8 +251,8 @@ if planet=="Mars"
     const T_array_dict = T_Mars(controltemps[1], controltemps[2], controltemps[3]; alt)
     const Tn_meanSVP = T_Mars(meantemps...; alt)["neutrals"]; # Needed for boundary conditions.
 elseif planet=="Venus"
-    const T_array_dict = T_Venus(controltemps[1], controltemps[2], controltemps[3], "Venus-Inputs/FoxandSung2001_temps_mike.txt"; alt);
-    const Tn_meanSVP = T_Venus(meantemps..., "Venus-Inputs/FoxandSung2001_temps_mike.txt"; alt)["neutrals"]; # Needed for boundary conditions.
+    const T_array_dict = T_Venus(controltemps[1], controltemps[2], controltemps[3], "Venus-Inputs/FoxandSung2001_temps_mike_copy.txt"; alt);
+    const Tn_meanSVP = T_Venus(meantemps..., "Venus-Inputs/FoxandSung2001_temps_mike_copy.txt"; alt)["neutrals"]; # Needed for boundary conditions.
 end
 
 const Tn_arr = T_array_dict["neutrals"]
@@ -289,7 +289,7 @@ if planet=="Mars"
                            "everywhere"=>Dict("standard"=>1.3e-4, "high"=>1.3e-4, "low"=>1.3e-4))
     const water_mixing_ratio = water_MRs[water_loc][water_case]
 elseif planet=="Venus"
-    const water_mixing_ratio = Dict("standard"=>1e-6)[water_case]
+    const water_mixing_ratio = Dict("standard"=>1e-6)[water_case] # parse(Float64, water_case) # this is for 90km
 
     # SPECIAL: Crazy water Mahieux & Viscardy 2024
     if venus_special_water
@@ -352,23 +352,26 @@ if planet=="Mars"
                         :D=> Dict("f"=>[0., NaN], "v"=>[NaN, effusion_velocity(Tn_arr[end], 2.0; M_P, R_P, zmax)], "ntf"=>[NaN, "see boundaryconditions()"]),
                        );
 elseif planet=="Venus"
-    const ntot_at_lowerbdy = 9.5e15 # Based on Fox & Sung 2001
-
+    const ntot_at_lowerbdy = 3.6e19 # Krasnopolsky 2012 - option for an atmosphere with lower boundary at 48 km.
+    # const ntot_at_lowerbdy = 9.5e15 # Based on Fox & Sung 2001 - option for an atmosphere with lower boundary = 90 km.
     H2O_lowerbdy = h2o_vmr_low * ntot_at_lowerbdy
     HDO_lowerbdy = hdo_vmr_low * ntot_at_lowerbdy
     
-    # END SPECIAL
     # MRs
-    SO2mr = 1e-7
-    # Simon's notes: Belyaev 2012: this was 0.1 ppmv at 165–170 K to 0.5–1 ppmv at 190–192 K; 
-    # It said 0.1ppm was related to the most common temperature reading so I went with that 
-    # (this is either 1E-7 or 6.79E-8 depending on the calculation)
-    N2mr = 0.032
+    Armr = 98.0e-6 #  48 km (Huffman 1979) 
+           # 5e11 / ntot_at_lowerbdy # 90 km - abs val of 5e11. 
+    SO2mr = 9.7e-6 # 48 km; Kras 2012
+            # 1e-7 # 90 km; Belyaev 2012: Simon's notes: 0.1 ppmv at 165–170 K to 0.5–1 ppmv at 190–192 K; 
+            # It said 0.1ppm was related to the most common temperature reading so I went with that 
+            # (this is either 1E-7 or 6.79E-8 depending on the calculation)
+    N2mr = 0.032 # 90 km, 48 km.
     H2SO4mr = 3e-9
-    O2mr = 3e-3
+    O2mr = 3e-3 # 90 km. No MR for 48 km.
     COmr = 4.5e-6
     CO2mr = 0.965
-    HClmr = 3.66e-7
+    HClmr = 400e-9  # 48 km. Kras 2012
+            # 3.66e-7 # 90 km
+    DClmr = HClmr * DH # General. Corrected a typo in Simon's version that was being multiplied by SMOW twice
     # Simon's notes: Krasnopolsky, 2010a: this was 400ppb at 74km in altitude, and the actual number is likely lower 
     # (is either 4.0E-7, or 4.8E-7 depending on the calculation); and according to Zhang 2012 it is 3.66e-7
     SOmr = 1e-7
@@ -377,23 +380,27 @@ elseif planet=="Venus"
     const KoverH_lowerbdy = Keddy([zmin], [ntot_at_lowerbdy]; planet)[1]/scaleH_lowerboundary(zmin, Tn_arr[1]; molmass, M_P, R_P, zmin)
     const manual_speciesbclist=Dict(# major species neutrals at lower boundary (estimated from Fox&Sung 2001, Hedin+1985, agrees pretty well with VIRA)
                                     :CO2=>Dict("n"=>[CO2mr*ntot_at_lowerbdy, NaN], "f"=>[NaN, 0.]),
-                                    :Ar=>Dict("n"=>[5e11, NaN], "f"=>[NaN, 0.]),
-                                    :CO=>Dict("n"=>[COmr*ntot_at_lowerbdy, NaN], "f"=>[NaN, 0.]),
-                                    :O2=>Dict("n"=>[O2mr*ntot_at_lowerbdy, NaN], "f"=>[NaN, 0.]),
+                                    :Ar=>Dict("n"=>[Armr * ntot_at_lowerbdy, NaN], "f"=>[NaN, 0.]),
+                                    :CO=>Dict(#"n"=>[COmr*ntot_at_lowerbdy, NaN],  # 90 km bc
+                                              "v"=>[-KoverH_lowerbdy*0.1, NaN], # 48 km bc (Kras 2012)
+                                              "f"=>[NaN, 0.]),
+                                    :O2=>Dict(#"n"=>[O2mr*ntot_at_lowerbdy, NaN], # Lower bc used at 90 km
+                                              "v"=>[-KoverH_lowerbdy*2, NaN], # 48 km lower boundary condition (Krasnopolsky 2012)
+                                              "f"=>[NaN, 0.]),
                                     :N2=>Dict("n"=>[N2mr*ntot_at_lowerbdy, NaN]),
-
-                                    
+                                    :NO=>Dict("n"=>[5.5e-9*ntot_at_lowerbdy, NaN]), # 47km Krasnopolsky 2012 - turn off for lower boundary = 90 km modeling
+                                    # Chlorine bcs
                                     :HCl=>Dict("n"=>[HClmr * ntot_at_lowerbdy, NaN]),
-                                    :DCl=>Dict("n"=>[HClmr * DH * ntot_at_lowerbdy, NaN]),
-
-
+                                    :DCl=>Dict("n"=>[DClmr * ntot_at_lowerbdy, NaN]),
+                                    # Sulfur bcs
                                     :H2SO4=>Dict("n"=>[H2SO4mr * ntot_at_lowerbdy, NaN]), 
-
+                                    :OCS=>Dict("n"=>[260e-9 * ntot_at_lowerbdy, NaN]), # 47km Krasnopolsky 2012 - turn off for lower boundary = 90 km modeling
                                     :SO2=>Dict("n"=>[SO2mr * ntot_at_lowerbdy, NaN]),
                                     :SO=>Dict("n"=>[SOmr * ntot_at_lowerbdy, NaN]),
 
                                     # water mixing ratio is fixed at lower boundary
                                     :H2O=>Dict("n"=>[H2O_lowerbdy, NaN], "f"=>[NaN, 0.]),
+        
                                     # we assume HDO has the bulk atmosphere ratio with H2O at the lower boundary, ~consistent with Bertaux+2007 observations
                                     :HDO=>Dict("n"=>[HDO_lowerbdy, NaN], "f"=>[NaN, 0.]),
 
@@ -404,20 +411,19 @@ elseif planet=="Venus"
                                                     #                 100 # representing D transport to nightside, NOT escape
                                                     #                 NaN # No thermal escape to space, appropriate for global average model
                                               "ntf"=>[NaN, "see boundaryconditions()"]),
-                                    :D=> Dict("v"=>[-KoverH_lowerbdy, effusion_velocity(Tn_arr[end], 2.0; zmax, M_P, R_P)], # 
+                                    :D=> Dict("v"=>[-KoverH_lowerbdy, effusion_velocity(Tn_arr[end], 2.0; zmax, M_P, R_P)], #
                                                     #                 ^^^ other options here:
                                                     #                  effusion_velocity(Tn_arr[end], 2.0; zmax) # thermal escape, negligible
                                                     #                 100 # representing D transport to nightside, NOT escape
                                                     #                 NaN # No thermal escape to space, appropriate for global average model
                                               "ntf"=>[NaN, "see boundaryconditions()"]),
-
                                     # # H2 mixing ratio at lower boundary adopted from Yung&DeMore1982 as in Fox&Sung2001
-                                    # :H2=>Dict("n"=>[1e-7*ntot_at_lowerbdy, NaN],
-                                    #           "v"=>[NaN, effusion_velocity(Tn_arr[end], 2.0; zmax)],
-                                    #           "ntf"=>[NaN, "see boundaryconditions()"]),
-                                    # :HD=>Dict("n"=>[DH*1e-7*ntot_at_lowerbdy, NaN],
-                                    #           "v"=>[NaN, effusion_velocity(Tn_arr[end], 3.0; zmax)],
-                                    #           "ntf"=>[NaN, "see boundaryconditions()"]),
+                                    # :H2=>Dict("n"=>[4.5e-9*ntot_at_lowerbdy, NaN],), # 47km Krasnopolsky 2012
+                                    #           # "v"=>[NaN, effusion_velocity(Tn_arr[end], 2.0; zmax)],
+                                    #           # "ntf"=>[NaN, "see boundaryconditions()"]),
+                                    # :HD=>Dict("n"=>[DH*4.5e-9*ntot_at_lowerbdy, NaN],),
+                                    #           # "v"=>[NaN, effusion_velocity(Tn_arr[end], 3.0; zmax)],
+                                    #           # "ntf"=>[NaN, "see boundaryconditions()"]),
 
                                     # unusued neutral boundary conditions
                                     #:O=> Dict("v"=>[-KoverH_lowerbdy, NaN], "f"=>[NaN, 0.#=1.2e6=#]), # no effect on O profile
@@ -461,7 +467,12 @@ const photochem_data_files = Dict(:CO2=>Dict("main"=>"CO2.dat"),
                                   :H2=>Dict("main"=>"binnedH2.csv"), 
                                   :HD=>Dict("main"=>"binnedH2.csv"), 
                                   :OH=>Dict("main"=>"binnedOH.csv", "O1D+H"=>"binnedOHo1D.csv"), 
-                                  :OD=>Dict("main"=>"OD.csv"))
+                                  :OD=>Dict("main"=>"OD.csv"),
+
+                                  #Sulfur and Chlorine 
+                                  :S2Cl2=>Dict("main"=>"JS2Cl2toproducts.csv"),
+                                  :SCl2=>Dict("main"=>"JSCl2toproducts.csv"),
+                                )
 
 # Filename tags and codes
 # -------------------------------------------------------------------

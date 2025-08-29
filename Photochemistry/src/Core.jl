@@ -1260,7 +1260,8 @@ function T_Mars(Tsurf, Tmeso, Texo; lapserate=-1.4e-5, z_meso_top=108e5, weird_T
     return Dict("neutrals"=>NEUTRALS(), "ions"=>IONS(), "electrons"=>ELECTRONS())
 end 
 
-function T_Venus(Tsurf::Float64, Tmeso::Float64, Texo::Float64, file_for_interp; z_meso_top=80e5, lapserate=-8e-5, weird_Tn_param=8, globvars...)
+function T_Venus(Tsurf::Float64, Tmeso::Float64, Texo::Float64, file_for_interp; z_meso_top=68e5, lapserate=-7.3e-5, weird_Tn_param=8, globvars...)
+    # TODO: z_meso_top and lapse_rate were changed. Review later to ensure it hasn't caused other problems.
     #= 
     Input:
         z: altitude above surface in cm
@@ -1291,19 +1292,21 @@ function T_Venus(Tsurf::Float64, Tmeso::Float64, Texo::Float64, file_for_interp;
 
     function NEUTRALS(new_a)
         Tn = zeros(size(GV.alt))
-
+        
         Tn[i_lower] .= Tsurf .+ lapserate*GV.alt[i_lower]
         Tn[i_meso] .= Tmeso
-
-        # upper atmo
+        
         Tfile = readdlm(file_for_interp, ',')
         T_n = Tfile[2,:]
         alt_i = Tfile[1,:] .* 1e5
-        interp_ion = LinearInterpolation(alt_i, T_n)
-        Tn_interped = [interp_ion(a) for a in new_a];
-        Tn[i_upper] .= Tn_interped # upper_atmo_neutrals(GV.alt[i_upper])
+        interp_neu = LinearInterpolation(alt_i, T_n)
+        Tn_interped = [interp_neu(a) for a in new_a];
 
+        Tn_interped_upper = Tn_interped[findall( x -> x > z_meso_top , interp_alts)]
+        Tn[i_upper] .= Tn_interped_upper # upper_atmo_neutrals(GV.alt[i_upper])
+        
         return Tn 
+        
     end 
 
     function ELECTRONS(new_a; spc="electron") 
@@ -1311,14 +1314,15 @@ function T_Venus(Tsurf::Float64, Tmeso::Float64, Texo::Float64, file_for_interp;
 
         Te[i_lower] .= Tsurf .+ lapserate*GV.alt[i_lower]
         Te[i_meso] .= Tmeso
-
-        # Upper atmo
+        
         Tfile = readdlm(file_for_interp, ',')
         T_e = Tfile[4,:]
         alt_e = Tfile[1,:] .* 1e5
         interp_elec = LinearInterpolation(alt_e, T_e)
         Te_interped = [interp_elec(a) for a in new_a];
-        Te[i_upper] .= Te_interped
+
+        Te_interped_upper = Te_interped[findall( x -> x > z_meso_top , interp_alts)]
+        Te[i_upper] .= Te_interped_upper
 
         return Te
     end
@@ -1328,14 +1332,15 @@ function T_Venus(Tsurf::Float64, Tmeso::Float64, Texo::Float64, file_for_interp;
 
         Ti[i_lower] .= Tsurf .+ lapserate*GV.alt[i_lower]
         Ti[i_meso] .= Tmeso
-
-        # Upper atmo
+        
         Tfile = readdlm(file_for_interp, ',')
         T_i = Tfile[3,:]
         alt_i = Tfile[1,:] .* 1e5
         interp_ion = LinearInterpolation(alt_i, T_i)
         Ti_interped = [interp_ion(a) for a in new_a];
-        Ti[i_upper] .= Ti_interped
+
+        Ti_interped_upper = Ti_interped[findall( x -> x > z_meso_top , interp_alts)]
+        Ti[i_upper] .= Ti_interped_upper
 
         return Ti
     end
@@ -1347,10 +1352,14 @@ function T_Venus(Tsurf::Float64, Tmeso::Float64, Texo::Float64, file_for_interp;
     i_lower = findall(z->z < z_meso_bottom, GV.alt)
     i_meso = findall(z->z_meso_bottom <= z <= z_meso_top, GV.alt)
     i_upper = findall(z->z > z_meso_top, GV.alt)
-    # i_meso_top = findfirst(z->z==z_meso_top, GV.alt)
+
 
     # For interpolating upper atmo temperatures from Fox & Sung 2001 - only from 90 km up
-    interp_alts = collect(90e5:GV.alt[2]-GV.alt[1]:GV.alt[end])
+    if GV.alt[1] > z_meso_top
+        interp_alts = GV.alt
+    elseif GV.alt[1] <= z_meso_top       
+        interp_alts = collect((z_meso_top+(GV.alt[2]-GV.alt[1])):GV.alt[2]-GV.alt[1]:GV.alt[end])
+    end
 
     return Dict("neutrals"=>NEUTRALS(interp_alts), "ions"=>IONS(interp_alts), "electrons"=>ELECTRONS(interp_alts))
 end
@@ -1398,18 +1407,16 @@ These coefficients then describe the diffusion velocity at the top
 and bottom of the atmosphere.
 =#
 
-function binary_dcoeff_inCO2(sp, T)
+function binary_dcoeff_inCO2(sp, T, globvars...)
     #=
     Calculate the bindary diffusion coefficient for species sp, b = AT^s.
 
     Currently, this is set up to only work for diffusion through CO2 since that's the Mars atm.
     Could be extended to be for any gas, but that will require some work.
-    =#
-    
+    =#   
     A = diffparams(sp)[1] .* 1e17 # Empirical parameter (determined it by experiment)
     s = (diffparams(sp)[2]) # Empirical parameter (det. by exp.)
     b = A .* T .^ s # T = temperature
-    return b
 end
 
 function boundaryconditions(fluxcoef_dict, atmdict, M; nonthermal=true, globvars...)
@@ -1955,7 +1962,9 @@ function Keddy(z::Vector, nt::Vector; globvars...)
         k[findall(i->i .<= 60e5, z)] .= 10. ^ 6
         k[upperatm] .= 2e13 ./ sqrt.(nt[upperatm])
     elseif GV.planet=="Venus"
-        k = 8e12*(nt .^ -0.5)
+        upperatm = findall(i->i .> 116e5, z)
+        k[findall(i->i .<= 116e5, z)] .= 3.54e6 # Mahieux 2021
+        k[upperatm] .= 8e12 .* (nt[upperatm] .^ -0.5)
     end
 
     return k

@@ -322,9 +322,6 @@ function chemJmat(n_active_longlived, n_active_shortlived, n_inactive, Jrates, t
     # When it is active, this finds all the H2O and HDO indices for the lower atmosphere. 
     # It's like above where we add (ialt-1)*length(active_species), but this way it's outside the loop.
     if remove_rates_flag == true 
-        if planet=="Venus"
-            throw("Not supposed to delete things from water rates for Venus")
-        end
         if in(:H2O, GV.active_longlived) && in(:HDO, GV.active_longlived)
             H2Opositions = GV.H2Oi .+ length(GV.active_longlived)*collect(0:GV.upper_lower_bdy_i-1)
             HDOpositions = GV.HDOi .+ length(GV.active_longlived)*collect(0:GV.upper_lower_bdy_i-1)
@@ -417,9 +414,6 @@ function ratefn(n_active_longlived, n_active_shortlived, n_inactive, Jrates, tup
     # NEW: Overwrite the entries for water in the lower atmosphere with 0s so that it will behave as fixed.
     # Only runs when water is in the active_species list. If neutrals are set to inactive, it will be taken care of already.
     if remove_rates_flag == true # This won't run for Venus
-        if planet=="Venus"
-            throw("Not supposed to run for Venus")
-        end
         if in(:H2O, GV.active_longlived) && in(:HDO, GV.active_longlived)
             returnrates[GV.H2Oi, 1:GV.upper_lower_bdy_i] .= 0
             returnrates[GV.HDOi, 1:GV.upper_lower_bdy_i] .= 0
@@ -988,24 +982,30 @@ const hot_HD_rc_funcs = Dict([rxn => mk_function(:((Tn, Ti, Te, M) -> $(rxn[3]))
 #           Load starting atmosphere; change alt grid if requested              #
 #===============================================================================#
 if make_new_alt_grid==true
-    throw("The code for extending the altitude grid needs to be redone.")
-    # const alt = convert(Array, (0:2e5:200e5))
-    # n_current = get_ncurrent(initial_atm_file)
+    n_current = get_ncurrent(initial_atm_file)
+    old_ntot = n_current[:CO2][1]
+    
+    extra_entries_to_lower = Int64(abs((zmin / 1e5)- old_zmin )/(dz/1e5))
+    extra_entries_to_raise = Int64(abs((zmax / 1e5)- old_zmax )/(dz/1e5))
+    println("extra_entries_to_lower:  ", extra_entries_to_lower)
+    println("extra_entries_to_raise:  ", extra_entries_to_raise)
 
-    # new_zmax = parse(Int64, input("Enter the new top of the atmosphere in km: "))
-    # extra_entries = Int64((new_zmax - (zmax / 1e5))/(dz/1e5))
-
-    # # Extend the grid
-    # for (k,v) in zip(keys(n_current), values(n_current))
-    #    append!(v, fill(v[end], extra_entries))  # repeats the last value in the array for the upper atmo as an initial value.
-    # end
-
-    # const alt = convert(Array, (0:dz:new_zmax*1e5))
-    # const max_alt = new_zmax*1e5
+    # Extend the grid
+    for (k,v) in zip(keys(n_current), values(n_current)) # for extending downwards
+        lowest_old_value = n_current[k][1]
+        lowest_aprox_new_value = n_current[k][1]
+        lowering_log_constant = (extra_entries_to_lower / log10( ntot_at_lowerbdy / old_ntot))
+        for i in 1:extra_entries_to_lower
+            prepend!(v, lowest_old_value * 10^(i/lowering_log_constant))
+        end
+       append!(v, fill(v[end], extra_entries_to_raise)) # repeats the last value in the array for the upper atmo as an initial value for extending the  
+                                                          # grid upwards.
+    end
 elseif make_new_alt_grid==false 
     println("$(Dates.format(now(), "(HH:MM:SS)")) Loading atmosphere")
     n_current = get_ncurrent(initial_atm_file)
 end
+
 
 #                       Establish new species profiles                          #
 #===============================================================================#
@@ -1031,6 +1031,9 @@ if adding_new_species==true
             n_current[ni] = zeros(num_layers)
         end
 
+        for nn in intersect(new_neutrals, N_neutrals)
+            n_current[nn] = zeros(num_layers)
+        end
         if use_nonzero_initial_profiles
             println("Initializing non-zero profiles for $(new_ions)")
             # first fill in the H-bearing ions from data-inspired profiles
@@ -1113,6 +1116,22 @@ push!(PARAMETERS_ALT_INFO, ("upper_lower_bdy_i", upper_lower_bdy_i, "", "Index o
 #                        Initialize electron profile                            #
 #===============================================================================#
 E = electron_density(n_current; e_profile_type, non_bdy_layers, ion_species)
+
+#                 Set the boundary altitude below which water is fixed          #
+#===============================================================================#
+
+H2Osatfrac = H2Osat ./ map(z->n_tot(n_current, z; all_species, n_alt_index), alt)  # get SVP as fraction of total atmo
+const upper_lower_bdy = alt[something(findfirst(isequal(minimum(H2Osatfrac)), H2Osatfrac), 0)]
+const upper_lower_bdy_i = n_alt_index[upper_lower_bdy]  # the uppermost layer at which water will be fixed, in cm
+# Control whether the removal of rates etc at "Fixed altitudes" runs. If the boundary is 
+# the bottom of the atmosphere, we shouldn't do it at all.
+const remove_rates_flag = true
+if upper_lower_bdy == zmin
+    const remove_rates_flag = false 
+end
+# Add these to the logging dataframes
+push!(PARAMETERS_ALT_INFO, ("upper_lower_bdy", upper_lower_bdy, "cm", "Altitude at which water goes from being fixed to calculated"));
+push!(PARAMETERS_ALT_INFO, ("upper_lower_bdy_i", upper_lower_bdy_i, "", "Index of the line above within the alt grid"));
 
 #                          Set up the water profile                             #
 #===============================================================================#
@@ -1201,8 +1220,10 @@ if update_water_profile
 end
 
 # Calculate precipitable microns, including boundary layers (assumed same as nearest bulk layer)
-H2Oprum = precip_microns(:H2O, [n_current[:H2O][1]; n_current[:H2O]; n_current[:H2O][end]]; molmass, dz)
-HDOprum = precip_microns(:HDO, [n_current[:HDO][1]; n_current[:HDO]; n_current[:HDO][end]]; molmass, dz)
+if (:H2O in keys(n_current)) && (:HDO in keys(n_current))
+    H2Oprum = precip_microns(:H2O, [n_current[:H2O][1]; n_current[:H2O]; n_current[:H2O][end]]; molmass, dz)
+    HDOprum = precip_microns(:HDO, [n_current[:HDO][1]; n_current[:HDO]; n_current[:HDO][end]]; molmass, dz)
+end
 
 #           Define storage for species/Jrates not solved for actively           #
 #===============================================================================#
@@ -1510,9 +1531,12 @@ for k in keys(photochem_data_files)  # cross sections
     end
 end
 
-push!(PARAMETERS_CONDITIONS, ("TOTAL_H2O", H2Oprum, "pr micrometers"))
-push!(PARAMETERS_CONDITIONS, ("TOTAL_HDO", HDOprum, "pr micrometers"))
-push!(PARAMETERS_CONDITIONS, ("TOTAL_WATER", H2Oprum+HDOprum, "pr micrometers"))
+if (:H2O in keys(n_current)) && (:HDO in keys(n_current))
+    push!(PARAMETERS_CONDITIONS, ("TOTAL_H2O", H2Oprum, "pr micrometers"))
+    push!(PARAMETERS_CONDITIONS, ("TOTAL_HDO", HDOprum, "pr micrometers"))
+    push!(PARAMETERS_CONDITIONS, ("TOTAL_WATER", H2Oprum+HDOprum, "pr micrometers"))
+end
+            
     
 write_to_log(logfile, ["Description: $(optional_logging_note)"], mode="w")
 
