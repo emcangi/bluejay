@@ -163,13 +163,17 @@ const conv_ions = Dict("Mars"=>[:Arpl, :ArHpl, :ArDpl,
 
 # More specific settings for controling the modeling of species
 # -------------------------------------------------------------------
+# Chemical species which should never update their densities, but may be chemical reactants.
 const dont_compute_chemistry = []
+const dont_compute_transport = []
+const dont_compute_either_chem_or_transport = []  
+    # OPTIONS: Any species included in the model. 
 if planet=="Mars" # To avoid convergence problems
+    append!(:Ar, dont_compute_either_chem_or_transport)
+elseif planet=="Venus"
     append!(:Ar, dont_compute_chemistry)
 end
-const dont_compute_transport = []
-const dont_compute_either_chem_or_transport = []  # Chemical species which should never update their densities, but may participate in chem+transport.
-    # OPTIONS: Any species included in the model. 
+    
 const assume_photochem_eq = false # whether to turn on photochemical equilibrium for short-lived species
 
 # Turn plots off and on
