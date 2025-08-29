@@ -102,8 +102,8 @@ const HDO_excess = 0.350 # excess HDO in ppm (divide by 1000 to get ppb)
 # =======================================================================================================
 
 const ions_included = true
-const converge_which = "both"
-    # OPTIONS: "ions", "neutrals", "both"
+const converge_which =  "both" 
+    # OPTIONS: "ions", "neutrals", "both", "ions+nitrogen"
 
 # Species lists
 # -------------------------------------------------------------------
