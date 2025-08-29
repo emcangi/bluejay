@@ -1027,7 +1027,7 @@ end
 
 #                       Establish new species profiles                          #
 #===============================================================================#
-
+initial_profile_folder = code_dir * "../Resources/initial_profiles/"
 if adding_new_species==true
     if converge_which == "neutrals"
         println("Converging neutrals only. The following readout should contain the ions and N-bearing neutrals: $(inactive_species)")
@@ -1042,7 +1042,25 @@ if adding_new_species==true
         if use_nonzero_initial_profiles
             println("Initializing non-zero profiles for $(new_neutrals)")
             for nn in new_neutrals
-                n_current[nn] = reshape(readdlm("Resources/initial_profiles/$(string(nn))_initial_profile.txt", '\r', comments=true, comment_char='#'), (num_layers,))
+                try
+                    n_current[nn] = reshape(readdlm(initial_profile_folder*"$(string(nn))_initial_profile.txt", '\r', comments=true, comment_char='#'), (num_layers,))
+                catch excep
+                    println("Caught an exception: $(excep).")
+                    if isa(excep, LoadError) || isa(excep, ArgumentError)
+                        println("No file available for load. Will initialize zero profile or constant density equal to boundary condition since no initial guess is available.")
+                    else 
+                        throw(excep)
+                    end
+                    if nn in keys(speciesbclist) 
+                        if "n" in keys(speciesbclist[nn])
+                            n_current[nn] = ones(num_layers) * speciesbclist[nn]["n"][1] #  use lower boundary density bc
+                        else
+                            n_current[nn] = zeros(num_layers)
+                        end
+                    else
+                        n_current[nn] = zeros(num_layers)
+                    end
+                end
             end
         end
     elseif converge_which == "ions"
@@ -1056,7 +1074,7 @@ if adding_new_species==true
             println("Initializing non-zero profiles for $(new_ions)")
             # first fill in the H-bearing ions from data-inspired profiles
             for ni in setdiff(new_ions, keys(D_H_analogues))
-                n_current[ni] = reshape(readdlm("Resources/initial_profiles/$(string(ni))_initial_profile.txt", '\r', comments=true, comment_char='#'), (num_layers,))
+                n_current[ni] = reshape(readdlm(initial_profile_folder*"$(string(ni))_initial_profile.txt", '\r', comments=true, comment_char='#'), (num_layers,))
             end
             # Then create profiles for the D-bearing analogues based on the H-bearing species profiles
             for ni in intersect(new_ions, keys(D_H_analogues))
@@ -1081,7 +1099,7 @@ if adding_new_species==true
             println("Initializing non-zero profiles for $(new_neutrals) and $(new_ions)")
             for nn in new_neutrals
                 try
-                    n_current[nn] = reshape(readdlm("Resources/initial_profiles/$(string(nn))_initial_profile.txt", '\r', comments=true, comment_char='#'), (num_layers,))
+                    n_current[nn] = reshape(readdlm(initial_profile_folder*"$(string(nn))_initial_profile.txt", '\r', comments=true, comment_char='#'), (num_layers,))
                 catch 
                     println("No initial guess found for $(nn). Initial profile will be zero everywhere.")
                 end
@@ -1089,7 +1107,39 @@ if adding_new_species==true
 
             for ni in setdiff(new_ions, keys(D_H_analogues))
                 try
-                    n_current[ni] = reshape(readdlm("Resources/initial_profiles/$(string(ni))_initial_profile.txt", '\r', comments=true, comment_char='#'), (num_layers,))
+                    n_current[ni] = reshape(readdlm(initial_profile_folder*"$(string(ni))_initial_profile.txt", '\r', comments=true, comment_char='#'), (num_layers,))
+                catch 
+                    println("No initial guess found for $(ni). Initial profile will be zero everywhere.")
+                end
+            end
+            
+            for ni in intersect(new_ions, keys(D_H_analogues))
+                n_current[ni] = DH .* n_current[ni]
+            end
+        end
+    elseif converge_which == "ions+nitrogen" 
+        println("Converging ions and nitrogen-bearing neutrals. This list readout of inactive_species should show the other neutrals: $(inactive_species)")
+        
+        for nn in new_neutrals
+            n_current[nn] = zeros(num_layers)
+        end
+        for ni in new_ions
+            n_current[ni] = zeros(num_layers)
+        end
+
+        if use_nonzero_initial_profiles
+            println("Initializing non-zero profiles for $(new_neutrals) and $(new_ions)")
+            for nn in new_neutrals
+                try
+                    n_current[nn] = reshape(readdlm(initial_profile_folder*"$(string(nn))_initial_profile.txt", '\r', comments=true, comment_char='#'), (num_layers,))
+                catch 
+                    println("No initial guess found for $(nn). Initial profile will be zero everywhere.")
+                end
+            end
+
+            for ni in setdiff(new_ions, keys(D_H_analogues))
+                try
+                    n_current[ni] = reshape(readdlm(initial_profile_folder*"$(string(ni))_initial_profile.txt", '\r', comments=true, comment_char='#'), (num_layers,))
                 catch 
                     println("No initial guess found for $(ni). Initial profile will be zero everywhere.")
                 end

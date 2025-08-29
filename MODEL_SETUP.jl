@@ -129,13 +129,17 @@ end
 # Chemistry and transport participants
 # -------------------------------------------------------------------
 if converge_which == "neutrals"
-    append!(no_chem_species, union(conv_ions[planet], N_neutrals)) # This is because the N chemistry is intimiately tied up with the ions.
+    println("Note: Still removing nitrogen neutrals from the converged species. May want to change this.")
+    append!(no_chem_species, union(conv_ions[planet], N_neutrals)) # This is because the N chemistry is highly coupled to the ions.
     append!(no_transport_species, union(conv_ions[planet], N_neutrals, short_lived_species))
 elseif converge_which == "ions"
-    append!(no_chem_species, setdiff(conv_neutrals[planet], N_neutrals))
-    append!(no_transport_species, setdiff(conv_neutrals[planet], N_neutrals))
+    append!(no_chem_species, conv_neutrals[planet])
+    append!(no_transport_species, conv_neutrals[planet])
 elseif converge_which == "both"
     append!(no_transport_species, short_lived_species)
+elseif converge_which == "ions+nitrogen"
+    append!(no_chem_species, setdiff(conv_neutrals[planet], N_neutrals))
+    append!(no_transport_species, setdiff(conv_neutrals[planet], N_neutrals))
 end
 
 # Disallow transport and/or chemistry if the appropriate setting is toggled
@@ -504,7 +508,7 @@ const used_rxns_spreadsheet_name = "active_rxns.xlsx"
 # Simulation run time and timestep size  
 const season_length_in_sec = seasonal_cycle==true ? season_in_sec : 1e16
 const maxlogdt = seasonal_cycle==true ? 5 : 16 # simulation will run until dt = 10^maxlogdt seconds
-const dt_min_and_max = Dict("neutrals"=>[-3, 14], "ions"=>[-4, 6], "both"=>[-3, maxlogdt])
+const dt_min_and_max = Dict("neutrals"=>[-3, 14], "ions"=>[-4, 6], "ions+nitrogen"=>[-4, 6], "both"=>[-3, maxlogdt])
 const timestep_type = seasonal_cycle==true ? "log-linear" : "dynamic-log" 
     # OPTIONS: "static-log": Logarithmically spaced timesteps that are imposed and don't adjust.
     #                        Should basically never be used, but can be used for testing.
