@@ -849,7 +849,6 @@ function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, result
         end
 
     else
-        println()
         minx[1] = 0
         maxx[1] = 1
         ax[1].text(0.1, 225, "Chemical production/loss is off for $(sp).")
