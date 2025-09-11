@@ -19,9 +19,9 @@ const planet = "Venus"
 
 # Input and output files, directory
 # =======================================================================================================
-const rhapscase = 3 # Change each time
+const rhapscase = 2 # Change each time
 const results_dir = code_dir*"../Results_$(planet)/RHAPS/Case$(rhapscase)/converge_from_0/" # NewAtmDensity/"#  For making a new atmosphere: NewAtmDensity/
-const initial_atm_file = code_dir * "../Results_$(planet)/RHAPS/Case$(rhapscase)/converge_from_0/atms/atmv0.5_minorneutrals.h5"  
+const initial_atm_file = code_dir * "../Results_$(planet)/RHAPS/Case$(rhapscase)/converge_from_0/atms/atmv0.9.5_ions+nitrogen.h5"  
     # Folder for making a new atmosphere: code_dir*"../Results_$(planet)/RHAPS/NewAtmDensity/StartingFiles/atmv0.5_allin.h5"# 
     # normal: "$(planet)-Inputs/INITIAL_GUESS_VENUS_RHAPS_v2.h5" 
     # ---- CONVERGING A NEW ATMOSPHERE FROM SCRATCH ----
@@ -50,9 +50,9 @@ const reaction_network_spreadsheet = code_dir*"$(planet)-Inputs/REACTION_NETWORK
 const short_summary = "case$(rhapscase)_newspec" 
       # a short string that will be added to the results folder, to jog your memory of what you did.
       # Recommended not to include spaces. May be blank.
-const logged_long_description = "RHAPS Case 3 (Venus around quiescent star): updated spectrum from Kevin France, updated lower boundary condition on ntot. final all-together convergence" 
+const logged_long_description = "RHAPS Case $(rhapscase) (Venus around quiescent star): still trying to converge..." 
       # Brief summary of simulation goal, will be in the log file but not the results folder name.
-const results_version = "v0.6"  
+const results_version = "v0.9.6"  
       # Helps keep track of attempts if you need to keep changing things. Will be appended to results
       # folder name.
 
@@ -125,7 +125,7 @@ const HDO_excess = 0.350 # excess HDO in ppm (divide by 1000 to get ppb)
 # =======================================================================================================
 
 const ions_included = true
-const converge_which =  "both" 
+const converge_which = "both" 
     # OPTIONS: "ions", "neutrals", "both", "ions+nitrogen"
 
 # Species lists
