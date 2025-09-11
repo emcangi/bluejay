@@ -726,7 +726,7 @@ function next_timestep(nstart, params, t, dt; reltol=1e-2, abstol=1e-12, verbose
     iter = 0
     while !converged
         # println("iter = $iter")
-        if iter>20
+        if iter>50
             println("Recording last known good atmospheric state")
             record_atmospheric_state(t, nthis, GV.active_longlived, params[3]; opt=GV.opt, globvars...)
             write_to_log(GV.logfile, ["Too many iterations exception reached at t=$(t), dt=$(dt)"])
