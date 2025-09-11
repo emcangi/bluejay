@@ -258,7 +258,7 @@ end
 
 function plot_atm_essential(n_current, vardict; species_posdict = Dict(:CO2=>[1e12,132], :O2=>[2.5e8,135], :O=>[1.3e8,200], :CO=>[5e11,98], :N2=>[1e12,119], :Ar=>[1.5e9,119], 
                                                 :H=>[1.1e6,247.5], :D=>[1e4,247.5], :Cl=>[1e4, 100], :HCl=>[1e5, 100], :SO2=>[1e5, 100], :H2SO4=>[1e5, 100],
-                                                :H2=>[7.0e4,247.5], :HD=>[1.6e3,247.5], 
+                                                :H2=>[7.0e4,247.5], :HD=>[1.6e3,247.5], :e=>[1e5,145],
                                                 #:H2O=>[1.1e9,105], :HDO=>[1e5,105],
                                                 :H2O=>[1.3e3,152], :HDO=>[1.3e3, 119],
                                                 :O2pl=>[7.5e4,140], :Opl=>[6.5e2,210], :CO2pl=>[0.45e4,161], :N2pl=>[1.2e1,149], :COpl=>[3.2e1,168],
@@ -270,7 +270,7 @@ function plot_atm_essential(n_current, vardict; species_posdict = Dict(:CO2=>[1e
     )
 
     GV = values(globvars)
-    required =  [:plot_grid, :ion_species, ]
+    required =  [:plot_grid, :ion_species, :non_bdy_layers ]
     check_requirements(keys(GV), required)
 
     rcParams = PyCall.PyDict(matplotlib."rcParams")
