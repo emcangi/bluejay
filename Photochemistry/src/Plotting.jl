@@ -275,7 +275,7 @@ function plot_atm_essential(n_current, vardict; species_posdict = Dict(:CO2=>[1e
 
     rcParams = PyCall.PyDict(matplotlib."rcParams")
     rcParams["mathtext.fontset"] = "custom"
-    plot_font = "Louis George Caf?" # "Gillius ADF" # "Arial" #
+    plot_font = "Louis George Cafe" # "Gillius ADF" # "Arial" #
     rcParams["mathtext.rm"] = plot_font
     rcParams["mathtext.it"] = plot_font*", Italic"
     rcParams["mathtext.bf"] = plot_font*", Bold"
