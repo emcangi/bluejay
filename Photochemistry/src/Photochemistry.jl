@@ -72,6 +72,7 @@ export
 
     ## Temperature
     T_Mars,
+    T_MARS_NEW,
     T_Venus,
 
     ## Transport and boundary conditions
@@ -86,6 +87,7 @@ export
     update_transport_coefficients,  
 
     ## Water
+    inject_water!,
     precip_microns, 
     colabund_from_prum,
     Psat, 
