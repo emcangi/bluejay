@@ -12,6 +12,7 @@
 
 using DataFrames
 using DoubleFloats
+using CSV
 
 # First do some error checking
 if (special_seasonal_case!=nothing) & (exp_type=="all")
@@ -187,6 +188,17 @@ sort!(N_neutrals)
 #                                        Atmospheric setup                                              #
 #                                                                                                       #
 # ***************************************************************************************************** #
+data_alt = []
+data_T = []
+water_T = []
+
+if ingest_data
+    # load file
+    thedata =  CSV.read(data_loc*ingest_scenario*".csv", DataFrame)
+    data_alt = thedata[!, "alt"]
+    data_T = thedata[!, "T"]
+    data_water = thedata[!, "water"]
+end
 
 #                             Ion chemistry and non-thermal escape
 # =======================================================================================================
@@ -215,26 +227,35 @@ const hygropause_alt = 40e5  # Location of the hygropause
 #                              Temperature profile construction                      
 # =======================================================================================================
 
+# These are used to smooth out the profiles later. Has to be here cause it depends on the variable temp_scenario.
+const fudge_factors = Dict("orbit12807_MD"=>15, "perihelion_MD"=>15., "baseline_perihelion_MD"=>15., "aphelion_MD"=>-5., "baseline_MD"=>0., )
+
+const Tsurf = Dict("Mars"=>Dict("mean"=>230., 
+                                # Options for data ingestion from MAVEN ('MD' for maven data) in collaboration with Mike Stevens. 
+                                "orbit12807_MD"=>285, "perihelion_MD"=>273., "baseline_perihelion_MD"=>273., "aphelion_MD"=>255., "baseline_MD"=>230.,
+                                # Special case where we do a seasonal model but vary 3 thigns at once.
+                                "inclusive-ap"=>230., "inclusive-mean"=>230., "inclusive-peri"=>230.),
+
+                   "Venus"=>Dict("mean"=>735.), 
+                  )
+
+const Tmeso = Dict("Mars"=>Dict("mean"=>130., 
+                                "orbit12807_MD"=>169.6, "perihelion_MD"=>169.6, "baseline_perihelion_MD"=>169.6, "aphelion_MD"=>221.4, "baseline_MD"=>130.,
+                                # Special case where we do a seasonal model but vary 3 thigns at once.
+                               "inclusive-ap"=>130., "inclusive-mean"=>130., "inclusive-peri"=>130.), 
+                   "Venus"=>Dict("mean"=>170.)
+                   )
+
 # Establish the options for controltemps[3]
-const Texo_opts = Dict("Mars"=>Dict("min-P2"=>190., "mean-P2"=>210., "max-P2"=>280.,   # These are based on solar min, mean, max.
-                                    "min"=>175., "mean"=>225., "max"=>275.,   # These are based on solar min, mean, max.
-                                    "meansundist"=>225., "aphelion"=>225., "perihelion"=>225.),
-                       "Venus"=>Dict("min"=>260., "mean"=>290., "max"=>320.))
-
-const Texo_inclusive_opts = Dict("inclusive-ap"=>175., 
-                                 "inclusive-mean"=>225., 
-                                 "inclusive-peri"=>275.)
-
-const Tsurf = Dict("Mars"=>230., "Venus"=>735.)
-const Tmeso = Dict("Mars"=>130., "Venus"=>170.)
-
-# Create the temperature profile control array
-const controltemps = [Tsurf[planet], Tmeso[planet], Texo_opts[planet]["mean"]]
-if planet=="Venus"
-    const meantemps = [Tsurf[planet], Tmeso[planet], Texo_opts[planet]["min"]] # Used for saturation vapor pressure. DON'T CHANGE!
-elseif planet=="Mars"
-    const meantemps = [Tsurf[planet], Tmeso[planet], Texo_opts[planet]["mean"]] # Used for saturation vapor pressure. DON'T CHANGE!
-end
+const Texo = Dict("Mars"=>Dict("min-P2"=>190., "mean-P2"=>210., "max-P2"=>280.,   # These are based on solar min, mean, max.
+                               "min"=>175., "mean"=>225., "max"=>275.,   # These are based on solar min, mean, max.
+                               "meansundist"=>225., "aphelion"=>225., "perihelion"=>225., 
+                               # Options for data ingestion from MAVEN ('MD' for maven data) in collaboration with Mike Stevens. 
+                               "orbit12807_MD"=>250, "perihelion_MD"=>250., "baseline_perihelion_MD"=>250., "aphelion_MD"=>176., "baseline_MD"=>250.,
+                               # Special case where we do a seasonal model but vary 3 thigns at once.
+                               "inclusive-ap"=>175., "inclusive-mean"=>225., "inclusive-peri"=>275.),
+                       "Venus"=>Dict("min"=>260., "mean"=>290., "max"=>320.)
+                )
 
 
 # Modify the settings if doing a special isothermal atmosphere.
@@ -242,17 +263,28 @@ if temp_scenario=="isothermal"
     const controltemps = [225., 225., 225.]
     const meantemps = [225., 225., 225.] # Used for saturation vapor pressure. DON'T CHANGE!
 else # Set the exobase temp according to the temp scenario.
-    const controltemps[3] =  Texo_opts[planet][temp_scenario]
+    if planet=="Venus"
+        const meantemps = [Tsurf[planet]["mean"], Tmeso[planet]["mean"], Texo[planet]["min"]] # Used for saturation vapor pressure. DON'T CHANGE!
+    elseif planet=="Mars"
+        const meantemps = [Tsurf[planet]["mean"], Tmeso[planet]["mean"], Texo[planet]["mean"]] # Used for saturation vapor pressure. DON'T CHANGE!
+    end
+
+    const controltemps = [Tsurf[planet][temp_scenario], Tmeso[planet][temp_scenario], Texo[planet][temp_scenario]]
 end
 
 # Modify the array for the special case where multiple parameters are changed for the seasonal model
-if special_seasonal_case!=nothing 
-    const controltemps = [Tsurf[planet], Tmeso[planet], Texo_inclusive_opts[special_seasonal_case]]
-end
+# if special_seasonal_case!=nothing 
+#     const controltemps = [Tsurf[planet], Tmeso[planet], Texo_inclusive_opts[special_seasonal_case]]
+# end
 
 # Now create the actual temperature profiles
 if planet=="Mars"
-    const T_array_dict = T_Mars(controltemps[1], controltemps[2], controltemps[3]; alt)
+    if occursin("MD", temp_scenario)  # when ingesting maven data....
+        T_array_dict = T_MARS_NEW(controltemps[1], controltemps[2], controltemps[3], data_T, data_alt; 
+                                  lapserate=-1.4e-5, weird_Tn_param=8, fudge_factor=get(fudge_factors, temp_scenario, 0.), alt, dz)
+    else  # normal model runs.......
+        const T_array_dict = T_Mars(controltemps[1], controltemps[2], controltemps[3]; alt)
+    end
     const Tn_meanSVP = T_Mars(meantemps...; alt)["neutrals"]; # Needed for boundary conditions.
 elseif planet=="Venus"
     const T_array_dict = T_Venus(controltemps[1], controltemps[2], controltemps[3], "Venus-Inputs/FoxandSung2001_temps_mike.txt"; alt);
@@ -490,7 +522,7 @@ end
 # Tags, shortcodes, and filenames
 # -------------------------------------------------------------------
 # The shortcodes provide unique identifiers for a simulation. Necessary because you end up running the model many times...
-const hrshortcode, rshortcode = generate_code(ions_included, controltemps[1], controltemps[2], controltemps[3], water_case, solar_scenario)
+const hrshortcode, rshortcode = generate_code(ions_included, round(controltemps[1]), round(controltemps[2]), round(controltemps[3]), water_case, solar_scenario)
 const sim_folder_name = "$(hrshortcode)_$(rshortcode)_$(tag)"
 const used_rxns_spreadsheet_name = "active_rxns.xlsx"
 

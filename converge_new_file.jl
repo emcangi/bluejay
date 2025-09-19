@@ -1250,6 +1250,12 @@ if update_water_profile
     end
 end
 
+# Allow optional injection from data 
+if (ingest_scenario!="baseline") && (ingest_scenario!="baseline_perihelion")
+    inject_water!(n_current, data_water, data_alt; upper_atmo_ff=false, lower_atmo_ff=false, simfolder=results_dir*sim_folder_name, 
+                  plot_grid, non_bdy_layers, dz, n_alt_index, DH)
+end
+
 # Calculate precipitable microns, including boundary layers (assumed same as nearest bulk layer)
 H2Oprum = precip_microns(:H2O, [n_current[:H2O][1]; n_current[:H2O]; n_current[:H2O][end]]; molmass, dz)
 HDOprum = precip_microns(:HDO, [n_current[:HDO][1]; n_current[:HDO]; n_current[:HDO][end]]; molmass, dz)

@@ -1260,6 +1260,175 @@ function T_Mars(Tsurf, Tmeso, Texo; lapserate=-1.4e-5, z_meso_top=108e5, weird_T
     return Dict("neutrals"=>NEUTRALS(), "ions"=>IONS(), "electrons"=>ELECTRONS())
 end 
 
+function T_MARS_NEW(Tsurf, Tmeso, Texo, maven_T, maven_alt; lapserate=-1.4e-5, special_Tmeso=nothing, weird_Tn_param=8, fudge_factor=0, globvars...) 
+    #= 
+    SPECIAL VERSION!!! Need to merge into main function later.
+
+    Input:
+        z: altitude above surface in cm
+        Tsurf: Surface temperature in KT
+        Tmeso: tropopause/mesosphere tempearture
+        Texo: exobase temperature
+        maven_T: array of maven temperatures
+        maven_alt: array of maven altitude of temperature measurement
+        
+    Optional:
+        lapserate: default -1.4e-5 to represent dusty conditions
+        special_Tmeso: a special value to use in the functional form for the upper atmosphere. This helps
+                       the functional form be manipulated to smoothly match both Texo and the last entry of MAVEN data.
+                       Unfortunately, the only way to determine this value is to manually enter Texo and the function into a 
+                       mathematica notebook and manipulate Tmeso in the plot until you find a value for it that makes the line
+                        meet the plotted point. UPDATE 2025: No idea what notebook that was anymore. The value has been folded 
+                        into the regular Tmeso options in MODEL_SETUP. This variable should be deleted but I wanted this info 
+                        to be in the git commit for posterity.
+        weird_Tn_param: Should be set to 8 by default per Krasnopolsky2010
+        fudge_factor: an arbirary value to add to the neutral temperatures above the highest altitude where MAVEN had data.
+                      all this does is allow the function to accept whatever T_exo we ask it to use (based oN MCD) but have a smooth 
+                      join between the MAVEN data and the exobase.
+
+    Output: 
+        A single temperature value in K.
+    =#
+    
+    GV = values(globvars)
+    required = [:alt, :dz]
+    check_requirements(keys(GV), required)
+
+    using_maven_data = true # this function only gets called if this is true. special_Tmeso==nothing ? false : true 
+
+    # FOR SPECIAL RANGE FORM MAVEN DATA FROM MIKE STEVENS
+    if using_maven_data
+        if maven_alt[1] - 1000 < 0 # Make sure the units are right
+            maven_alt = maven_alt * 1e5
+        end
+        interpd = LinearInterpolation(maven_alt, maven_T)
+        zi, zf = find_interpolation_edge(maven_alt ./ 1e5) .* 1e5
+        new_a = collect(zi:GV.dz:zf)
+        Tn_interped = [interpd(a) for a in new_a];
+        i_interp_region = findall(z->zi <= z <= zf, GV.alt)
+    end
+
+    println("MAVEN T $(maven_T)")
+ 
+    # Define atmospheric regions, create altitude indices
+    z_meso_bottom = GV.alt[searchsortednearest(GV.alt, (Tmeso-Tsurf)/(lapserate))]
+    z_meso_top = 110e5  # height of the tropopause top
+    
+    # These are the altitudes at which we "stitch" together the profiles 
+    # from fitting the tanh profile in Ergun+2015,2021 to Hanley+2021 DD8
+    # ion and electron profiles, and the somewhat arbitary profiles defined for
+    # the region roughly between z_meso_top and the bottom of the fitted profiles.
+    z_electrons_thermalize = 142e5
+    z_ions_thermalize = 164e5
+    
+    i_lower = findall(z->z < z_meso_bottom, GV.alt)
+    i_meso = findall(z->z_meso_bottom <= z <= z_meso_top, GV.alt)
+    i_upper = findall(z->z > z_meso_top, GV.alt)
+    
+    i_meso_top = findfirst(z->z==z_meso_top, GV.alt)
+    # i_meso_bottom = findfirst(z->z==z_meso_bottom, GV.alt)
+    i_elec_thermalize = findfirst(z->z==z_electrons_thermalize, GV.alt)
+    i_ions_thermalize = findfirst(z->z==z_ions_thermalize, GV.alt)
+
+    function NEUTRALS()
+        function upper_atmo_neutrals(z_arr; Tm=Tmeso)
+            # SPECIALLY MODIFIED, 8e10 made variable to make things work 
+    
+            @. return Texo - (Texo - Tm)*exp(-((z_arr - z_meso_top)^2)/(weird_Tn_param*1e10*Texo))
+        end
+
+        Tn = zeros(size(GV.alt))
+
+        Tn[i_lower] .= Tsurf .+ lapserate*GV.alt[i_lower]
+        Tn[i_meso] .= Tmeso
+        Tn[i_upper] .= upper_atmo_neutrals(GV.alt[i_upper]; Tm=Tmeso)
+        if using_maven_data
+
+            Tn[i_upper[1]] = upper_atmo_neutrals(GV.alt[i_upper[1]]; Tm=Tmeso) # adjust the lowest point in the interpolated region because of goofyness
+            Tn[i_interp_region] .= Tn_interped
+
+            # This is completely ridiculous, but allows a smooth join between the MAVEN data and the model values above it.
+            i_above_interp = i_interp_region[end] + 1
+            Tn[i_above_interp:end] = Tn[i_above_interp:end] += [fudge_factor * exp.(-0.1*(i-1)) for i in 1:length(Tn[i_above_interp:end])]
+        end
+
+        return Tn 
+    end 
+
+    function ELECTRONS() 
+        function upper_atmo_electrons(z_arr, TH, TL, z0, H0)
+            #=
+            Functional form from Ergun+ 2015 and 2021, but fit to data for electrons and ions
+            in Hanley+ 2021, DD8 data.
+            =#
+
+            @. return ((TH + TL) / 2) + ((TH - TL) / 2) * tanh(((z_arr / 1e5) - z0) / H0)
+        end
+        Te = zeros(size(GV.alt))
+
+        Te[i_lower] .= Tsurf .+ lapserate*GV.alt[i_lower]
+        Te[i_meso] .= Tmeso
+
+        # This region connects the upper atmosphere with the isothermal mesosphere
+        Te[i_meso_top:i_elec_thermalize] .= upper_atmo_electrons(GV.alt[i_meso_top:i_elec_thermalize], -1289.05806755, 469.31681082, 72.24740123, -50.84113252)
+
+        # This next region is a fit of the tanh electron temperature expression in Ergun+2015 and 2021 
+        # to the electron profile in Hanley+2021, DD8
+        Te[i_elec_thermalize:end] .= upper_atmo_electrons(GV.alt[i_elec_thermalize:end], 1409.23363494, 292.20319103, 191.39012079, 36.64138724)
+
+        return Te
+    end
+
+    function IONS(Tn_arr, Te_arr)
+        function upper_atmo_ions(z_arr)
+            #=
+            fit to Gwen's DD8 profile, SZA 40, Hanley+2021, with values M = 47/13, B = -3480/13
+            =#
+            # New values for fit to SZA 60,Hanley+2022:
+            M = 3.59157034
+            B = -286.48716122
+            @. return M*(z_arr/1e5) + B
+        end
+        
+        function meso_ions_byeye(z_arr)
+            # This is completely made up! Not fit to any data!
+            # It is only designed to make a smooth curve between the upper atmospheric temperatures,
+            # which WERE fit to data, and the mesosphere, where we demand the ions thermalize.
+
+            # Values used for Gwen's DD8 profile, SZA 40:  170/49 * (z/1e5) -11990/49
+            @. return 145/49 * (z_arr/1e5) -9100/49 # These values are for the new fit to SZA 60, Hanley+2022. (11/2/22)
+        end
+
+        Ti = zeros(size(GV.alt))
+
+        Ti[i_lower] .= Tsurf .+ lapserate*GV.alt[i_lower]
+        Ti[i_meso] .= Tmeso
+
+        # try as an average of neutrals and electrons. There is no real physical reason for this.
+        Ti[i_meso_top:i_ions_thermalize] = meso_ions_byeye(GV.alt[i_meso_top:i_ions_thermalize])#(0.7 .* Tn_arr[i_meso_top:i_ions_thermalize] .+ 0.3 .* Te_arr[i_meso_top:i_ions_thermalize])
+
+        # This next region is a fit of the tanh electron temperature expression in Ergun+2015 and 2021 
+        # to the electron profile in Hanley+2021, DD8
+        Ti[i_ions_thermalize:end] .= upper_atmo_ions(GV.alt[i_ions_thermalize:end])
+        return Ti
+    end 
+
+    Tn = NEUTRALS()
+    Te = ELECTRONS()
+
+    return Dict("neutrals"=>Tn, "ions"=>IONS(Tn, Te), "electrons"=>Te)
+end
+
+function find_interpolation_edge(a)
+    zi = ceil(a[1])
+    zf = floor(a[end])
+    
+    zi = zi % 2 == 0 ? zi : zi + 1
+    zf = zf % 2 == 0 ? zf : zf +-1
+    return zi, zf 
+end
+
+
 function T_Venus(Tsurf::Float64, Tmeso::Float64, Texo::Float64, file_for_interp; z_meso_top=80e5, lapserate=-8e-5, weird_Tn_param=8, globvars...)
     #= 
     Input:
@@ -1354,6 +1523,8 @@ function T_Venus(Tsurf::Float64, Tmeso::Float64, Texo::Float64, file_for_interp;
 
     return Dict("neutrals"=>NEUTRALS(interp_alts), "ions"=>IONS(interp_alts), "electrons"=>ELECTRONS(interp_alts))
 end
+
+
 
 
 #===============================================================================#
@@ -2055,6 +2226,87 @@ end
 #===============================================================================#
 #                    Water profile setup and SVP functions                      #   
 #===============================================================================#
+
+function inject_water!(n_current, data_water, data_alt; simfolder=nothing, upper_atmo_ff=true, lower_atmo_ff=true, globvars...)
+    #=
+    Allows "manual" modification of water vapor densities in the initial atmosphere. Modifies n_current.
+    Effectively, this injects some extra water which can then evolve chemically.
+
+    Inputs:
+        n_current: atmospheric state dictionary
+        maven_water: values for injected water vapor (in #/cm^3)
+        maven_alt: altitudes for injected water vapor
+        simfolder: folder where results are stored. Used to save a figure of the new water profile.
+        upper_atmo_ff: Adds a fudge factor in the upper atmosphere to smooth out the profile. 
+                       May require direct attention to make sure it makes sense.
+        lower_atmo_ff: Adds a fudge factor in the lower atmosphere to smooth out the profile. 
+                       May require direct attention to make sure it makes sense.
+    =#
+    GV = values(globvars)
+    required = [:n_alt_index, :dz, :non_bdy_layers, :plot_grid, :DH]
+    check_requirements(keys(GV), required)
+    
+    # Interpolate the water density values 
+    interp_watern = LinearInterpolation(data_alt, data_water)
+    zi, zf = find_interpolation_edge(data_alt ./ 1e5) .* 1e5 # Figure out which altitudes can be used within the interpolation range
+
+    # Get new values from the interpolation function
+    new_a = collect(zi:GV.dz:zf)
+    new_wn = [interp_watern(a) for a in new_a];
+
+    # these next two are just for slicing things conveniently to make the profile
+    inds = [GV.n_alt_index[a] for a in new_a];
+    lasti = inds[end]
+    
+    # add new water
+    temp_ncur = deepcopy(n_current)
+
+    temp_ncur[:H2O][inds] .= new_wn
+    temp_ncur[:HDO][inds] .= new_wn * 2 * GV.DH
+    # temp_ncur[:H2O][GV.n_alt_index[154e5]] = maven_water[end];
+
+    fig, ax = subplots()
+    plot_bg(ax)
+    ax.plot(n_current[:H2O], GV.plot_grid, color="cornflowerblue", label="Typical H2O")
+    ax.plot(n_current[:HDO], GV.plot_grid, color="cornflowerblue", linestyle="--", label="Typical HDO")
+    # ax.plot(temp_ncur[:H2O], plot_grid, color="red", label="Model profile with data ingestion")
+    
+    # Fudge the profile in the upper atmosphere
+    if upper_atmo_ff
+        temp_ncur[:H2O][lasti+1:end] .= n_current[:H2O][lasti+1:end] .* 4e5 
+        temp_ncur[:H2O][lasti+1:end] .*= 2e-5*exp.(temp_ncur[:H2O][lasti+1:end] ./ (0.1*temp_ncur[:H2O][lasti+1]))
+        # ax.plot(temp_ncur[:H2O][lasti+1:end], plot_grid[lasti+1:end], color="red", linestyle="--", label="Optional fudge factor for upper atmo")
+    end
+    
+    # Fudge profile in low to middle atmosphere - not used anymore, I believe
+    if lower_atmo_ff
+        i=13
+        j=53
+        temp_ncur[:H2O][i:j] .= 2.42988e12 .* exp.(-1.06348e-6 * GV.non_bdy_layers[i:j])# temp_ncur[:H2O][34]
+        # ax.plot(temp_ncur[:H2O][i:j], plot_grid[i:j], color="purple", linestyle="--", label="fudge for meso")
+    end
+
+    ax.plot(temp_ncur[:H2O], GV.plot_grid, color="xkcd:pumpkin", label="Modified H2O")
+    ax.plot(temp_ncur[:HDO], GV.plot_grid, color="xkcd:pumpkin", linestyle="--", label="Modified HDO")
+    ax.scatter(data_water, data_alt./1e5, color="xkcd:red", zorder=10, label="IUVS")
+    ax.scatter(data_water * 2 * GV.DH, data_alt./1e5, color="xkcd:light red", marker="d", zorder=10, label="Inferred assuming surface D/H")
+    ax.set_xscale("log")
+    ax.set_title("Water abundance")
+    ax.set_xlabel(L"Number density (cm$^{-3}$)")
+    ax.set_ylabel("Alt (km)")
+    ax.legend(fontsize=10)
+    if simfolder==nothing
+        show()
+    else
+        savefig(simfolder*"/modified_initial_H2O_profile.png", bbox_inches="tight", dpi=300)
+    end
+
+    # Update the original atmosphere 
+    n_current[:H2O] = temp_ncur[:H2O]
+    n_current[:HDO] = temp_ncur[:HDO]
+    
+    return n_current
+end
 
 function precip_microns(sp, sp_profile; globvars...)
     #=

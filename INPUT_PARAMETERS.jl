@@ -19,7 +19,7 @@ const planet = "Mars"
 
 # Input and output files, directory
 # =======================================================================================================
-const results_dir = code_dir*"../Results_$(planet)/"
+const results_dir = "/home/emc/Insync/OneDrive-CU/Research/Photochemistry/Results_$(planet)/"
 const initial_atm_file = "$(planet)-Inputs/INITIAL_GUESS_MARS_bxz4YnHk.h5"  # File to use to initialize the atmosphere.
     # OPTIONS: 
     # INITIAL_GUESS_MARS.h5 --> Basic Mars starting file.
@@ -33,12 +33,23 @@ const reaction_network_spreadsheet = code_dir*"$(planet)-Inputs/REACTION_NETWORK
 
 # Descriptive attributes of this model run
 # =======================================================================================================
-const optional_logging_note = "Enter a logging note here" # Brief summary of simulation goal
+const optional_logging_note = "It works, now add HDO" # Brief summary of simulation goal
 const results_version = "v0"  # Helps keep track of attempts if you need to keep changing things
+
+
+# Data ingestion 
+# =======================================================================================================
+# In this section you can allow data to be ingested from a mission (i.e. MAVEN). 
+# Available options: temperatures, water vapor abundance, and altitudes at which to make the change.
+# The model will force-overwrite these values into the arrays, no matter what the typical setup does.
+const ingest_data = true # false
+const ingest_scenario = "orbit12807_MD" # nothing
+const data_loc = "/home/emc/GITREPOS/bluejay/Mars-Inputs/maven_data/"
+
 
 # Set the modifiable atmospheric parameters
 # =======================================================================================================
-const seasonal_cycle = false  # Whether to simulate one season or run to equilibrium.
+const seasonal_cycle = true  # Whether to simulate one season or run to equilibrium.
     # OPTIONS: 
     # true (short, one season)
     # false (run to equilibrium)
@@ -60,15 +71,22 @@ const special_seasonal_case = nothing
 # This sets just the exobase temperature. Typically, the exobase temperature tracks the
 # solar cycle. You don't HAVE to make them match, but if you don't, you need to be able to 
 # interpret that choice and justify your choices when you write up the paper.
-const temp_scenario = "mean"  # Temperature selection for the seasonal model run.
+const temp_scenario = ingest_scenario != "" ? ingest_scenario : "mean"  # Temperature selection for the seasonal model run.
     # OPTIONS: 
     # min-P2, mean-P2, max-P2: uses exobase temps from Cangi+2023 (190, 210, 280) K.
     # mean, min, max: temps as in Cangi+ 2024 (175, 225, 275) K - goal for this one was evenly spaced.
     # isothermal (this will set a constant temperature at all alts - 225 K)
+    # Particular Mars cases I ran in collab with Mike Stevens, looking at IUVS data:
+        # orbit12807_MD -- a particular orbit with a lot of thermospheric water noted
+        # perihelion_MD -- a collection of perihelion observations with thermospheric water noted.
+        # baseline_perihelion_MD -- collection of perihelion data, no thermospheric water noted.
+        # aphelion_MD -- collection of aphelion observations, no thermospheric water
+        # baseline_MD -- I honestly forget what this is. i think it's planetary average.
 
 # Solar case
 # -------------------------------------------------------------------
-const SZA = 60  # Puts the model at dayside mean. Enter in degrees please.
+const SZA_opts = Dict("orbit12807"=>20.80, "perihelion"=>45, "aphelion"=>45, nothing=>60)
+const SZA = get(SZA_opts, ingest_scenario, 60) # degrees please
 const solar_scenario = "solarmean" 
     # Solar scenario definition. You can choose from different Mars-sun distances or parts of the solar cycle.
     # ORBITAL DISTANCE OPTIONS: "perihelion" #  "meansundist" # "aphelion"; these are defined at solar mean. 
