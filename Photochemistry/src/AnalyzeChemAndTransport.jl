@@ -381,7 +381,7 @@ function diffusion_timescale(s::Symbol, T_arr::Array, atmdict, n_horiz::Int64; g
         atmdict: atmospheric state dict
         n_horiz: Number of vertical columns in the simulation
         Dcoef_template: array of 0s to use in Dcoef!
-    Output: Molecular and eddy diffusion timescale (s) by alt
+    Output: Molecular and eddy diffusion timescale (s) by altitude and horizontal column
     =#
     
     GV = values(globvars)
@@ -717,6 +717,7 @@ function limiting_flux(sp, atmdict, T_arr, n_horiz::Int64; ihoriz::Int=1, treat_
         atmdict: present atmospheric state
         T_arr: Array of neutral temperatures
         n_horiz: Number of vertical columns in the simulation
+        ihoriz: horizontal column index to extract correct column data
     Output:
         Φ, limiting flux for a hydrostatic atmosphere
     =#

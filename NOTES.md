@@ -137,3 +137,24 @@ git diff multicolumn..master -- INPUT_PARAMETERS.jl > INPUT_PARAMETERS.diff
 git diff multicolumn..master -- SeasonsAnalysis/src/MakePlots.jl > MakePlots.diff
 git diff multicolumn..master -- SeasonsAnalysis/src/Support.jl > Support.diff
 git diff multicolumn..master -- "Solar spectra/scale_solar_spectrum.py" > scale_solar_spectrum.diff
+
+- Compare with upstream master
+
+git diff upstream/master...master -- Photochemistry/src/Core.jl > Core.diff
+git diff upstream/master...master -- Photochemistry/src/AnalyzeChemAndTransport.jl > AnalyzeChemAndTransport.diff
+git diff upstream/master...master -- Photochemistry/src/BasicUtilities.jl > BasicUtilities.diff
+git diff upstream/master...master -- Photochemistry/src/Crosssections.jl > Crosssections.diff
+git diff upstream/master...master -- Photochemistry/src/FileIO.jl > FileIO.diff
+git diff upstream/master...master -- Photochemistry/src/JuliaODEsolver.jl > JuliaODEsolver.diff
+git diff upstream/master...master -- Photochemistry/src/Photochemistry.jl > Photochemistry.diff
+git diff upstream/master...master -- Photochemistry/src/Plotting.jl > Plotting.diff
+git diff upstream/master...master -- Photochemistry/src/ReactionNetwork.jl > ReactionNetwork.diff
+git diff upstream/master...master -- Photochemistry/src/UnitConversions.jl > UnitConversions.diff
+git diff upstream/master...master -- CONSTANTS.jl > CONSTANTS.diff
+git diff upstream/master...master -- MODEL_SETUP.jl > MODEL_SETUP.diff
+git diff upstream/master...master -- converge_new_file.jl > converge_new_file.diff
+git diff upstream/master...master -- PLOT_STYLES.jl > PLOT_STYLES.diff
+git diff upstream/master...master -- INPUT_PARAMETERS.jl > INPUT_PARAMETERS.diff
+git diff upstream/master...master -- SeasonsAnalysis/src/MakePlots.jl > MakePlots.diff
+git diff upstream/master...master -- SeasonsAnalysis/src/Support.jl > Support.diff
+git diff upstream/master...master -- Solar\ spectra/scale_solar_spectrum.py > scale_solar_spectrum.diff
