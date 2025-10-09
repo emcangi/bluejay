@@ -129,13 +129,17 @@ end
 # Chemistry and transport participants
 # -------------------------------------------------------------------
 if converge_which == "neutrals"
-    append!(no_chem_species, union(conv_ions[planet], N_neutrals)) # This is because the N chemistry is intimiately tied up with the ions.
+    println("Note: Still removing nitrogen neutrals from the converged species. May want to change this.")
+    append!(no_chem_species, union(conv_ions[planet], N_neutrals)) # This is because the N chemistry is highly coupled to the ions.
     append!(no_transport_species, union(conv_ions[planet], N_neutrals, short_lived_species))
 elseif converge_which == "ions"
-    append!(no_chem_species, setdiff(conv_neutrals[planet], N_neutrals))
-    append!(no_transport_species, setdiff(conv_neutrals[planet], N_neutrals))
+    append!(no_chem_species, conv_neutrals[planet])
+    append!(no_transport_species, conv_neutrals[planet])
 elseif converge_which == "both"
     append!(no_transport_species, short_lived_species)
+elseif converge_which == "ions+nitrogen"
+    append!(no_chem_species, setdiff(conv_neutrals[planet], N_neutrals))
+    append!(no_transport_species, setdiff(conv_neutrals[planet], N_neutrals))
 end
 
 # Disallow transport and/or chemistry if the appropriate setting is toggled
@@ -388,18 +392,6 @@ const HDOsat = map(x->Psat_HDO(x), Tn_meanSVP)
 const H2Oi = findfirst(x->x==:H2O, active_longlived)
 const HDOi = findfirst(x->x==:HDO, active_longlived)
 
-# Altitude at which water transitions from fixed to freely solved for
-# initial_atm = get_ncurrent(initial_atm_file, n_horiz)
-# H2Osatfrac = hcat([H2Osat ./ map(z -> n_tot(initial_atm, z, ihoriz; all_species=setdiff(all_species, new_species), n_alt_index), alt) for ihoriz in 1:n_horiz]...)
-# const upper_lower_bdy = alt[something(findfirst(isequal(minimum(H2Osatfrac[:, 1])), H2Osatfrac[:, 1]), 0)] # in cm
-# const upper_lower_bdy_i = n_alt_index[upper_lower_bdy]  # the uppermost layer at which water will be fixed, in cm
-# # Control whether the removal of rates etc at "Fixed altitudes" runs. If the boundary is 
-# # the bottom of the atmosphere, we shouldn't do it at all.
-# const remove_rates_flag = true
-# if upper_lower_bdy == zmin
-#     const remove_rates_flag = false 
-# end
-
 #                              Species-specific scale heights
 # =======================================================================================================
 const Hs_dict = Dict{Symbol, Vector{Vector{Float64}}}([sp => [scaleH(alt, sp, Tprof_for_Hs[charge_type(sp)][ihoriz, :]; molmass, M_P, R_P) for ihoriz in 1:n_horiz] for sp in all_species])
@@ -427,26 +419,42 @@ if planet=="Mars"
                         :D=> Dict("f"=>[[0., NaN] for _ in 1:n_horiz], "v"=>[[NaN, effusion_velocity(Tn_arr[ihoriz, end], 2.0; M_P, R_P, zmax)] for ihoriz in 1:n_horiz], "ntf"=>[[NaN, "see boundaryconditions()"] for ihoriz in 1:n_horiz]),
                        );
 elseif planet=="Venus"
-    const ntot_at_lowerbdy = 9.5e15 # at 90 km
+    const ntot_at_lowerbdy = 9.5e15 # Based on Fox & Sung 2001
 
     H2O_lowerbdy = h2o_vmr_low * ntot_at_lowerbdy
     HDO_lowerbdy = hdo_vmr_low * ntot_at_lowerbdy
     
     # END SPECIAL
+    
+    # Define mixing ratios for boundary conditions
+    # Belyaev 2012: 0.1 ppmv at 165–170 K to 0.5–1 ppmv at 190–192 K; 
+    # 0.1ppm was related to the most common temperature reading 
+    SO2mr = 1e-7
+    N2mr = 0.032
+    H2SO4mr = 3e-9
+    O2mr = 3e-3
+    COmr = 4.5e-6
+    CO2mr = 0.965
+    # Krasnopolsky, 2010a: 400ppb at 74km in altitude, actual number likely lower 
+    # (either 4.0E-7 or 4.8E-7); Zhang 2012: 3.66e-7
+    HClmr = 3.66e-7
+    SOmr = 1e-7
 
     const KoverH_lowerbdy = Keddy([zmin], [ntot_at_lowerbdy]; planet)[1]/scaleH_lowerboundary(zmin, Tn_arr[1, 1]; molmass, M_P, R_P, zmin)
     const manual_speciesbclist=Dict(# major species neutrals at lower boundary (estimated from Fox&Sung 2001, Hedin+1985, agrees pretty well with VIRA)
-                                    :CO2=>Dict("n"=>[[0.965*ntot_at_lowerbdy, NaN] for _ in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
+                                    :CO2=>Dict("n"=>[[CO2mr*ntot_at_lowerbdy, NaN] for _ in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
                                     :Ar=>Dict("n"=>[[5e11, NaN] for _ in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
-                                    :CO=>Dict("n"=>[[4.5e-6*ntot_at_lowerbdy, NaN] for _ in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
-                                    :O2=>Dict("n"=>[[3e-3*ntot_at_lowerbdy, NaN] for _ in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
-                                    :N2=>Dict("n"=>[[0.032*ntot_at_lowerbdy, NaN] for _ in 1:n_horiz]),
+                                    :CO=>Dict("n"=>[[COmr*ntot_at_lowerbdy, NaN] for _ in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
+                                    :O2=>Dict("n"=>[[O2mr*ntot_at_lowerbdy, NaN] for _ in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
+                                    :N2=>Dict("n"=>[[N2mr*ntot_at_lowerbdy, NaN] for _ in 1:n_horiz]),
 
-                                    #Krasnopolsky, 2010a: this was 400ppb at 74km in altitude, and the actual number is likely lower (is either 4.0E-7, or 4.8E-7 depending on the calculation); and according to Zhang 2012 it is 3.66e-7
-                                    :HCl=>Dict("n"=>[[3.66e-7 * ntot_at_lowerbdy, NaN] for _ in 1:n_horiz]),
+                                    :HCl=>Dict("n"=>[[HClmr * ntot_at_lowerbdy, NaN] for _ in 1:n_horiz]),
+                                    :DCl=>Dict("n"=>[[HClmr * DH * ntot_at_lowerbdy, NaN] for _ in 1:n_horiz]),
 
-                                    #Denis A. Belyaev 2012: this was 0.1 ppmv at 165–170 K to 0.5–1 ppmv at 190–192 K; It said 0.1ppm was related to the most common temperature reading so I went with that (this is either 1E-7 or 6.79E-8 depending on the calculation)
-                                    :SO2=>Dict("n"=>[[1.0e-7 * ntot_at_lowerbdy, NaN] for _ in 1:n_horiz]),
+                                    :H2SO4=>Dict("n"=>[[H2SO4mr * ntot_at_lowerbdy, NaN] for _ in 1:n_horiz]), 
+
+                                    :SO2=>Dict("n"=>[[SO2mr * ntot_at_lowerbdy, NaN] for _ in 1:n_horiz]),
+                                    :SO=>Dict("n"=>[[SOmr * ntot_at_lowerbdy, NaN] for _ in 1:n_horiz]),
 
                                     # water mixing ratio is fixed at lower boundary
                                     :H2O=>Dict("n"=>[[H2O_lowerbdy, NaN] for _ in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
@@ -587,7 +595,7 @@ const used_rxns_spreadsheet_name = "active_rxns.xlsx"
 # Simulation run time and timestep size  
 const season_length_in_sec = seasonal_cycle==true ? season_in_sec : 1e16
 const maxlogdt = seasonal_cycle==true ? 5 : 16 # simulation will run until dt = 10^maxlogdt seconds
-const dt_min_and_max = Dict("neutrals"=>[-3, 14], "ions"=>[-4, 6], "both"=>[-3, maxlogdt])
+const dt_min_and_max = Dict("neutrals"=>[-3, 14], "ions"=>[-4, 6], "ions+nitrogen"=>[-4, 6], "both"=>[-3, maxlogdt])
 const timestep_type = seasonal_cycle==true ? "log-linear" : "dynamic-log" 
     # OPTIONS: "static-log": Logarithmically spaced timesteps that are imposed and don't adjust.
     #                        Should basically never be used, but can be used for testing.

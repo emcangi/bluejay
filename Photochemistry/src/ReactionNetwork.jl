@@ -965,7 +965,7 @@ function calculate_enthalpies(df; species=[:H, :D, :H2, :HD], new_cols=nothing, 
     =#
     
     #Enthalpy of formation 
-    enthalpy_df = DataFrame(XLSX.readtable("Resources/Enthalpies_of_Formation.xlsx", "enthalpy"))
+    enthalpy_df = DataFrame(CSV.File("Resources/Enthalpies_of_Formation.csv"))
     
     enthalpy = Dict([Symbol(k)=>df_lookup(enthalpy_df, "Species", k, "Enthalpy of formation (kJ/mol)")[1] for k in enthalpy_df."Species"])
 

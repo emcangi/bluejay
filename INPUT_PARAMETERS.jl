@@ -102,8 +102,8 @@ const HDO_excess = 0.350 # excess HDO in ppm (divide by 1000 to get ppb)
 # =======================================================================================================
 
 const ions_included = true
-const converge_which = "both"
-    # OPTIONS: "ions", "neutrals", "both"
+const converge_which =  "both" 
+    # OPTIONS: "ions", "neutrals", "both", "ions+nitrogen"
 
 # Species lists
 # -------------------------------------------------------------------
@@ -163,10 +163,17 @@ const conv_ions = Dict("Mars"=>[:Arpl, :ArHpl, :ArDpl,
 
 # More specific settings for controling the modeling of species
 # -------------------------------------------------------------------
-const dont_compute_chemistry = planet == "Mars" ? [:Ar] : [] #  :Ar should be in this list if running Mars.
+# Chemical species which should never update their densities, but may be chemical reactants.
+const dont_compute_chemistry = []
 const dont_compute_transport = []
-const dont_compute_either_chem_or_transport = []  # Chemical species which should never update their densities, but may participate in chem+transport.
+const dont_compute_either_chem_or_transport = []  
     # OPTIONS: Any species included in the model. 
+if planet=="Mars" # To avoid convergence problems
+    append!(dont_compute_either_chem_or_transport,[:Ar])
+elseif planet=="Venus"
+    append!(dont_compute_chemistry,[:Ar])
+end
+    
 const assume_photochem_eq = false # whether to turn on photochemical equilibrium for short-lived species
 
 # Turn plots off and on
