@@ -94,7 +94,7 @@ function electron_density(atmdict; globvars...)
     if GV.e_profile_type == "constant"
         # Fill with a constant electron density profile for every column.
         template = fill(1e5, length(GV.non_bdy_layers))
-        return [copy(template) for _ in 1:n_horiz]
+        return [deepcopy(template) for _ in 1:n_horiz]
 
     elseif GV.e_profile_type == "quasineutral"
         # Multi column atmospheres store species as vectors of altitude arrays.
@@ -282,8 +282,9 @@ end
 
 function optical_depth(n_cur_densities; n_horiz::Int64, globvars...)
     #=
-    Given the current state (atmdict), this populates solarabs, a 2D array structured as [n_horiz, num_layers],
-    with each element containing an array of 2000 elements (one per wavelength).
+    Given the current state (atmdict), this populates solarabs, a 1D array of 1D arrays of 1D arrays 
+    with dimensions (n_horiz, n_alt, n_lambda), where each element is a wavelength-dependent optical depth.
+    Note: This is not a true multidimensional array but rather a nested Vector structure.
 
     The optical depth is calculated independently for each horizontal column.
     =#
