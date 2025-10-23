@@ -156,7 +156,7 @@ function evolve_atmosphere(atm_init::Dict{Symbol, Vector{Array{ftype_ncur}}}, lo
     tspan = (10.0^log_t_start, 10.0^log_t_end)
     
     # Set up the initial state and check for any problems 
-    nstart = flatten_atm(atm_init, GV.active_longlived, n_horiz; GV.num_layers)
+    nstart = flatten_atm(atm_init, GV.active_longlived; GV.num_layers, GV.n_horiz)
     find_nonfinites(nstart, collec_name="nstart")
 
     # Set up parameters
@@ -523,7 +523,7 @@ function record_atmospheric_state(t, n, actively_solved, E_prof; opt="", globvar
     println(progress_alert)
     
     # write out the current atmospheric state to a file and plot it
-    atm_snapshot = merge(external_storage, unflatten_atm(n, actively_solved, n_horiz; GV.num_layers))
+    atm_snapshot = merge(external_storage, unflatten_atm(n, actively_solved; GV.num_layers, GV.n_horiz))
     plot_atm(atm_snapshot, results_dir*sim_folder_name*"/atm_peek_$(plotnum)$(opt).png", abs_tol_for_plot, E_prof, n_horiz; ylims=[zmin/1e5, zmax/1e5], t="$(round(t, digits=rounding_digits))", globvars...)
     write_atmosphere(atm_snapshot, results_dir*sim_folder_name*"/atm_state_$(lpad(plotnum,2,"0"))$(opt).h5", n_horiz; t=round(t, digits=rounding_digits), globvars...)
 
@@ -731,10 +731,10 @@ function get_rates_and_jacobian(n, p, t; globvars...)
     end
 
     # retrieve the shortlived species from their storage and flatten them
-    n_short = flatten_atm(external_storage, GV.active_shortlived, n_horiz; GV.num_layers)
+    n_short = flatten_atm(external_storage, GV.active_shortlived; GV.num_layers, GV.n_horiz)
 
     # Update Jrates
-    n_cur_all = compile_ncur_all(n, n_horiz, n_short, GV.n_inactive; GV.active_longlived, GV.active_shortlived, GV.inactive_species, GV.num_layers)
+    n_cur_all = compile_ncur_all(n, n_short, GV.n_inactive; GV.active_longlived, GV.active_shortlived, GV.inactive_species, GV.num_layers, GV.n_horiz)
 
     update_Jrates!(n_cur_all; GV.Jratelist, GV.crosssection, GV.num_layers, GV.absorber, GV.dz, GV.solarflux, GV.n_horiz, enable_horiz_transport=GV.enable_horiz_transport)
     # VENUS Day-Night TEST
@@ -755,15 +755,15 @@ function get_rates_and_jacobian(n, p, t; globvars...)
                                           GV.active_longlived, GV.active_shortlived, GV.inactive_species, GV.Tn, GV.Ti, GV.Te, GV.num_layers)
 
     # Reconstruct the dictionary that holds densities
-    updated_ncur_all = compile_ncur_all(n, n_horiz, n_short_updated, GV.n_inactive; GV.active_longlived, GV.active_shortlived, GV.inactive_species, GV.num_layers)
+    updated_ncur_all = compile_ncur_all(n, n_short_updated, GV.n_inactive; GV.active_longlived, GV.active_shortlived, GV.inactive_species, GV.num_layers, GV.n_horiz)
 
     # Get the updated transport coefficients, taking into account short-lived species update
-    tlower, tup, tdown, tupper = update_transport_coefficients(GV.transport_species, updated_ncur_all, D_arr, M, n_horiz; 
+    tlower, tup, tdown, tupper = update_transport_coefficients(GV.transport_species, updated_ncur_all, D_arr, M; 
                                                                calc_nonthermal=nontherm, results_dir, sim_folder_name, 
                                                                Jratedict=Dict([j=>n_cur_all[j] for j in GV.Jratelist]), # Needed for nonthermal BCs
                                                                globvars...)
 
-    tbackedge, tforwards, tbackwards, tfrontedge = update_horiz_transport_coefficients(GV.transport_species, updated_ncur_all, D_arr, M, n_horiz; 
+    tbackedge, tforwards, tbackwards, tfrontedge = update_horiz_transport_coefficients(GV.transport_species, updated_ncur_all, D_arr, M; 
                                                                calc_nonthermal=nontherm, results_dir, sim_folder_name, 
                                                                Jratedict=Dict([j=>n_cur_all[j] for j in GV.Jratelist]), # Needed for nonthermal BCs
                                                                globvars...)
@@ -1048,15 +1048,15 @@ function update!(n_current::Dict{Symbol, Vector{Array{ftype_ncur}}}, t, dt; abst
     params = [GV.Dcoef_arr_template, M, E]
 
     # get current long-lived species concentrations
-    nstart = flatten_atm(n_current, GV.active_longlived, n_horiz; GV.num_layers)
+    nstart = flatten_atm(n_current, GV.active_longlived; GV.num_layers, GV.n_horiz)
 
     # update to next timestep
     nend = next_timestep(nstart, params, t, dt; abstol=abstol, reltol=reltol, globvars...)
 
     # retrieve the short-lived species from their storage and flatten them
-    n_short = flatten_atm(external_storage, GV.active_shortlived, n_horiz; GV.num_layers)
+    n_short = flatten_atm(external_storage, GV.active_shortlived; GV.num_layers, GV.n_horiz)
 
-    n_current = compile_ncur_all(nend, n_horiz, n_short, GV.n_inactive; GV.active_longlived, GV.active_shortlived, GV.inactive_species, GV.num_layers)
+    n_current = compile_ncur_all(nend, n_short, GV.n_inactive; GV.active_longlived, GV.active_shortlived, GV.inactive_species, GV.num_layers, GV.n_horiz)
 
     # ensure Jrates are included in n_current
     update_Jrates!(n_current; GV.Jratelist, GV.crosssection, GV.num_layers, GV.absorber, GV.dz, GV.solarflux, GV.n_horiz, enable_horiz_transport=GV.enable_horiz_transport)
@@ -1423,7 +1423,7 @@ HDOprum = [precip_microns(:HDO, [n_current[:HDO][ihoriz][1]; n_current[:HDO][iho
 # of the atmospheric densities--the solver doesn't handle their values currently.
 # NOTE: The stored Jrates will have units of #/s.
 # const external_storage = Dict{Symbol, Vector{Array{Float64}}}([j=>n_current[j] for j in union(short_lived_species, inactive_species, Jratelist)])
-# const n_inactive = flatten_atm(n_current, inactive_species, n_horiz; num_layers)
+# const n_inactive = flatten_atm(n_current, inactive_species; num_layers, n_horiz)
 
 # **************************************************************************** #
 #                                                                              #
@@ -1762,7 +1762,7 @@ const external_storage = Dict{Symbol, Vector{Array{Float64}}}(
     [j => n_current[j] for j in union(short_lived_species, inactive_species, Jratelist)
      if haskey(n_current, j)]
 )
-const n_inactive = flatten_atm(n_current, inactive_species, n_horiz; num_layers)
+const n_inactive = flatten_atm(n_current, inactive_species; num_layers, n_horiz)
 
 # **************************************************************************** #
 #                                                                              #
@@ -1892,7 +1892,7 @@ if ftype_ncur==Double64
     end
     E = electron_density(n_current; e_profile_type, non_bdy_layers, ion_species, n_horiz)
 
-    nstart = flatten_atm(n_current, active_longlived, n_horiz; num_layers)
+    nstart = flatten_atm(n_current, active_longlived; num_layers, n_horiz)
     find_nonfinites(nstart, collec_name="nstart")
 
     # Set up parameters
@@ -1983,11 +1983,11 @@ println("$(Dates.format(now(), "(HH:MM:SS)")) Simulation active convergence runt
 if problem_type == "SS"
     # Update short-lived species one more time
     println("One last update of short-lived species")
-    n_short = flatten_atm(external_storage, active_shortlived, n_horiz; num_layers)
+    n_short = flatten_atm(external_storage, active_shortlived; num_layers, n_horiz)
     Jrates = deepcopy(Float64[external_storage[jr][ialt] for jr in Jratelist, ialt in 1:num_layers])
     set_concentrations!(external_storage, atm_soln.u, n_short, inactive, 
                         active_longlived, active_shortlived, inactive_species, Jrates, Tn_arr, Ti_arr, Te_arr)
-    nc_all = merge(external_storage, unflatten_atm(atm_soln.u, active_longlived, n_horiz; num_layers))
+    nc_all = merge(external_storage, unflatten_atm(atm_soln.u, active_longlived; num_layers, n_horiz))
 
     println("Plotting final atmosphere, writing out state")
     # Make final atmosphere plot
@@ -2023,16 +2023,16 @@ elseif problem_type == "ODE"
             # Currently there's no workaround for this and you just have to remember NOT TO TRUST Jrates
             # at any timestep except the very last. 
             # TODO: Fix this so we just don't write Jrates in these iterations...
-            local nc_all = merge(external_storage, unflatten_atm(atm_state, active_longlived, n_horiz; num_layers))
+            local nc_all = merge(external_storage, unflatten_atm(atm_state, active_longlived; num_layers, n_horiz))
             write_atmosphere(nc_all, results_dir*sim_folder_name*"/atm_state_t_$(timestep).h5"; alt, num_layers, hrshortcode, rshortcode) 
         elseif i == L
             # Update short-lived species one more time
             println("One last update of short-lived species")
-            local n_short = flatten_atm(external_storage, active_shortlived, n_horiz; num_layers)
+            local n_short = flatten_atm(external_storage, active_shortlived; num_layers, n_horiz)
             local Jrates = deepcopy(Float64[external_storage[jr][ialt] for jr in Jratelist, ialt in 1:num_layers])
             set_concentrations!(external_storage, atm_state, n_short, inactive, Jrates; active_longlived, active_shortlived, 
                                inactive_species, Tn=Tn_arr, Ti=Ti_arr, Te=Te_arr, num_layers)
-            local nc_all = merge(external_storage, unflatten_atm(atm_state, active_longlived, n_horiz; num_layers))
+            local nc_all = merge(external_storage, unflatten_atm(atm_state, active_longlived; num_layers, n_horiz))
 
             # Make final atmosphere plot
             println("Plotting final atmosphere, writing out state")

@@ -384,8 +384,10 @@ function diffusion_timescale(s::Symbol, T_arr::Array, atmdict, n_horiz::Int64; g
     Output: Molecular and eddy diffusion timescale (s) by altitude and horizontal column
     =#
     
-    GV = values(globvars)
-    required = [:all_species, :alt, :molmass, :M_P, :n_alt_index, :neutral_species, :polarizability, :planet, :q, :R_P, 
+    # Add n_horiz to globvars since child functions need it
+    globvars = (globvars..., n_horiz=n_horiz)
+    GV = globvars  # Use the NamedTuple directly to preserve field names
+    required = [:all_species, :alt, :molmass, :M_P, :n_alt_index, :n_horiz, :neutral_species, :polarizability, :planet, :q, :R_P, 
                 :speciesbclist, :use_ambipolar, :use_molec_diff]
     check_requirements(keys(GV), required)
 
@@ -393,7 +395,7 @@ function diffusion_timescale(s::Symbol, T_arr::Array, atmdict, n_horiz::Int64; g
     Dcoef_template = zeros(size(T_arr)) 
 
     # Other stuff
-    ncur_with_bdys =  ncur_with_boundary_layers(atmdict, n_horiz; GV.all_species, GV.n_alt_index)
+    ncur_with_bdys =  ncur_with_boundary_layers(atmdict; GV.all_species, GV.n_alt_index, GV.n_horiz)
     
     # Molecular diffusion timescale: H_s^2 / D, scale height over diffusion constant
     Hs = scaleH(GV.alt, s, T_arr; globvars...)
@@ -501,8 +503,10 @@ function get_transport_PandL_rate(sp::Symbol, atmdict::Dict{Symbol, Vector{Array
         and the end of the array is the boundary at 249 km.
     =#
 
-    GV = values(globvars)
-    required = [:all_species, :alt, :dz, :Hs_dict, :molmass,  :n_alt_index,
+    # Add n_horiz to globvars since child functions need it
+    globvars = (globvars..., n_horiz=n_horiz)
+    GV = globvars  # Use the NamedTuple directly to preserve field names
+    required = [:all_species, :alt, :dz, :Hs_dict, :molmass,  :n_alt_index, :n_horiz,
                 :neutral_species, :num_layers, :polarizability, :q, :speciesbclist, :Te, :Ti, :Tn, :Tp, 
                 :Tprof_for_Hs, :Tprof_for_diffusion, :transport_species, :use_ambipolar, :use_molec_diff]
     check_requirements(keys(GV), required)
@@ -514,22 +518,22 @@ function get_transport_PandL_rate(sp::Symbol, atmdict::Dict{Symbol, Vector{Array
     end
 
     # Generate the fluxcoefs dictionary and boundary conditions dictionary
-    Keddy_arr, H0_dict, Dcoef_dict = update_diffusion_and_scaleH(GV.all_species, atmdict, n_horiz; globvars...)
-    fluxcoefs_all = fluxcoefs(GV.all_species, Keddy_arr, Dcoef_dict, H0_dict, n_horiz; globvars...)
+    Keddy_arr, H0_dict, Dcoef_dict = update_diffusion_and_scaleH(GV.all_species, atmdict; globvars...)
+    fluxcoefs_all = fluxcoefs(GV.all_species, Keddy_arr, Dcoef_dict, H0_dict; globvars...)
 
     # For the bulk layers only to make the loops below more comprehendable: 
-    fluxcoefs_bulk_layers = Dict([s=>[fluxcoefs_all[s][ihoriz][2:end-1, :] for ihoriz in 1:n_horiz] for s in keys(fluxcoefs_all)])
+    fluxcoefs_bulk_layers = Dict([s=>[fluxcoefs_all[s][ihoriz][2:end-1, :] for ihoriz in 1:GV.n_horiz] for s in keys(fluxcoefs_all)])
 
-    bc_dict = boundaryconditions(fluxcoefs_all, atmdict, sum([atmdict[sp] for sp in GV.all_species]), n_horiz; nonthermal=nonthermal, globvars...)
+    bc_dict = boundaryconditions(fluxcoefs_all, atmdict, sum([atmdict[sp] for sp in GV.all_species]); nonthermal=nonthermal, globvars...)
 
     # each element in thesebcs has the format [downward, upward]
     thesebcs = bc_dict[sp]
 
     # Fill array 
-    transport_PL = [fill(convert(ftype_ncur, NaN), GV.num_layers) for ihoriz in 1:n_horiz]
+    transport_PL = [fill(convert(ftype_ncur, NaN), GV.num_layers) for ihoriz in 1:GV.n_horiz]
 
     # These are the derivatives, which should be what we want (check math)
-    for ihoriz in 1:n_horiz
+    for ihoriz in 1:GV.n_horiz
         transport_PL[ihoriz][1] = ((atmdict[sp][ihoriz][2]*fluxcoefs_bulk_layers[sp][ihoriz][2, 1]  # in from layer above
                         -atmdict[sp][ihoriz][1]*fluxcoefs_bulk_layers[sp][ihoriz][1, 2]) # out to layer above
                     +(-atmdict[sp][ihoriz][1]*thesebcs[ihoriz][1, 1] # out to boundary layer
@@ -548,14 +552,14 @@ function get_transport_PandL_rate(sp::Symbol, atmdict::Dict{Symbol, Vector{Array
 
     # Use these for a sanity check if you like. 
     # println("Activity in the top layer for sp $(sp) AS FLUX:")
-    # println("Flux calculated from flux bc. for H and D, this should be the nonthermal flux: $([thesebcs[ihoriz][2, 2]*GV.dz for ihoriz in 1:n_horiz])")
-    # println("Calculated flux from velocity bc. For H and D this should be thermal escape: $([atmdict[sp][ihoriz][end]*thesebcs[ihoriz][2, 1]*GV.dz for ihoriz in 1:n_horiz])")
+    # println("Flux calculated from flux bc. for H and D, this should be the nonthermal flux: $([thesebcs[ihoriz][2, 2]*GV.dz for ihoriz in 1:GV.n_horiz])")
+    # println("Calculated flux from velocity bc. For H and D this should be thermal escape: $([atmdict[sp][ihoriz][end]*thesebcs[ihoriz][2, 1]*GV.dz for ihoriz in 1:GV.n_horiz])")
     # println("Down to layer below: $(-atmdict[sp][end]*fluxcoefs_all[sp][end, 1]*GV.dz)")
     # println("In from layer below: $(atmdict[sp][end-1]*fluxcoefs_all[sp][end-1, 2]*GV.dz)")
     if returnfluxes
-        tflux = zeros(ftype_ncur, n_horiz)
-        ntflux = zeros(ftype_ncur, n_horiz)
-        for ihoriz in 1:n_horiz
+        tflux = zeros(ftype_ncur, GV.n_horiz)
+        ntflux = zeros(ftype_ncur, GV.n_horiz)
+        for ihoriz in 1:GV.n_horiz
             tflux[ihoriz] = atmdict[sp][ihoriz][end]*thesebcs[ihoriz][2, 1]*GV.dz
             if nonthermal
                 ntflux[ihoriz] = thesebcs[ihoriz][2, 2]*GV.dz
@@ -613,14 +617,14 @@ function get_directional_fluxes(
 
     # Generate vertical transport coefficients and boundary conditions for all columns
     Keddy_arr, H0_dict, Dcoef_dict =
-        update_diffusion_and_scaleH(GV.all_species, atmdict, n_horiz; globvars...)
-    fluxcoefs_all = fluxcoefs(GV.all_species, Keddy_arr, Dcoef_dict, H0_dict, n_horiz; globvars...)
+        update_diffusion_and_scaleH(GV.all_species, atmdict; globvars...)
+    fluxcoefs_all = fluxcoefs(GV.all_species, Keddy_arr, Dcoef_dict, H0_dict; globvars...)
 
     # For the bulk layers only to make the loops below more comprehensible
     fluxcoefs_bulk_layers =
         Dict([s => [fluxcoefs_all[s][ihoriz][2:end-1, :] for ihoriz in 1:n_horiz] for s in keys(fluxcoefs_all)])
 
-    bc_dict = boundaryconditions(fluxcoefs_all, atmdict, sum([atmdict[sp] for sp in GV.all_species]), n_horiz; nonthermal=nonthermal, globvars...)
+    bc_dict = boundaryconditions(fluxcoefs_all, atmdict, sum([atmdict[sp] for sp in GV.all_species]); nonthermal=nonthermal, globvars...)
 
     # each element in each vector within thesebcs has the format [downward, upward]
     thesebcs = bc_dict[sp]
