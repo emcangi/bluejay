@@ -650,7 +650,7 @@ function check_jacobian_eigenvalues(J, path)
     end
 end
 
-function chemical_jacobian(specieslist, dspecieslist; diff_wrt_e=true, diff_wrt_m=true, transportnet_horiz, globvars...)
+function chemical_jacobian(specieslist, dspecieslist; diff_wrt_e=true, diff_wrt_m=true, globvars...)
     #= 
     Compute the symbolic chemical jacobian of a supplied chemnet and transportnet
     for the specified specieslist. 
@@ -658,6 +658,7 @@ function chemical_jacobian(specieslist, dspecieslist; diff_wrt_e=true, diff_wrt_
     Input:
         chemnet: chemical reactions
         transportnet: transport equations
+        transportnet_horiz: horizontal transport equations
         specieslist: list of species to calculate for; i.e. the species whose equation is differentiated
         dspecieslist: species with respect to which the equations are differentiated
         chem_species: list of chemistry species
@@ -672,7 +673,7 @@ function chemical_jacobian(specieslist, dspecieslist; diff_wrt_e=true, diff_wrt_
     =#
 
     GV = values(globvars)
-    required = [:chem_species, :transport_species, :chemnet, :transportnet]
+    required = [:chem_species, :transport_species, :chemnet, :transportnet, :transportnet_horiz]
     check_requirements(keys(GV), required)
 
     # set up output vectors: indices and values
@@ -703,8 +704,8 @@ function chemical_jacobian(specieslist, dspecieslist; diff_wrt_e=true, diff_wrt_
         if issubset([ispecies],GV.transport_species)
             peqn = [peqn; production_equations(ispecies, GV.transportnet)]
             leqn = [leqn; loss_equations(ispecies, GV.transportnet)]
-	    peqn = [peqn; production_equations(ispecies, transportnet_horiz)]
-	    leqn = [leqn; loss_equations(ispecies, transportnet_horiz)]
+	    peqn = [peqn; production_equations(ispecies, GV.transportnet_horiz)]
+	    leqn = [leqn; loss_equations(ispecies, GV.transportnet_horiz)]
 	end
 
         # Account for e's
@@ -831,7 +832,7 @@ end
 
 # function getrate(sp::Symbol; chemistry_on=true, transport_on=true, sepvecs=false, globvars...)
 function getrate(sp::Symbol; chemistry_on=true, transport_on=true, sepvecs=false,
-                  transportnet_horiz=[], globvars...)
+                  globvars...)
     #=
     Creates a symbolic expression for the rate at which a given species is
     either produced or lost due to chemical reactions or transport.
@@ -853,7 +854,7 @@ function getrate(sp::Symbol; chemistry_on=true, transport_on=true, sepvecs=false
     =#
 
     GV = values(globvars)
-    required =  [:chemnet, :transportnet, :chem_species, :transport_species]
+    required =  [:chemnet, :transportnet, :transportnet_horiz, :chem_species, :transport_species]
     check_requirements(keys(GV), required)
 
 
@@ -876,8 +877,8 @@ function getrate(sp::Symbol; chemistry_on=true, transport_on=true, sepvecs=false
             rate = :($rate
                      + $(production_rate(sp, GV.transportnet, sepvecs=sepvecs))
                      - $(loss_rate(sp, GV.transportnet, sepvecs=sepvecs))
-                     + $(production_rate(sp, transportnet_horiz, sepvecs=sepvecs))
-                     - $(loss_rate(sp, transportnet_horiz, sepvecs=sepvecs))
+                     + $(production_rate(sp, GV.transportnet_horiz, sepvecs=sepvecs))
+                     - $(loss_rate(sp, GV.transportnet_horiz, sepvecs=sepvecs))
                     )
         end
         return rate
@@ -894,9 +895,9 @@ function getrate(sp::Symbol; chemistry_on=true, transport_on=true, sepvecs=false
             # transprod_rate = production_rate(sp, GV.transportnet, sepvecs=sepvecs)
             # transloss_rate = loss_rate(sp, GV.transportnet, sepvecs=sepvecs)
             transprod_rate = vcat(production_rate(sp, GV.transportnet, sepvecs=sepvecs),
-                                  production_rate(sp, transportnet_horiz, sepvecs=sepvecs))
+                                  production_rate(sp, GV.transportnet_horiz, sepvecs=sepvecs))
             transloss_rate = vcat(loss_rate(sp, GV.transportnet, sepvecs=sepvecs),
-                                  loss_rate(sp, transportnet_horiz, sepvecs=sepvecs))
+                                  loss_rate(sp, GV.transportnet_horiz, sepvecs=sepvecs))
         else
             transprod_rate = [:(0.0 + 0.0)]
             transloss_rate = [:(0.0 + 0.0)]
@@ -3208,7 +3209,7 @@ function linear_in_species_density(sp, lossnet)
 end
 
 # function setup_photochemical_equilibrium(; globvars...)
-function setup_photochemical_equilibrium(; transportnet_horiz=[], globvars...)
+function setup_photochemical_equilibrium(; globvars...)
 
     #=
     Output
@@ -3221,7 +3222,7 @@ function setup_photochemical_equilibrium(; transportnet_horiz=[], globvars...)
     =#
 
     GV = values(globvars)
-    required = [:active_longlived, :active_shortlived, :short_lived_species, :reaction_network, :transportnet, :chem_species, :transport_species]
+    required = [:active_longlived, :active_shortlived, :short_lived_species, :reaction_network, :transportnet, :transportnet_horiz, :chem_species, :transport_species]
     check_requirements(keys(GV), required)
 
 
@@ -3234,10 +3235,10 @@ function setup_photochemical_equilibrium(; transportnet_horiz=[], globvars...)
     active_longlived_species_rates = Array{Array{Expr}}(undef, length(GV.active_longlived), 4)
     for (i, sp) in enumerate(GV.active_longlived)
         # active_longlived_species_rates[i, :] .= getrate(sp, sepvecs=true; chemnet=GV.reaction_network, GV.transportnet, GV.chem_species, GV.transport_species, )
-        active_longlived_species_rates[i, :] .= getrate(sp, sepvecs=true,
-                                                       transportnet_horiz=transportnet_horiz;
+        active_longlived_species_rates[i, :] .= getrate(sp, sepvecs=true;
                                                        chemnet=GV.reaction_network,
                                                        GV.transportnet,
+                                                       GV.transportnet_horiz,
                                                        GV.chem_species,
                                                        GV.transport_species, )
 

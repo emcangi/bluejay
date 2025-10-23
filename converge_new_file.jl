@@ -1488,11 +1488,11 @@ const active_longlived_infront = [Symbol(string(s)*"_infront") for s in active_l
 #===============================================================================#
 # Create symbolic expressions for the chemical jacobian at a local layer with influence from that same layer,
 # the one above, and the one below, including horizontal transport terms
-const chemJ_local = chemical_jacobian(active_longlived, active_longlived; diff_wrt_e=ediff, diff_wrt_m=mdiff, transportnet_horiz, ion_species, chem_species, transport_species, chemnet=reaction_network, transportnet);
-const chemJ_above = chemical_jacobian(active_longlived, active_longlived_above; diff_wrt_e=ediff, diff_wrt_m=mdiff, transportnet_horiz, ion_species, chem_species, transport_species, chemnet=reaction_network, transportnet);
-const chemJ_below = chemical_jacobian(active_longlived, active_longlived_below; diff_wrt_e=ediff, diff_wrt_m=mdiff, transportnet_horiz, ion_species, chem_species, transport_species, chemnet=reaction_network, transportnet);
-const chemJ_infront = chemical_jacobian(active_longlived, active_longlived_infront; diff_wrt_e=ediff, diff_wrt_m=mdiff, transportnet_horiz, ion_species, chem_species, transport_species, chemnet=reaction_network, transportnet);
-const chemJ_behind = chemical_jacobian(active_longlived, active_longlived_behind; diff_wrt_e=ediff, diff_wrt_m=mdiff, transportnet_horiz, ion_species, chem_species, transport_species, chemnet=reaction_network, transportnet);
+const chemJ_local = chemical_jacobian(active_longlived, active_longlived; diff_wrt_e=ediff, diff_wrt_m=mdiff, ion_species, chem_species, transport_species, chemnet=reaction_network, transportnet, transportnet_horiz);
+const chemJ_above = chemical_jacobian(active_longlived, active_longlived_above; diff_wrt_e=ediff, diff_wrt_m=mdiff, ion_species, chem_species, transport_species, chemnet=reaction_network, transportnet, transportnet_horiz);
+const chemJ_below = chemical_jacobian(active_longlived, active_longlived_below; diff_wrt_e=ediff, diff_wrt_m=mdiff, ion_species, chem_species, transport_species, chemnet=reaction_network, transportnet, transportnet_horiz);
+const chemJ_infront = chemical_jacobian(active_longlived, active_longlived_infront; diff_wrt_e=ediff, diff_wrt_m=mdiff, ion_species, chem_species, transport_species, chemnet=reaction_network, transportnet, transportnet_horiz);
+const chemJ_behind = chemical_jacobian(active_longlived, active_longlived_behind; diff_wrt_e=ediff, diff_wrt_m=mdiff, ion_species, chem_species, transport_species, chemnet=reaction_network, transportnet, transportnet_horiz);
 
 #                     Photochemical equilibrium setup                           #
 #===============================================================================#
@@ -1958,7 +1958,7 @@ try
                                  neutral_species, n_horiz, non_bdy_layers, num_layers, n_all_layers, n_alt_index, n_inactive, n_steps, 
                                  polarizability, planet, plot_grid, q, R_P, reaction_network, rshortcode, 
                                  season_length_in_sec, sol_in_sec, solarflux, speciesbclist, speciesbclist_horiz, speciescolor, speciesstyle, horiz_wind_v,
-                                 enable_horiz_transport,
+                                 enable_horiz_transport, transportnet, transportnet_horiz,
                                  Tn=Tn_arr, Ti=Ti_arr, Te=Te_arr, Tp=Tplasma_arr, Tprof_for_diffusion, transport_species, opt="",
                                  upper_lower_bdy_i, use_ambipolar, use_molec_diff, zmax)
 catch y
