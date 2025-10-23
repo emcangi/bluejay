@@ -30,7 +30,7 @@ function make_jacobian(n, p, t)
     # Update Jrates
     n_cur_all = compile_ncur_all(n, n_short, GV.n_inactive; GV.active_longlived, GV.active_shortlived, GV.inactive_species, GV.num_layers)
 
-    update_Jrates!(n_cur_all, n_horiz; GV.Jratelist, GV.crosssection, GV.num_layers, GV.absorber, GV.dz, GV.solarflux, enable_horiz_transport=GV.enable_horiz_transport)
+    update_Jrates!(n_cur_all; GV.Jratelist, GV.crosssection, GV.num_layers, GV.absorber, GV.dz, GV.solarflux, enable_horiz_transport=GV.enable_horiz_transport)
     # copy all the Jrates into an external dictionary for storage
     for jr in GV.Jratelist                # time for this is ~0.000005 s
         global external_storage[jr] = n_cur_all[jr]

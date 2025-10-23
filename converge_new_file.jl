@@ -710,7 +710,7 @@ function get_rates_and_jacobian(n, p, t; globvars...)
                                    :hot_H_network, :hot_H_rc_funcs, :hot_D_network, :hot_D_rc_funcs, 
                                    :hot_H2_network, :hot_H2_rc_funcs, :hot_HD_network, :hot_HD_rc_funcs,
                                    :inactive_species, :ion_species,  :Jratelist,
-                                   :molmass, :neutral_species, :non_bdy_layers, :num_layers, :n_all_layers, :n_alt_index, :n_inactive, 
+                                   :molmass, :neutral_species, :n_horiz, :non_bdy_layers, :num_layers, :n_all_layers, :n_alt_index, :n_inactive, 
                                    :plot_grid, :polarizability, :q, :reaction_network, :solarflux, :speciesbclist, :speciesbclist_horiz, :speciescolor, :speciesstyle,
                                    :Tn, :Ti, :Te, :Tp, :Tprof_for_diffusion, :transport_species, :upper_lower_bdy_i, :zmax, :horiz_wind_v, :enable_horiz_transport])
 
@@ -736,7 +736,7 @@ function get_rates_and_jacobian(n, p, t; globvars...)
     # Update Jrates
     n_cur_all = compile_ncur_all(n, n_horiz, n_short, GV.n_inactive; GV.active_longlived, GV.active_shortlived, GV.inactive_species, GV.num_layers)
 
-    update_Jrates!(n_cur_all, n_horiz; GV.Jratelist, GV.crosssection, GV.num_layers, GV.absorber, GV.dz, GV.solarflux, enable_horiz_transport=GV.enable_horiz_transport)
+    update_Jrates!(n_cur_all; GV.Jratelist, GV.crosssection, GV.num_layers, GV.absorber, GV.dz, GV.solarflux, GV.n_horiz, enable_horiz_transport=GV.enable_horiz_transport)
     # VENUS Day-Night TEST
     # update_Jrates!(n_cur_all, n_horiz; Jratelist=GV.Jratelist, crosssection=GV.crosssection,
     #                 num_layers=GV.num_layers, absorber=GV.absorber, dz=GV.dz,
@@ -1059,7 +1059,7 @@ function update!(n_current::Dict{Symbol, Vector{Array{ftype_ncur}}}, t, dt; abst
     n_current = compile_ncur_all(nend, n_horiz, n_short, GV.n_inactive; GV.active_longlived, GV.active_shortlived, GV.inactive_species, GV.num_layers)
 
     # ensure Jrates are included in n_current
-    update_Jrates!(n_current, n_horiz; GV.Jratelist, GV.crosssection, GV.num_layers, GV.absorber, GV.dz, GV.solarflux, enable_horiz_transport=GV.enable_horiz_transport)
+    update_Jrates!(n_current; GV.Jratelist, GV.crosssection, GV.num_layers, GV.absorber, GV.dz, GV.solarflux, GV.n_horiz, enable_horiz_transport=GV.enable_horiz_transport)
     # VENUS Day-Night TEST
     # update_Jrates!(n_current, n_horiz; Jratelist=GV.Jratelist, crosssection=GV.crosssection,
     #                num_layers=GV.num_layers, absorber=GV.absorber, dz=GV.dz,
@@ -1747,13 +1747,14 @@ end
 
 # this is the unitialized array for storing values
 
-update_Jrates!(n_current, n_horiz;
+update_Jrates!(n_current;
                Jratelist=Jratelist,
                crosssection=crosssection,
                num_layers=num_layers,
                absorber=absorber,
                dz=dz,
                solarflux=solarflux,
+               n_horiz=n_horiz,
             #    solarflux=solarflux_cols, # VENUS Day-Night TEST
                enable_horiz_transport=enable_horiz_transport)
 # NOTE: The stored Jrates will have units of #/s.
@@ -1954,7 +1955,7 @@ try
                                  hot_H_network, hot_H_rc_funcs, hot_D_network, hot_D_rc_funcs, hot_H2_network, hot_H2_rc_funcs, hot_HD_network, hot_HD_rc_funcs,
                                  hrshortcode, Hs_dict,
                                  ion_species, inactive_species, Jratelist, logfile, M_P, molmass, monospace_choice, sansserif_choice,
-                                 neutral_species, non_bdy_layers, num_layers, n_all_layers, n_alt_index, n_inactive, n_steps, 
+                                 neutral_species, n_horiz, non_bdy_layers, num_layers, n_all_layers, n_alt_index, n_inactive, n_steps, 
                                  polarizability, planet, plot_grid, q, R_P, reaction_network, rshortcode, 
                                  season_length_in_sec, sol_in_sec, solarflux, speciesbclist, speciesbclist_horiz, speciescolor, speciesstyle, horiz_wind_v,
                                  enable_horiz_transport,

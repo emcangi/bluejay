@@ -177,13 +177,12 @@ function find_exobase(sp::Symbol, atmdict::Dict{Symbol, Vector{Array{ftype_ncur}
     end
 end
 
-function meanmass(atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}}, n_horiz::Int64, ihoriz::Int64; ignore=[], globvars...)
+function meanmass(atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}}, ihoriz::Int64; ignore=[], globvars...)
     #= 
     Override for vector form. Calculates mean molecular mass at all atmospheric layers.
 
     Inputs:
         atmdict: Array; species number density by altitude
-        n_horiz: Integer; number of vertical columns in the model
         ihoriz: Integer; vertical column index
         ignore: Set; contains symbols representing species to ignore in the calculation
 
@@ -192,8 +191,10 @@ function meanmass(atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}}, n_horiz::Int
     =#
 
     GV = values(globvars)
-    required = [:all_species, :molmass, :n_alt_index]
+    required = [:all_species, :molmass, :n_alt_index, :n_horiz]
     check_requirements(keys(GV), required)
+
+    n_horiz = GV.n_horiz
 
     # counted_species = setdiff(GV.all_species, ignore)
     counted_species = [s for s in GV.all_species if haskey(atmdict, s) && !(s in ignore)]
@@ -280,7 +281,7 @@ function n_tot(atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}}, ihoriz::Int64; 
     return vec(sum(ndensities, dims=1))
 end
 
-function optical_depth(n_cur_densities; n_horiz::Int64, globvars...)
+function optical_depth(n_cur_densities; globvars...)
     #=
     Given the current state (atmdict), this populates solarabs, a 1D array of 1D arrays of 1D arrays 
     with dimensions (n_horiz, n_alt, n_lambda), where each element is a wavelength-dependent optical depth.
@@ -290,9 +291,10 @@ function optical_depth(n_cur_densities; n_horiz::Int64, globvars...)
     =#
 
     GV = values(globvars)
-    required = [:num_layers, :Jratelist, :absorber, :crosssection, :dz]
+    required = [:num_layers, :Jratelist, :absorber, :crosssection, :dz, :n_horiz]
     check_requirements(keys(GV), required)
 
+    n_horiz = GV.n_horiz
     nlambda = 2000
 
     # Initialize the solar absorption array for all wavelengths and horizontal columns.
@@ -368,12 +370,11 @@ function scaleH(z, sp::Symbol, T; globvars...)
     return @. kB*T/(GV.molmass[sp]*mH*GV.M_P*bigG)*(((z+GV.R_P))^2)
 end
 
-function scaleH(atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}}, T::Vector, n_horiz::Int64, ihoriz::Int64; ignore=[], globvars...)
+function scaleH(atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}}, T::Vector, ihoriz::Int64; ignore=[], globvars...)
     #= 
     Input:
         atmdict: Present atmospheric state dictionary
         T: temperature array for the neutral atmosphere
-        n_horiz: number of vertical columns in the model
         ihoriz: vertical column index
         ignore: Set; contains symbols representing species to ignore in the calculation
     Output:
@@ -381,12 +382,12 @@ function scaleH(atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}}, T::Vector, n_h
     =#
 
     GV = values(globvars)
-    required = [:all_species, :alt, :M_P, :molmass, :n_alt_index, :R_P]
+    required = [:all_species, :alt, :M_P, :molmass, :n_alt_index, :R_P, :n_horiz]
     check_requirements(keys(GV), required)
 
     counted_species = setdiff(GV.all_species, ignore)
 
-    mm_vec = meanmass(atmdict, n_horiz, ihoriz; ignore=ignore, globvars...)
+    mm_vec = meanmass(atmdict, ihoriz; ignore=ignore, globvars...)
     return @. kB*T/(mm_vec*mH*GV.M_P*bigG)*(((GV.alt+GV.R_P))^2)
 end
 
@@ -1081,8 +1082,7 @@ function subtract_difflength(a::Array, b::Array)
     return sum(a[1:shared_size] .- b[1:shared_size]) + extra_a - extra_b
 end
 
-function update_Jrates!(n_cur_densities::Dict{Symbol, Vector{Array{ftype_ncur}}},
-                        n_horiz::Int64; nlambda=2000, globvars...)
+function update_Jrates!(n_cur_densities::Dict{Symbol, Vector{Array{ftype_ncur}}}; nlambda=2000, globvars...)
     #=
     Updates photolysis rates (Jrates) in n_cur_densities for each altitude and horizontal column
     considering altitude distribution of absorbing species.
@@ -1094,11 +1094,13 @@ function update_Jrates!(n_cur_densities::Dict{Symbol, Vector{Array{ftype_ncur}}}
     =#
 
     GV = values(globvars)
-    required = [:absorber, :dz, :crosssection, :Jratelist, :num_layers, :solarflux, :enable_horiz_transport]
+    required = [:absorber, :dz, :crosssection, :Jratelist, :num_layers, :solarflux, :enable_horiz_transport, :n_horiz]
     check_requirements(keys(GV), required)
 
+    n_horiz = GV.n_horiz
+
     # Calculate optical depth (now 2-D)
-    solarabs = optical_depth(n_cur_densities; n_horiz=n_horiz, globvars...)
+    solarabs = optical_depth(n_cur_densities; globvars...)
     # solarabs now records the total optical depth of the atmosphere at each wavelength and altitude
 
      # Determine whether solar flux is provided per column.  If a single array is
@@ -2460,11 +2462,11 @@ function update_diffusion_and_scaleH(
     # 2) Mean atmospheric scale heights (neutral and ion), column-wise explicitly
     H0_dict = Dict{String, Vector{Vector{ftype_ncur}}}()
     H0_dict["neutral"] = [
-        scaleH(ncur_with_bdys, GV.Tn[ihoriz, :], n_horiz, ihoriz; globvars...)
+        scaleH(ncur_with_bdys, GV.Tn[ihoriz, :], ihoriz; n_horiz=n_horiz, globvars...)
         for ihoriz in 1:n_horiz
     ]
     H0_dict["ion"] = [
-        scaleH(ncur_with_bdys, GV.Tp[ihoriz, :], n_horiz, ihoriz; globvars...)
+        scaleH(ncur_with_bdys, GV.Tp[ihoriz, :], ihoriz; n_horiz=n_horiz, globvars...)
         for ihoriz in 1:n_horiz
     ]
 

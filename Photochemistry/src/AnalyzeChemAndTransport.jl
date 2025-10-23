@@ -740,7 +740,7 @@ function limiting_flux(sp, atmdict, T_arr, n_horiz::Int64; ihoriz::Int=1, treat_
         T_arr = T_arr[2:end-1]
     end
 
-    Ha = scaleH(atmdict, T_arr, n_horiz; ignore=[sp], globvars..., alt=GV.non_bdy_layers)
+    Ha = scaleH(atmdict, T_arr, ihoriz; ignore=[sp], globvars..., alt=GV.non_bdy_layers)
     bi = binary_dcoeff_inCO2(sp, T_arr) # AT^s
 
     if full_equation
@@ -748,12 +748,12 @@ function limiting_flux(sp, atmdict, T_arr, n_horiz::Int64; ihoriz::Int=1, treat_
         dTdz = dTdz[2:end] = @. (T_arr[2:end] - T_arr[1:end-1]) / GV.dz # make the temp gradient
         print(dTdz)
         fi = thedensity ./ n_tot(atmdict, ihoriz; ignore=[sp], globvars...)
-        ma = meanmass(atmdict, n_horiz, ihoriz; ignore=[sp], globvars...)
+        ma = meanmass(atmdict, ihoriz; ignore=[sp], globvars...)
 
         return @. ((bi*fi)/(1+fi)) * ( mH*(ma - GV.molmass[sp]) * (g/(kB*T_arr)) - (thermaldiff(sp)/T_arr) * dTdz[1:end-1])
     else
         D = Dcoef_neutrals(non_bdy_layers, sp, bi, atmdict; globvars...)    
-        return (D .* atmdict[sp] ./ Ha) .* (1 .- GV.molmass[sp] ./ meanmass(atmdict, n_horiz; ignore=[sp], globvars...))
+        return (D .* atmdict[sp] ./ Ha) .* (1 .- GV.molmass[sp] ./ meanmass(atmdict, ihoriz; ignore=[sp], globvars...))
     end
 end
 
