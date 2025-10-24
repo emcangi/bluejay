@@ -137,9 +137,7 @@ This list may be incomplete. If you discover a necessary step that isn't written
 
 ### Horizontal winds and boundary conditions
 
-*[Click here for more details on horizontal transport](horizontal_transport.md).*
-
-- The variable `horiz_wind_v` in `MODEL_SETUP.jl` provides a horizontal wind profile for each column. By default a constant wind speed (see `horiz_wind_speed` in `INPUT_PARAMETERS.jl`) in cm/s is applied at all altitudes so that horizontal transport is active (set to zero for no horizontal transport). `update_horiz_transport_coefficients` uses these velocities to create forward and backward transport rates. 
+- Horizontal transport is controlled by `horiz_transport_timescale` in `INPUT_PARAMETERS.jl`, specified in hours (set to zero for no horizontal transport). This is internally converted to a horizontal wind speed via `horiz_wind_speed = horiz_column_width / (timescale * 3600)` and stored as velocity profiles in `horiz_wind_v` in `MODEL_SETUP.jl` for each column. By default, a constant wind speed is applied at all altitudes. `update_horiz_transport_coefficients` uses these velocities to create forward and backward transport rates. 
 - Edge fluxes are set through the `speciesbclist_horiz` dictionary; specify altitude profiles for each species to impose non-zero flux at the back and front edges. Passing `cyclic=true` treats the domain as periodic so that flux leaving one edge enters from the opposite side and horizontal coefficients wrap between the first and last columns.
 - Horizontal advection employs an upwind scheme that averages the local and neighbouring wind speeds so that flux leaving one column exactly enters the next.
 
