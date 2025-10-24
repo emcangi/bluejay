@@ -169,17 +169,28 @@ function search_subfolders(path::String, key; type="folders")
     end
 end
 
-function write_atmosphere(atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}}, filename::String, n_horiz::Int64; t=0, globvars...) 
+function write_atmosphere(atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}}, filename::String; t=0, globvars...) 
     #=
     Writes out the current atmospheric state to an .h5 file
 
     Input: 
         atmdict: atmospheric density profile dictionary
         filename: filename to write to
+        globvars: keyword arguments including n_horiz, num_layers, alt, etc.
     =# 
     GV = values(globvars)
     required =  [:alt, :num_layers, :hrshortcode, :rshortcode]
     check_requirements(keys(GV), required)
+    
+    # Determine number of horizontal columns from globvars if available,
+    # otherwise fall back to Main.n_horiz, or default to 1.
+    if :n_horiz in keys(GV)
+        n_horiz = GV.n_horiz
+    elseif isdefined(Main, :n_horiz)
+        n_horiz = Main.n_horiz
+    else
+        n_horiz = 1
+    end
     
     sorted_keys = sort(collect(keys(atmdict)))
     atm_mat = Array{Float64}(undef, n_horiz, GV.num_layers, length(sorted_keys));
@@ -200,7 +211,7 @@ function write_atmosphere(atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}}, file
     end
 end
 
-function write_final_state(atmdict, thedir, thefolder, fname, n_horiz::Int64; globvars...)
+function write_final_state(atmdict, thedir, thefolder, fname; globvars...)
     #=
     Write out the final atmosphere to a file, first making sure the current Jrates are included.
     =#
@@ -216,7 +227,7 @@ function write_final_state(atmdict, thedir, thefolder, fname, n_horiz::Int64; gl
     end
 
     # Write out final atmosphere
-    write_atmosphere(atmdict, thedir*thefolder*"/"*fname, n_horiz; globvars...)
+    write_atmosphere(atmdict, thedir*thefolder*"/"*fname; globvars...)
     println("Saved final atmospheric state")
 end
 

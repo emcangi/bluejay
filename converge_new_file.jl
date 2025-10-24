@@ -525,7 +525,7 @@ function record_atmospheric_state(t, n, actively_solved, E_prof; opt="", globvar
     # write out the current atmospheric state to a file and plot it
     atm_snapshot = merge(external_storage, unflatten_atm(n, actively_solved; GV.num_layers, GV.n_horiz))
     plot_atm(atm_snapshot, results_dir*sim_folder_name*"/atm_peek_$(plotnum)$(opt).png", abs_tol_for_plot, E_prof, n_horiz; ylims=[zmin/1e5, zmax/1e5], t="$(round(t, digits=rounding_digits))", globvars...)
-    write_atmosphere(atm_snapshot, results_dir*sim_folder_name*"/atm_state_$(lpad(plotnum,2,"0"))$(opt).h5", n_horiz; t=round(t, digits=rounding_digits), globvars...)
+    write_atmosphere(atm_snapshot, results_dir*sim_folder_name*"/atm_state_$(lpad(plotnum,2,"0"))$(opt).h5"; t=round(t, digits=rounding_digits), globvars...)
 
     # Turn this on if you'd like to take a peek at the Jrates
     # for Jspc in values(GV.neutral_species)
@@ -1823,7 +1823,7 @@ write_to_log(logfile, ["Description: $(optional_logging_note)"], mode="w")
 # n_current[:D] = map(x->1e5*exp(-((x-184)/20)^2), non_bdy_layers/1e5) + n_current[:D]
 
 # write initial atmospheric state ==============================================
-write_atmosphere(n_current, results_dir*sim_folder_name*"/initial_atmosphere.h5", n_horiz; alt, num_layers, hrshortcode, rshortcode)
+write_atmosphere(n_current, results_dir*sim_folder_name*"/initial_atmosphere.h5"; alt, num_layers, hrshortcode, rshortcode, n_horiz)
 
 # Plot initial temperature and water profiles ==================================
 plot_temp_prof(Tn_arr; savepath=results_dir*sim_folder_name, Tprof_2=Ti_arr, Tprof_3=Te_arr, alt, monospace_choice, sansserif_choice)
@@ -2071,15 +2071,15 @@ elseif problem_type == "Gear"
     Jratedict = Dict{Symbol, Vector{Array{Float64}}}([j=>external_storage[j] for j in keys(external_storage) if occursin("J", string(j))])
 
     # Write out the final state to a unique file for easy finding
-    write_final_state(atm_soln, results_dir, sim_folder_name, final_atm_file, n_horiz; alt, num_layers, hrshortcode, Jratedict, rshortcode, external_storage)
+    write_final_state(atm_soln, results_dir, sim_folder_name, final_atm_file; alt, num_layers, hrshortcode, Jratedict, rshortcode, external_storage, n_horiz)
 
     @assert size(Tn_arr) == (n_horiz, num_layers+2) "Tn_arr should be (n_horiz, num_layers+2), got $(size(Tn_arr))"
     @assert size(Ti_arr) == (n_horiz, num_layers+2) "Ti_arr must be (n_horiz, num_layers+2)"
     @assert size(Te_arr) == (n_horiz, num_layers+2) "Te_arr must be (n_horiz, num_layers+2)"
 
     # Write out the final column rates to the reaction log
-    calculate_and_write_column_rates(used_rxns_spreadsheet_name, atm_soln, n_horiz; all_species, dz, ion_species, num_layers, reaction_network, results_dir, sim_folder_name, 
-                                                              Tn=Tn_arr, Ti=Ti_arr, Te=Te_arr)
+    calculate_and_write_column_rates(used_rxns_spreadsheet_name, atm_soln; all_species, dz, ion_species, num_layers, reaction_network, results_dir, sim_folder_name, 
+                                                              Tn=Tn_arr, Ti=Ti_arr, Te=Te_arr, n_horiz)
     
     write_to_log(logfile, "$(Dates.format(now(), "(HH:MM:SS)")) Making production/loss plots", mode="a")
     println("$(Dates.format(now(), "(HH:MM:SS)")) Making production/loss plots (this tends to take several minutes)")

@@ -8,7 +8,7 @@
 #                      Functions to load and manipulate the network             #
 #===============================================================================#
 
-function calculate_and_write_column_rates(rxn_filename, atm_state, n_horiz; globvars...)
+function calculate_and_write_column_rates(rxn_filename, atm_state; globvars...)
     #=
     Calculates the column rates for all reactions in rxn_filename based on species densities in atm_state
     and writes them back out into rxn_filename. Creates separate columns for each horizontal position (ihoriz).
@@ -18,6 +18,16 @@ function calculate_and_write_column_rates(rxn_filename, atm_state, n_horiz; glob
     required = [:all_species, :dz, :ion_species, :num_layers, :reaction_network,
                 :results_dir, :sim_folder_name, :Tn, :Ti, :Te]
     check_requirements(keys(GV), required)
+
+    # Determine number of horizontal columns from globvars if available,
+    # otherwise fall back to Main.n_horiz, or default to 1.
+    if :n_horiz in keys(GV)
+        n_horiz = GV.n_horiz
+    elseif isdefined(Main, :n_horiz)
+        n_horiz = Main.n_horiz
+    else
+        n_horiz = 1
+    end
 
     flush(stdout)
     println("Writing out column rates to the reaction log...")
