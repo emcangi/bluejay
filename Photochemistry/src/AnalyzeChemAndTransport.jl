@@ -430,12 +430,12 @@ function final_escape(thefolder, thefile, n_horiz::Int64; globvars...)
     check_requirements(keys(GV), required)
     
     # First load the atmosphere and associated variables.
-    atmdict = get_ncurrent(thefolder*thefile; globvars...);
+    atmdict = get_ncurrent(joinpath(thefolder, thefile); globvars...);
 
     vardict = load_from_paramlog(thefolder; globvars...);
     
     # Get Jrate list 
-    Jratelist = format_Jrates(thefolder*"active_rxns.xlsx", GV.all_species, "Jratelist"; hot_atoms=true, ions_on=true)[1];
+    Jratelist = format_Jrates(joinpath(thefolder, "active_rxns.xlsx"), GV.all_species, "Jratelist"; hot_atoms=true, ions_on=true)[1];
     Jratedict = Dict([j=>atmdict[j] for j in Jratelist])
     
     # Make a dataframe to store things

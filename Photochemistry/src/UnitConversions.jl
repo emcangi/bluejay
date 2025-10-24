@@ -83,24 +83,28 @@ function by_to_sec(y)
     return y*1e9*3.154e7
 end
 
-function prum_to_ppm(sp, prum, atmdict; globvars...)
+function prum_to_ppm(sp, prum, atmdict; ihoriz=1, globvars...)
     #=
     Converts pr μm to ppm, only works for water!
     Inputs
         sp: H2O or HDO
         prum: water pr μm
         atmdict: the atmosphere against which you will be comparing
+        ihoriz: horizontal column index to use for the calculation (default: 1)
     Output:
-        water total in ppm. 
+        water total in ppm for the specified column. 
+        Since pr μm is a column-integrated measurement, ppm is calculated 
+        relative to the total inventory of that same column.
     =#
 
-
     GV = values(globvars)
-    required =  [:molmass, :all_species]
+    required =  [:molmass, :all_species, :dz]
     check_requirements(keys(GV), required)
 
     colabund = colabund_from_prum(sp, prum; globvars...)
-    nt_sum = sum(n_tot(atmdict, ihoriz; GV.all_species) for ihoriz in 1:n_horiz) * dz
+    # Calculate total inventory for the specified column only
+    # (not summed across all columns, since pr μm is a column measurement)
+    nt_sum = sum(n_tot(atmdict, ihoriz; GV.all_species)) * GV.dz
     
     return (colabund/nt_sum) / 1e-6 # return ppm
 end

@@ -2254,10 +2254,11 @@ function get_escape_for_all_atmospheres(thefolders, thefiles; globvars...)
     println("Searching $(parent_folder) for an escape spreadsheet")
     flush(stdout)
 
-    if isfile(parent_folder*"escape.xlsx")
+    escape_file = joinpath(parent_folder, "escape.xlsx")
+    if isfile(escape_file)
         println("Found the spreadsheet")
         flush(stdout)
-        all_esc_df = DataFrame(XLSX.readtable(parent_folder*"escape.xlsx", "Escape"))
+        all_esc_df = DataFrame(XLSX.readtable(escape_file, "Escape"))
     else # If no saved file, generate the escapes
         println("No saved escape info found, generating escape for all folders and files in $(parent_folder) and creating spreadsheet")
         flush(stdout)
@@ -2279,7 +2280,7 @@ function get_escape_for_all_atmospheres(thefolders, thefiles; globvars...)
         all_esc_df = DataFrame("Ht"=>H_t, "Hn"=>H_n, "Htn"=>H_tn, "Dt"=>D_t, "Dn"=>D_n, "Dtn"=>D_tn)
 
         # Write out the escape to the file
-        XLSX.writetable(parent_folder*"escape.xlsx", "Escape"=>all_esc_df)
+        XLSX.writetable(escape_file, "Escape"=>all_esc_df)
         println("Finished generating and saving escape info")
         flush(stdout)
     end
