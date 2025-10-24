@@ -430,7 +430,7 @@ function final_escape(thefolder, thefile, n_horiz::Int64; globvars...)
     check_requirements(keys(GV), required)
     
     # First load the atmosphere and associated variables.
-    atmdict = get_ncurrent(thefolder*thefile, n_horiz);
+    atmdict = get_ncurrent(thefolder*thefile; globvars...);
 
     vardict = load_from_paramlog(thefolder; globvars...);
     

@@ -61,14 +61,17 @@ function get_elapsed_time(filepath)
     return parse(Float64, split(h5read(filepath, "info")[end])[1])
 end
 
-function get_ncurrent(readfile::String, n_horiz::Int64)
+function get_ncurrent(readfile::String; globvars...)
     #=
     Input:
         readfile: HDF5 file containing a matrix with atmospheric density profiles
+        globvars: keyword arguments including n_horiz and num_layers
     Output:
         n_current: dictionary of atmospheric density profiles by species 
     =#
 
+    GV = values(globvars)
+    
     # This accounts for the old format of some files. 
     try
         global n_current_tag_list = map(Symbol, h5read(readfile,"n_current/species"))
@@ -80,10 +83,26 @@ function get_ncurrent(readfile::String, n_horiz::Int64)
     
     n_current = Dict{Symbol, Vector{Array{ftype_ncur}}}()
 
-    # Determine desired number of altitude layers from the currently loaded
-    # parameters, if available. Fall back to the length of the profiles in the
-    # file.
-    target_layers = isdefined(Main, :num_layers) ? Main.num_layers : size(n_current_mat, 1)
+    # Determine desired number of altitude layers from globvars if available,
+    # otherwise fall back to Main.num_layers, or finally the file dimensions.
+    if :num_layers in keys(GV)
+        target_layers = GV.num_layers
+    elseif isdefined(Main, :num_layers)
+        target_layers = Main.num_layers
+    else
+        # For 2D arrays: (layers, species). For 3D arrays: (n_horiz, layers, species)
+        target_layers = ndims(n_current_mat) == 3 ? size(n_current_mat, 2) : size(n_current_mat, 1)
+    end
+    
+    # Determine desired number of horizontal columns from globvars if available,
+    # otherwise fall back to Main.n_horiz, or finally default to 1.
+    if :n_horiz in keys(GV)
+        n_horiz = GV.n_horiz
+    elseif isdefined(Main, :n_horiz)
+        n_horiz = Main.n_horiz
+    else
+        n_horiz = 1
+    end
 
     # Slice or pad the profiles so that their length matches the altitude grid
     for ispecies in eachindex(n_current_tag_list)

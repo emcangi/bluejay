@@ -1110,7 +1110,7 @@ const hot_HD_rc_funcs = Dict([rxn => mk_function(:((Tn, Ti, Te, M) -> $(rxn[3]))
 if make_new_alt_grid==true
     throw("The code for extending the altitude grid needs to be redone.")
     # const alt = convert(Array, (0:2e5:200e5))
-    # n_current = get_ncurrent(initial_atm_file, n_horiz)
+    # n_current = get_ncurrent(initial_atm_file)
 
     # new_zmax = parse(Int64, input("Enter the new top of the atmosphere in km: "))
     # extra_entries = Int64((new_zmax - (zmax / 1e5))/(dz/1e5))
@@ -1124,7 +1124,7 @@ if make_new_alt_grid==true
     # const max_alt = new_zmax*1e5
 elseif make_new_alt_grid==false 
     println("$(Dates.format(now(), "(HH:MM:SS)")) Loading atmosphere")
-    n_current = get_ncurrent(initial_atm_file, n_horiz)
+    n_current = get_ncurrent(initial_atm_file)
     if !enable_horiz_transport && n_horiz > 1
         base_H2O = n_current[:H2O][1]
         base_HDO = n_current[:HDO][1]

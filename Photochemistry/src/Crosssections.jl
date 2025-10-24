@@ -107,43 +107,28 @@ function populate_xsect_dict(pd_dataf, xsecfolder; ion_xsects=true, globvars...)
     # Populating the dictionary ======================================================
     # CO2 photodissociation -------------------------------------------------------------
     # CO2+hv->CO+O
-    # xsect_dict[get_Jrate_symb("CO2", ["CO", "O"])] = map(xs->quantumyield(xs,((l->l>167, 1), (l->95>l, 0.5))), map(t->co2xsect(co2xdata, t), GV.Tn))
     xsect_dict[get_Jrate_symb("CO2", ["CO", "O"])] = compute_by_T(t->quantumyield(co2xsect(co2xdata, t), ((l->l>167, 1), (l->95>l, 0.5))))
 
     # CO2+hv->CO+O1D
-    # xsect_dict[get_Jrate_symb("CO2", ["CO", "O1D"])] = map(xs->quantumyield(xs,((l->95<l<167, 1), (l->l<95, 0.5))), map(t->co2xsect(co2xdata, t), GV.Tn))
     xsect_dict[get_Jrate_symb("CO2", ["CO", "O1D"])] = compute_by_T(t->quantumyield(co2xsect(co2xdata, t), ((l->95<l<167, 1), (l->l<95, 0.5))))
 
     # CO₂ + hν -> C + O + O; JCO2toCpOpO  
     thisjr = get_Jrate_symb("CO2", ["C", "O", "O"])
-    # xsect_dict[thisjr] = fill(readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#'), GV.n_all_layers)
     xsect_dict[thisjr] = [fill(readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#'), GV.n_all_layers) for ihoriz in 1:GV.n_horiz]
 
     # CO2 + hν -> C + O₂; JCO2toCpO2
     thisjr = get_Jrate_symb("CO2", ["C", "O2"])
-    # xsect_dict[thisjr] = fill(readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#'), GV.n_all_layers)
     xsect_dict[thisjr] = [fill(readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#'), GV.n_all_layers) for ihoriz in 1:GV.n_horiz]
 
     # O2 photodissociation ---------------------------------------------------------
     # O2+hv->O+O
-    # xsect_dict[get_Jrate_symb("O2", ["O", "O"])] = map(xs->quantumyield(xs,((x->x>175, 1),)), map(t->o2xsect(o2xdata, o2schr130K, o2schr190K, o2schr280K, t), GV.Tn))
     xsect_dict[get_Jrate_symb("O2", ["O", "O"])] = compute_by_T(t->quantumyield(o2xsect(o2xdata, o2schr130K, o2schr190K, o2schr280K, t), ((x->x>175, 1),)))
 
     # O2+hv->O+O1D
-    # xsect_dict[get_Jrate_symb("O2", ["O", "O1D"])] = map(xs->quantumyield(xs,((x->x<175, 1),)), map(t->o2xsect(o2xdata, o2schr130K, o2schr190K, o2schr280K, t), GV.Tn))
     xsect_dict[get_Jrate_symb("O2", ["O", "O1D"])] = compute_by_T(t->quantumyield(o2xsect(o2xdata, o2schr130K, o2schr190K, o2schr280K, t), ((x->x<175, 1),)))
 
     # O3 photodissociation ---------------------------------------------------------
     # O3+hv->O2+O
-    # xsect_dict[get_Jrate_symb("O3", ["O2", "O"])] = map(t->quantumyield(o3xdata,
-    #                                                                     (
-    #                                                                      (l->l<193, 1-(1.37e-2*193-2.16)),
-    #                                                                      (l->193<=l<225, l->(1 .- (1.37e-2*l-2.16))),
-    #                                                                      (l->225<=l<306, 0.1),
-    #                                                                      (l->306<=l<328, l->(1 .- O3O1Dquantumyield(l, t))),
-    #                                                                      (l->328<=l<340, 0.92),
-    #                                                                      (l->340<=l, 1.0)
-    #                                                                     )), GV.Tn)
     xsect_dict[get_Jrate_symb("O3", ["O2", "O"])] = compute_by_T(t->quantumyield(o3xdata,
                                                                         (
                                                                          (l->l<193, 1-(1.37e-2*193-2.16)),
@@ -154,15 +139,6 @@ function populate_xsect_dict(pd_dataf, xsecfolder; ion_xsects=true, globvars...)
                                                                          (l->340<=l, 1.0)
                                                                         )))
 
-    # xsect_dict[get_Jrate_symb("O3", ["O2", "O1D"])] = map(t->quantumyield(o3xdata,
-    #                                    (
-    #                                     (l->l<193, 1.37e-2*193-2.16),
-    #                                     (l->193<=l<225, l->(1.37e-2*l-2.16)),
-    #                                     (l->225<=l<306, 0.9),
-    #                                     (l->306<=l<328, l->O3O1Dquantumyield(l, t)),
-    #                                     (l->328<=l<340, 0.08),
-    #                                     (l->340<=l, 0.0)
-    #                                    )), GV.Tn)
     xsect_dict[get_Jrate_symb("O3", ["O2", "O1D"])] = compute_by_T(t->quantumyield(o3xdata,
                                        (
                                         (l->l<193, 1.37e-2*193-2.16),
@@ -173,101 +149,78 @@ function populate_xsect_dict(pd_dataf, xsecfolder; ion_xsects=true, globvars...)
                                         (l->340<=l, 0.0)
                                        )))
 
-    # xsect_dict[get_Jrate_symb("O3", ["O", "O", "O"])] =  fill(quantumyield(o3xdata,((x->true, 0.),)),GV.n_all_layers)
     xsect_dict[get_Jrate_symb("O3", ["O", "O", "O"])] =  [fill(quantumyield(o3xdata,((x->true, 0.),)),GV.n_all_layers) for ihoriz in 1:GV.n_horiz]
 
     # TODO: These are sort of redundant with the loop on line 254. This could be tidied up. 
     # H2 and HD photodissociation --------------------------------------------------
     # H2+hv->H+H
-    # xsect_dict[get_Jrate_symb("H2", ["H", "H"])] = fill(h2xdata, GV.n_all_layers)
     xsect_dict[get_Jrate_symb("H2", ["H", "H"])] = [fill(h2xdata, GV.n_all_layers) for ihoriz in 1:GV.n_horiz]
 
     # HD+hν -> H+D 
-    # xsect_dict[get_Jrate_symb("HD", ["H", "D"])] = fill(hdxdata, GV.n_all_layers)
     xsect_dict[get_Jrate_symb("HD", ["H", "D"])] = [fill(hdxdata, GV.n_all_layers) for ihoriz in 1:GV.n_horiz]
 
     # OH and OD photodissociation --------------------------------------------------
     # OH+hv->O+H
-    # xsect_dict[get_Jrate_symb("OH", ["O", "H"])] = fill(ohxdata, GV.n_all_layers)
     xsect_dict[get_Jrate_symb("OH", ["O", "H"])] = [fill(ohxdata, GV.n_all_layers) for ihoriz in 1:GV.n_horiz]
 
     # OH + hv -> O(¹D) + H
-    # xsect_dict[get_Jrate_symb("OH", ["O1D", "H"])] = fill(ohO1Dxdata, GV.n_all_layers)
     xsect_dict[get_Jrate_symb("OH", ["O1D", "H"])] = [fill(ohO1Dxdata, GV.n_all_layers) for ihoriz in 1:GV.n_horiz]
 
     # OD + hv -> O+D  
-    # xsect_dict[get_Jrate_symb("OD", ["O", "D"])] = fill(odxdata, GV.n_all_layers)
     xsect_dict[get_Jrate_symb("OD", ["O", "D"])] = [fill(odxdata, GV.n_all_layers) for ihoriz in 1:GV.n_horiz]
 
     # OD + hν -> O(¹D) + D 
-    # xsect_dict[get_Jrate_symb("OD", ["O1D", "D"])] = fill(ohO1Dxdata, GV.n_all_layers)
     xsect_dict[get_Jrate_symb("OD", ["O1D", "D"])] = [fill(ohO1Dxdata, GV.n_all_layers) for ihoriz in 1:GV.n_horiz]
 
     # HO2 and DO2 photodissociation ------------------------------------------------
     # HO2 + hν -> OH + O
-    # xsect_dict[get_Jrate_symb("HO2", ["OH", "O"])] = fill(ho2xsect, GV.n_all_layers)
     xsect_dict[get_Jrate_symb("HO2", ["OH", "O"])] = [fill(ho2xsect, GV.n_all_layers) for ihoriz in 1:GV.n_horiz]
 
     # DO2 + hν -> OD + O
-    # xsect_dict[get_Jrate_symb("DO2", ["OD", "O"])] = fill(do2xsect, GV.n_all_layers)
     xsect_dict[get_Jrate_symb("DO2", ["OD", "O"])] = [fill(do2xsect, GV.n_all_layers) for ihoriz in 1:GV.n_horiz]
 
     # H2O and HDO photodissociation ------------------------------------------------
     # H2O+hv->H+OH
-    # xsect_dict[get_Jrate_symb("H2O", ["H", "OH"])] = fill(quantumyield(h2oxdata,((x->x<145, 0.89),(x->x>145, 1))),GV.n_all_layers)
     xsect_dict[get_Jrate_symb("H2O", ["H", "OH"])] = [fill(quantumyield(h2oxdata,((x->x<145, 0.89),(x->x>145, 1))),GV.n_all_layers) for ihoriz in 1:GV.n_horiz]
 
     # H2O+hv->H2+O1D
-    # xsect_dict[ get_Jrate_symb("H2O", ["H2", "O1D"])] = fill(quantumyield(h2oxdata,((x->x<145, 0.11),(x->x>145, 0))),GV.n_all_layers)
     xsect_dict[ get_Jrate_symb("H2O", ["H2", "O1D"])] = [fill(quantumyield(h2oxdata,((x->x<145, 0.11),(x->x>145, 0))),GV.n_all_layers) for ihoriz in 1:GV.n_horiz]
 
     # H2O+hv->H+H+O
-    # xsect_dict[get_Jrate_symb("H2O", ["H", "H", "O"])] = fill(quantumyield(h2oxdata,((x->true, 0),)),GV.n_all_layers)
     xsect_dict[get_Jrate_symb("H2O", ["H", "H", "O"])] = [fill(quantumyield(h2oxdata,((x->true, 0),)),GV.n_all_layers) for ihoriz in 1:GV.n_horiz]
 
     # HDO + hν -> H + OD
-    # xsect_dict[get_Jrate_symb("HDO", ["H", "OD"])] = fill(quantumyield(hdoxdata,((x->x<145, 0.5*0.89),(x->x>145, 0.5*1))),GV.n_all_layers)
     xsect_dict[get_Jrate_symb("HDO", ["H", "OD"])] = [fill(quantumyield(hdoxdata,((x->x<145, 0.5*0.89),(x->x>145, 0.5*1))),GV.n_all_layers) for ihoriz in 1:GV.n_horiz]
 
     # HDO + hν -> D + OH
-    # xsect_dict[get_Jrate_symb("HDO", ["D", "OH"])] = fill(quantumyield(hdoxdata,((x->x<145, 0.5*0.89),(x->x>145, 0.5*1))),GV.n_all_layers)
     xsect_dict[get_Jrate_symb("HDO", ["D", "OH"])] = [fill(quantumyield(hdoxdata,((x->x<145, 0.5*0.89),(x->x>145, 0.5*1))),GV.n_all_layers) for ihoriz in 1:GV.n_horiz]
 
     # HDO + hν -> HD + O1D
-    # xsect_dict[get_Jrate_symb("HDO", ["HD", "O1D"])] = fill(quantumyield(hdoxdata,((x->x<145, 0.11),(x->x>145, 0))),GV.n_all_layers)
     xsect_dict[get_Jrate_symb("HDO", ["HD", "O1D"])] = [fill(quantumyield(hdoxdata,((x->x<145, 0.11),(x->x>145, 0))),GV.n_all_layers) for ihoriz in 1:GV.n_horiz]
 
     # HDO + hν -> H + D + O
-    # xsect_dict[get_Jrate_symb("HDO", ["H", "D", "O"])] = fill(quantumyield(hdoxdata,((x->true, 0),)),GV.n_all_layers)
     xsect_dict[get_Jrate_symb("HDO", ["H", "D", "O"])] = [fill(quantumyield(hdoxdata,((x->true, 0),)),GV.n_all_layers) for ihoriz in 1:GV.n_horiz]
 
     # H2O2 and HDO2 photodissociation ----------------------------------------------
     # H2O2+hν->OH+OH
-    # xsect_dict[get_Jrate_symb("H2O2", ["OH", "OH"])] = map(xs->quantumyield(xs,((x->x<230, 0.85),(x->x>230, 1))), map(t->h2o2xsect(h2o2xdata, t), GV.Tn))
     xsect_dict[get_Jrate_symb("H2O2", ["OH", "OH"])] = compute_by_T(t->quantumyield(h2o2xsect(h2o2xdata, t), ((x->x<230, 0.85),(x->x>230, 1))))
 
     # H2O2+hv->HO2+H
-    # xsect_dict[get_Jrate_symb("H2O2", ["HO2", "H"])] = map(xs->quantumyield(xs,((x->x<230, 0.15),(x->x>230, 0))), map(t->h2o2xsect(h2o2xdata, t), GV.Tn))
     xsect_dict[get_Jrate_symb("H2O2", ["HO2", "H"])] = compute_by_T(t->quantumyield(h2o2xsect(h2o2xdata, t), ((x->x<230, 0.15),(x->x>230, 0))))
 
     # H2O2+hv->H2O+O1D
-    # xsect_dict[get_Jrate_symb("H2O2", ["H2O", "O1D"])] = map(xs->quantumyield(xs,((x->true, 0),)), map(t->h2o2xsect(h2o2xdata, t), GV.Tn))
     xsect_dict[get_Jrate_symb("H2O2", ["H2O", "O1D"])] = compute_by_T(t->quantumyield(h2o2xsect(h2o2xdata, t), ((x->true, 0),)))
 
     # HDO2 + hν -> OH + OD
-    # xsect_dict[get_Jrate_symb("HDO2", ["OH", "OD"])] = map(xs->quantumyield(xs,((x->x<230, 0.85),(x->x>230, 1))), map(t->hdo2xsect(hdo2xdata, t), GV.Tn))
     xsect_dict[get_Jrate_symb("HDO2", ["OH", "OD"])] = compute_by_T(t->quantumyield(hdo2xsect(hdo2xdata, t), ((x->x<230, 0.85),(x->x>230, 1))))
 
     # HDO2 + hν-> DO2 + H
-    # xsect_dict[get_Jrate_symb("HDO2", ["DO2", "H"])] = map(xs->quantumyield(xs,((x->x<230, 0.5*0.15),(x->x>230, 0))), map(t->hdo2xsect(hdo2xdata, t), GV.Tn))
     xsect_dict[get_Jrate_symb("HDO2", ["DO2", "H"])] = compute_by_T(t->quantumyield(hdo2xsect(hdo2xdata, t), ((x->x<230, 0.5*0.15),(x->x>230, 0))))
 
     # HDO2 + hν-> HO2 + D
-    # xsect_dict[get_Jrate_symb("HDO2", ["HO2", "D"])] = map(xs->quantumyield(xs,((x->x<230, 0.5*0.15),(x->x>230, 0))), map(t->hdo2xsect(hdo2xdata, t), GV.Tn))
     xsect_dict[get_Jrate_symb("HDO2", ["HO2", "D"])] = compute_by_T(t->quantumyield(hdo2xsect(hdo2xdata, t), ((x->x<230, 0.5*0.15),(x->x>230, 0))))
 
     # HDO2 + hν -> HDO + O1D
-    # xsect_dict[get_Jrate_symb("HDO2", ["HDO", "O1D"])] = map(xs->quantumyield(xs,((x->true, 0),)), map(t->hdo2xsect(hdo2xdata, t), GV.Tn))
     xsect_dict[get_Jrate_symb("HDO2", ["HDO", "O1D"])] = compute_by_T(t->quantumyield(hdo2xsect(hdo2xdata, t), ((x->true, 0),)))
 
     # The following reactions have associated files listing cross sections.
@@ -304,7 +257,6 @@ function populate_xsect_dict(pd_dataf, xsecfolder; ion_xsects=true, globvars...)
     for r in keys(reactant_product_sets)
         for ps in reactant_product_sets[r]
             thisjr = get_Jrate_symb(r, ps)
-            # xsect_dict[thisjr] = fill(readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#'), GV.n_all_layers)
             xsect_dict[thisjr] = [fill(readdlm(xsecfolder*"$(thisjr).csv",',',Float64, comments=true, comment_char='#'), GV.n_all_layers) for ihoriz in 1:GV.n_horiz]
         end
     end

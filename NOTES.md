@@ -48,7 +48,7 @@ Note that this is a simplified version with 4 species and 7 altitude bins.
 
 - Continuing working on a simplified version with 4 species (O, O2, O3, and Opl) and 7 altitude bins (90 to 106 km, dz = 2 km) and 3 horizontal columns
 - Two-dimensional temperature arrays are defined with horizontal index first and altitude second. MODEL_SETUP.jl initializes Tn_temp, Ti_temp, and Te_temp with shape (n_horiz, num_layers+2) and fills them using Tn_temp[ihoriz, :] etc., then stores them as global constants Tn_arr, Ti_arr, and Te_arr
-- Dcoef! operates column-by-column by extracting T_arr_2D[ihoriz, :]; the indexing matches the (n_horiz, num_layers+2) layout used throughout the codebase
+- Dcoef! operates column-by-column by extracting T_arr[ihoriz, :]; the indexing matches the (n_horiz, num_layers+2) layout used throughout the codebase
 - Solar absorption arrays from optical_depth are built as a vector over horizontal columns containing altitude arrays (solarabs[ihoriz][ialt]), explicitly documented as “structured as [n_horiz, num_layers]” and accessed with that ordering when computing Jrates
 - Vertical boundary conditions use a dictionary keyed by species and column: bc_dict[sp][ihoriz][row, col]
 - Horizontal winds and boundary conditions

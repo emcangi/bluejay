@@ -1772,7 +1772,7 @@ function boundaryconditions(fluxcoef_dict, atmdict, M; nonthermal=true, globvars
         check_requirements(keys(GV), required)
 
         for ihoriz in 1:n_horiz
-	    if :H in keys(atmdict) && :D in keys(atmdict) && :H2 in keys(atmdict) && :HD in keys(atmdict) 
+	    if all(sp->sp in keys(atmdict), [:H, :D, :H2, :HD])
                prod_hotH = escaping_hot_atom_production(:H, GV.hot_H_network, GV.hot_H_rc_funcs, atmdict, M, ihoriz; globvars...)
                prod_hotD = escaping_hot_atom_production(:D, GV.hot_D_network, GV.hot_D_rc_funcs, atmdict, M, ihoriz; globvars...)
                prod_hotH2 = escaping_hot_atom_production(:H2, GV.hot_H2_network, GV.hot_H2_rc_funcs, atmdict, M, ihoriz; globvars...)
@@ -1860,24 +1860,35 @@ function boundaryconditions_horiz(
     )
 
     for sp in keys(GV.speciesbclist_horiz)
-        these_bcs_horiz = GV.speciesbclist_horiz[sp]
+        try
+            these_bcs_horiz = GV.speciesbclist_horiz[sp]
 
-        for ialt in 1:GV.num_layers
-            if cyclic
-                # Periodic domain: no exchange with the environment
-                bc_dict_horiz[sp][ialt] .= 0.0
-            else
-                back_flux  = these_bcs_horiz["f"][1][ialt]
-                front_flux = these_bcs_horiz["f"][2][ialt]
-                # if GV.planet == "Mars"
-                #     f_backedge = [0, -back_flux / GV.dx]
-                # elseif GV.planet == "Venus"
-                #     f_backedge = [0, back_flux / GV.dx]
-                # end
-                f_backedge  = [0, -back_flux / GV.dx]
-                f_frontedge = [0,  front_flux / GV.dx]
-                bc_dict_horiz[sp][ialt][1, :] .+= f_backedge
-                bc_dict_horiz[sp][ialt][2, :] .+= f_frontedge
+            for ialt in 1:GV.num_layers
+                if cyclic
+                    # Periodic domain: no exchange with the environment
+                    bc_dict_horiz[sp][ialt] .= 0.0
+                else
+                    try
+                        back_flux  = these_bcs_horiz["f"][1][ialt]
+                        front_flux = these_bcs_horiz["f"][2][ialt]
+                        f_backedge  = [0, -back_flux / GV.dx]
+                        f_frontedge = [0,  front_flux / GV.dx]
+                        
+                        @assert all(x->!isnan(x), f_backedge) "NaN in back edge flux for $(sp)"
+                        @assert all(x->!isnan(x), f_frontedge) "NaN in front edge flux for $(sp)"
+                        
+                        bc_dict_horiz[sp][ialt][1, :] .+= f_backedge
+                        bc_dict_horiz[sp][ialt][2, :] .+= f_frontedge
+                    catch y
+                        if !isa(y, AssertionError) && !isa(y, KeyError)
+                            throw("Unhandled exception in horizontal flux bc for $(sp) at altitude index $(ialt): $(y)")
+                        end
+                    end
+                end
+            end
+        catch y
+            if !isa(y, KeyError)
+                throw("Unhandled exception in horizontal boundary conditions for $(sp): $(y)")
             end
         end
     end
@@ -1910,7 +1921,7 @@ function Dcoef_neutrals(z, sp::Symbol, b, atmdict::Dict{Symbol, Vector{ftype_ncu
     end
 end
 
-function Dcoef!(D_arr, T_arr_2D, sp::Symbol, atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}}; globvars...)
+function Dcoef!(D_arr, T_arr, sp::Symbol, atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}}; globvars...)
     #=
     Calculates the molecular diffusion coefficient for an atmospheric layer.
     For neutrals, returns D = AT^s/n, from Banks and Kockarts Aeronomy, part B, pg 41, eqn 
@@ -1920,15 +1931,15 @@ function Dcoef!(D_arr, T_arr_2D, sp::Symbol, atmdict::Dict{Symbol, Vector{Array{
     Units: cm^2/s
 
     Inputs:
-        D_arr: the container for the diffusion coefficients for ONE species.
+        D_arr: 2D container for diffusion coefficients for ONE species, shape (n_horiz, num_layers+2).
                D_arr[ihoriz] is a 1D array with altitude for column ihoriz.
-        T_arr_2D: 2D temperature (K), shape (n_horiz, num_layers+2).
-                  Neutral temp if sp is neutral; plasma temp if sp is ion.
+        T_arr: 2D temperature (K), shape (n_horiz, num_layers+2).
+               Neutral temp if sp is neutral; plasma temp if sp is ion.
         sp: whichever species we are calculating for
         atmdict: state of the atmosphere; should include boundary layers, i.e.
                  be the result of calling atmdict_with_boundary_layers.
     Outputs:
-        D_arr: The same container, now filled with the diffusion coefficients by altitude
+        D_arr: The same 2D container, now filled with the diffusion coefficients by altitude
                for this species, for each column.
 
     =#
@@ -1945,7 +1956,7 @@ function Dcoef!(D_arr, T_arr_2D, sp::Symbol, atmdict::Dict{Symbol, Vector{Array{
     for ihoriz in 1:n_horiz
 
         # Extract this column's temperature profile
-        local T_col = T_arr_2D[ihoriz, :]
+        local T_col = T_arr[ihoriz, :]
 
         # If using molecular diffusion, compute D
         if GV.use_molec_diff == true
@@ -2232,16 +2243,6 @@ function fluxcoefs(species_list::Vector, K, D, H0; globvars...)
     return fluxcoef_dict
 end
 
-"""
-Compute horizontal transport coefficients for each species and column.
-
-Each entry ``fluxcoef_dict[s][i]`` contains a ``n_all_layers x 2`` matrix of
-coefficients linking column ``i`` to the column behind (column 1) and the column
-in front (column 2). Diffusion coefficients are averaged between neighbouring
-columns and scaled by ``dx²`` while advection uses an upwind scheme based on the
-provided horizontal wind profile.  Passing `cyclic=true` wraps the indices so
-that column 1 connects to column ``n_horiz`` and vice versa.
-"""
 function fluxcoefs_horiz(
     species_list::Vector,
     K::Vector{Vector{ftype_ncur}},
@@ -2250,6 +2251,17 @@ function fluxcoefs_horiz(
     cyclic::Bool = true,
     globvars...
 )
+    #=
+    Compute horizontal transport coefficients for each species and column.
+
+    Each entry fluxcoef_dict[s][i] contains a n_all_layers x 2 matrix of
+    coefficients linking column i to the column behind (column 1) and the column
+    in front (column 2). Diffusion coefficients are averaged between neighbouring
+    columns and scaled by dx² while advection uses an upwind scheme based on the
+    provided horizontal wind profile. Passing cyclic=true wraps the indices so
+    that column 1 connects to column n_horiz and vice versa.
+    =#
+
     GV = values(globvars)
     required = [:dx, :n_all_layers, :enable_horiz_transport, :n_horiz]
     check_requirements(keys(GV), required)
