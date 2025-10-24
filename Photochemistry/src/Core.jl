@@ -779,7 +779,6 @@ function chemical_jacobian(specieslist, dspecieslist; diff_wrt_e=true, diff_wrt_
     return (ivec, jvec, tvec)
 end
 
-# function eval_rate_coef(atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}}, krate::Expr, ihoriz::Int64; globvars...)
 function eval_rate_coef(
     atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}},
     krate::Expr,
@@ -830,7 +829,6 @@ function eval_rate_coef(
     )
 end 
 
-# function getrate(sp::Symbol; chemistry_on=true, transport_on=true, sepvecs=false, globvars...)
 function getrate(sp::Symbol; chemistry_on=true, transport_on=true, sepvecs=false,
                   globvars...)
     #=
@@ -862,18 +860,12 @@ function getrate(sp::Symbol; chemistry_on=true, transport_on=true, sepvecs=false
     if sepvecs == false
         rate = :(0.0)
         if issubset([sp], GV.chem_species) && chemistry_on
-            # rate = :($rate 
-            #          + $(production_rate(sp, GV.chemnet, sepvecs=sepvecs)) 
-            #          - $(loss_rate(sp, GV.chemnet, sepvecs=sepvecs)) 
             rate = :($rate
                      + $(production_rate(sp, GV.chemnet, sepvecs=sepvecs))
                      - $(loss_rate(sp, GV.chemnet, sepvecs=sepvecs))
                     )
         end
         if issubset([sp], GV.transport_species) && transport_on
-            # rate = :($rate 
-            #          + $(production_rate(sp, GV.transportnet, sepvecs=sepvecs)) 
-            #          - $(loss_rate(sp, GV.transportnet, sepvecs=sepvecs))
             rate = :($rate
                      + $(production_rate(sp, GV.transportnet, sepvecs=sepvecs))
                      - $(loss_rate(sp, GV.transportnet, sepvecs=sepvecs))
@@ -892,8 +884,6 @@ function getrate(sp::Symbol; chemistry_on=true, transport_on=true, sepvecs=false
         end
         
         if issubset([sp], GV.transport_species) && transport_on
-            # transprod_rate = production_rate(sp, GV.transportnet, sepvecs=sepvecs)
-            # transloss_rate = loss_rate(sp, GV.transportnet, sepvecs=sepvecs)
             transprod_rate = vcat(production_rate(sp, GV.transportnet, sepvecs=sepvecs),
                                   production_rate(sp, GV.transportnet_horiz, sepvecs=sepvecs))
             transloss_rate = vcat(loss_rate(sp, GV.transportnet, sepvecs=sepvecs),
@@ -1143,7 +1133,7 @@ function update_Jrates!(n_cur_densities::Dict{Symbol, Vector{Array{ftype_ncur}}}
             continue
         end
 
-        n_cur_densities[j] = [zeros(Float64, GV.num_layers) for ihoriz in 1:n_horiz]
+        n_cur_densities[j] = [zeros(ftype_ncur, GV.num_layers) for ihoriz in 1:n_horiz]
 
         for ihoriz in 1:n_horiz
             for ialt in 1:GV.num_layers
@@ -1738,12 +1728,12 @@ function boundaryconditions(fluxcoef_dict, atmdict, M; nonthermal=true, globvars
             # VELOCITY
             try 
                 # lower boundary...
+                # (-) sign needed so that negative velocity at lower boundary represents loss to lower atmosphere or surface
+                # (see "Sign convention" note above)
                 if GV.planet=="Mars" 
-                    v_lower = [these_bcs["v"][ihoriz][1]/GV.dz, 0]
+                    v_lower = [-these_bcs["v"][ihoriz][1]/GV.dz, 0]
                 elseif GV.planet=="Venus"
                     v_lower = [-these_bcs["v"][ihoriz][1]/GV.dz, 0]
-                #          ^ (-) sign needed so that negative velocity at lower boundary represents loss to surface
-                #          (see "Sign convention" note above)
                 end
 
                 try
@@ -1812,7 +1802,6 @@ function boundaryconditions(fluxcoef_dict, atmdict, M; nonthermal=true, globvars
     return bc_dict
 end
 
-# function boundaryconditions_horiz(globvars)
 function boundaryconditions_horiz(
     atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}},
     horiz_wind_v::Vector{Vector{Float64}},
@@ -2243,32 +2232,6 @@ function fluxcoefs(species_list::Vector, K, D, H0; globvars...)
     return fluxcoef_dict
 end
 
-# function fluxcoefs_horiz(species_list::Vector, horiz_wind_v::Vector{Vector{Float64}}, n_horiz::Int64; globvars...) 
-#     New optimized version of fluxcoefs that calls the lower level version of fluxcoefs,
-#     producing a dictionary that contains both up and down flux coefficients for each layer of
-#     the atmosphere including boundary layers. Created to optimize calls to this function
-#     during the solution of the production and loss equation.
-
-#     Here, D and Hs depend on the current atmospheric densities, and need to be pre-calculated
-#     within the upper level function which calls this one.
-#     The parameters below which vary by species are dictionaries, and those that are arrays
-#     don't depend on the species. All profiles are by altitude. All lengths are the same 
-#     as for the alt variable (full altitude grid including boundary layers).
-    
-#     Inputs:
-#         species_list: Species for which to generate transport coefficients. This allows the code to only do it for
-#                 transport species during the main simulation run, and for all species when trying to plot 
-#                 rate balances after the run.
-#         T_neutral: 1D neutral temperature profile
-#         T_plasma: the same, but for the plasma temperature
-#         K: Array; 1D eddy diffusion profile by altitude for current atmospheric state
-#         D: Dictionary (key=species); 1D molecular diffusion profiles for current atmospheric state
-#         H0: Dictionary (key="neutral" or "ion"); 1D mean atmospheric scale height profiles for each type
-#         Hs: Dictionary (key=species); 1D species scale height profiles
-#     Outputs:
-#         fluxcoef_dict: dictionary of flux coefficients of the form [flux down, flux up] by altitude 
-
-#     =#
 """
 Compute horizontal transport coefficients for each species and column.
 
@@ -2818,7 +2781,6 @@ Psat(T) = (1e-6 ./ (kB_MKS .* T)) .* (10 .^ (-2663.5 ./ T .+ 12.537))
 # However, this function is defined on the offchance someone studies HDO.
 Psat_HDO(T) = (1e-6/(kB_MKS * T))*(10^(-2663.5/T + 12.537))
 
-# function set_h2oinitfrac_bySVP(atmdict, h_alt; globvars...)
 function set_h2oinitfrac_bySVP(atmdict, h_alt; ihoriz=1, globvars...)
     #=
     Calculates the initial fraction of H2O in the atmosphere, based on the supplied mixing ratio (global variable)
@@ -3208,7 +3170,6 @@ function linear_in_species_density(sp, lossnet)
     return true 
 end
 
-# function setup_photochemical_equilibrium(; globvars...)
 function setup_photochemical_equilibrium(; globvars...)
 
     #=
@@ -3234,7 +3195,6 @@ function setup_photochemical_equilibrium(; globvars...)
     # transport production, transport loss, in that order.
     active_longlived_species_rates = Array{Array{Expr}}(undef, length(GV.active_longlived), 4)
     for (i, sp) in enumerate(GV.active_longlived)
-        # active_longlived_species_rates[i, :] .= getrate(sp, sepvecs=true; chemnet=GV.reaction_network, GV.transportnet, GV.chem_species, GV.transport_species, )
         active_longlived_species_rates[i, :] .= getrate(sp, sepvecs=true;
                                                        chemnet=GV.reaction_network,
                                                        GV.transportnet,
