@@ -419,10 +419,10 @@ if planet=="Mars"
                         :D=> Dict("f"=>[[0., NaN] for _ in 1:n_horiz], "v"=>[[NaN, effusion_velocity(Tn_arr[ihoriz, end], 2.0; M_P, R_P, zmax)] for ihoriz in 1:n_horiz], "ntf"=>[[NaN, "see boundaryconditions()"] for ihoriz in 1:n_horiz]),
                        );
 elseif planet=="Venus"
-    const ntot_at_lowerbdy = 9.5e15 # Based on Fox & Sung 2001
+    const ntot_at_lowerbdy = fill(9.5e15, n_horiz) # Based on Fox & Sung 2001
 
-    H2O_lowerbdy = h2o_vmr_low * ntot_at_lowerbdy
-    HDO_lowerbdy = hdo_vmr_low * ntot_at_lowerbdy
+    H2O_lowerbdy = [h2o_vmr_low * ntot_at_lowerbdy[ihoriz] for ihoriz in 1:n_horiz]
+    HDO_lowerbdy = [hdo_vmr_low * ntot_at_lowerbdy[ihoriz] for ihoriz in 1:n_horiz]
     
     # END SPECIAL
     
@@ -440,35 +440,35 @@ elseif planet=="Venus"
     HClmr = 3.66e-7
     SOmr = 1e-7
 
-    const KoverH_lowerbdy = Keddy([zmin], [ntot_at_lowerbdy]; planet)[1]/scaleH_lowerboundary(zmin, Tn_arr[1, 1]; molmass, M_P, R_P, zmin)
+    const KoverH_lowerbdy = [Keddy([zmin], [ntot_at_lowerbdy[ihoriz]]; planet)[1]/scaleH_lowerboundary(zmin, Tn_arr[ihoriz, 1]; molmass, M_P, R_P, zmin) for ihoriz in 1:n_horiz]
     const manual_speciesbclist=Dict(# major species neutrals at lower boundary (estimated from Fox&Sung 2001, Hedin+1985, agrees pretty well with VIRA)
-                                    :CO2=>Dict("n"=>[[CO2mr*ntot_at_lowerbdy, NaN] for _ in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
+                                    :CO2=>Dict("n"=>[[CO2mr*ntot_at_lowerbdy[ihoriz], NaN] for ihoriz in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
                                     :Ar=>Dict("n"=>[[5e11, NaN] for _ in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
-                                    :CO=>Dict("n"=>[[COmr*ntot_at_lowerbdy, NaN] for _ in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
-                                    :O2=>Dict("n"=>[[O2mr*ntot_at_lowerbdy, NaN] for _ in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
-                                    :N2=>Dict("n"=>[[N2mr*ntot_at_lowerbdy, NaN] for _ in 1:n_horiz]),
+                                    :CO=>Dict("n"=>[[COmr*ntot_at_lowerbdy[ihoriz], NaN] for ihoriz in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
+                                    :O2=>Dict("n"=>[[O2mr*ntot_at_lowerbdy[ihoriz], NaN] for ihoriz in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
+                                    :N2=>Dict("n"=>[[N2mr*ntot_at_lowerbdy[ihoriz], NaN] for ihoriz in 1:n_horiz]),
 
-                                    :HCl=>Dict("n"=>[[HClmr * ntot_at_lowerbdy, NaN] for _ in 1:n_horiz]),
-                                    :DCl=>Dict("n"=>[[HClmr * DH * ntot_at_lowerbdy, NaN] for _ in 1:n_horiz]),
+                                    :HCl=>Dict("n"=>[[HClmr * ntot_at_lowerbdy[ihoriz], NaN] for ihoriz in 1:n_horiz]),
+                                    :DCl=>Dict("n"=>[[HClmr * DH * ntot_at_lowerbdy[ihoriz], NaN] for ihoriz in 1:n_horiz]),
 
-                                    :H2SO4=>Dict("n"=>[[H2SO4mr * ntot_at_lowerbdy, NaN] for _ in 1:n_horiz]), 
+                                    :H2SO4=>Dict("n"=>[[H2SO4mr * ntot_at_lowerbdy[ihoriz], NaN] for ihoriz in 1:n_horiz]), 
 
-                                    :SO2=>Dict("n"=>[[SO2mr * ntot_at_lowerbdy, NaN] for _ in 1:n_horiz]),
-                                    :SO=>Dict("n"=>[[SOmr * ntot_at_lowerbdy, NaN] for _ in 1:n_horiz]),
+                                    :SO2=>Dict("n"=>[[SO2mr * ntot_at_lowerbdy[ihoriz], NaN] for ihoriz in 1:n_horiz]),
+                                    :SO=>Dict("n"=>[[SOmr * ntot_at_lowerbdy[ihoriz], NaN] for ihoriz in 1:n_horiz]),
 
                                     # water mixing ratio is fixed at lower boundary
-                                    :H2O=>Dict("n"=>[[H2O_lowerbdy, NaN] for _ in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
+                                    :H2O=>Dict("n"=>[[H2O_lowerbdy[ihoriz], NaN] for ihoriz in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
                                     # we assume HDO has the bulk atmosphere ratio with H2O at the lower boundary, ~consistent with Bertaux+2007 observations
-                                    :HDO=>Dict("n"=>[[HDO_lowerbdy, NaN] for _ in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
+                                    :HDO=>Dict("n"=>[[HDO_lowerbdy[ihoriz], NaN] for ihoriz in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
 
                                     # atomic H and D escape solely by photochemical loss to space, can also be mixed downward
-                                    :H=> Dict("v"=>[[-KoverH_lowerbdy, effusion_velocity(Tn_arr[ihoriz, end], 1.0; zmax, M_P, R_P)] for ihoriz in 1:n_horiz],
+                                    :H=> Dict("v"=>[[-KoverH_lowerbdy[ihoriz], effusion_velocity(Tn_arr[ihoriz, end], 1.0; zmax, M_P, R_P)] for ihoriz in 1:n_horiz],
                                                     #                 ^^^ other options here:
                                                     #                 effusion_velocity(Tn_arr[ihoriz, end], 1.0; zmax) # thermal escape, negligible
                                                     #                 100 # representing D transport to nightside, NOT escape
                                                     #                 NaN # No thermal escape to space, appropriate for global average model
                                               "ntf"=>[[NaN, "see boundaryconditions()"] for ihoriz in 1:n_horiz]),
-                                    :D=> Dict("v"=>[[-KoverH_lowerbdy, effusion_velocity(Tn_arr[ihoriz, end], 2.0; zmax, M_P, R_P)] for ihoriz in 1:n_horiz],
+                                    :D=> Dict("v"=>[[-KoverH_lowerbdy[ihoriz], effusion_velocity(Tn_arr[ihoriz, end], 2.0; zmax, M_P, R_P)] for ihoriz in 1:n_horiz],
                                                     #                 ^^^ other options here:
                                                     #                  effusion_velocity(Tn_arr[ihoriz, end], 2.0; zmax) # thermal escape, negligible
                                                     #                 100 # representing D transport to nightside, NOT escape
@@ -500,7 +500,7 @@ elseif planet=="Venus"
         if sp in keys(manual_speciesbclist)
             auto_speciesbclist[sp] = manual_speciesbclist[sp]
         else
-            auto_speciesbclist[sp] = Dict("v"=>[[-KoverH_lowerbdy, 0.0] for ihoriz in 1:n_horiz])
+            auto_speciesbclist[sp] = Dict("v"=>[[-KoverH_lowerbdy[ihoriz], 0.0] for ihoriz in 1:n_horiz])
         end
     end
 
