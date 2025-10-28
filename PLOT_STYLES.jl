@@ -16,11 +16,11 @@
 #                                                                                                       #
 # ***************************************************************************************************** #
 
-# Sans-serif font to use
+# Sans-serif font to use (cross-platform)
 sansserif_choice = "Arial"
 
-# Monospace font to use
-monospace_choice = "Menlo"
+# Monospace font to use (cross-platform: Courier New is widely available on Linux and macOS)
+monospace_choice = "Courier New"
 
 const speciescolor = Dict( # PRIMARY NEUTRALS + IONS
                     :CO2 =>"#333", :CO2pl=>"#333",

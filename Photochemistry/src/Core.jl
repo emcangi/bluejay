@@ -144,11 +144,8 @@ function find_exobase(sp::Symbol, atmdict::Dict{Symbol, Vector{Array{ftype_ncur}
 
     # Loop over each horizontal column to find individual exobase altitudes
     for ihoriz in 1:GV.n_horiz
-        Tn_col = GV.Tn[ihoriz, :]
-
         # Calculate scale height using temperature for this column
-        # H_s = scaleH(GV.non_bdy_layers, sp, Tn_col[ihoriz, 2:end-1]; globvars...)
-        H_s = scaleH(GV.non_bdy_layers, sp, Tn_col[2:end-1]; globvars...)
+        H_s = scaleH(GV.non_bdy_layers, sp, GV.Tn[ihoriz, 2:end-1]; globvars...)
 
         # Mean free path calculation for each vertical column separately
         mfp_sp = 1 ./ (GV.collision_xsect[sp] .* n_tot(atmdict, ihoriz; GV.all_species, GV.n_alt_index))

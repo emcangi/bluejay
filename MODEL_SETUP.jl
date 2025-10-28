@@ -727,4 +727,5 @@ PARAMETERS_BCS = DataFrame(Species=[], Type=[], Column=[], Lower=[], Upper=[]);
 PARAMETERS_BCS_HORIZ = DataFrame(Species=[], Type=[], AltIndex=[], Back=[], Front=[]);
 
 # LOG THE TEMPERATURES
-PARAMETERS_TEMPERATURE_ARRAYS = DataFrame(Neutrals = vec(Tn_arr), Ions = vec(Ti_arr), Electrons = vec(Te_arr))
+# Create separate dataframes for each temperature array to preserve 2D structure
+PARAMETERS_TEMPERATURE_ARRAYS = [DataFrame(Tn_arr, :auto), DataFrame(Ti_arr, :auto), DataFrame(Te_arr, :auto)]

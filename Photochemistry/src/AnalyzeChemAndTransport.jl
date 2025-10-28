@@ -26,23 +26,17 @@ function chemical_lifetime(s::Symbol, atmdict, n_horiz::Int64; globvars...)
     chem_lt = zeros(Float64, n_horiz, GV.num_layers)  # (n_horiz, num_layers)
 
     for ihoriz in 1:n_horiz
-        # For the interior (bulk) layers, we slice Tn, Ti, Te
-        # Tn_col, Ti_col, Te_col each has length = num_layers (since we skip boundary)
-        Tn_col = GV.Tn[ihoriz, :]
-        Ti_col = GV.Ti[ihoriz, :]
-        Te_col = GV.Te[ihoriz, :]
-
         loss_all_rxns, ratecoefs = get_volume_rates(
             s, atmdict, n_horiz;
             species_role="reactant", 
             which="all",
             remove_sp_density=true,
             # pass the sliced arrays so code sees only the interior layers:
-            Tn=Tn_col[2:end-1], Ti=Ti_col[2:end-1], Te=Te_col[2:end-1],
+            Tn=GV.Tn[ihoriz, 2:end-1], Ti=GV.Ti[ihoriz, 2:end-1], Te=GV.Te[ihoriz, 2:end-1],
             globvars...
         )
     
-        total_loss_by_alt = zeros(size(Tn_col))  # length = num_layers
+        total_loss_by_alt = zeros(GV.num_layers)  # length = num_layers
     
         for k in keys(loss_all_rxns)
             total_loss_by_alt .+= loss_all_rxns[k][ihoriz]
@@ -80,18 +74,13 @@ function get_column_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}},
     required = [:Tn, :Ti, :Te, :all_species, :ion_species, :reaction_network, :num_layers, :dz]
     check_requirements(keys(GV), required)
 
-    # Extract FULL column temperatures explicitly
-    Tn_col = GV.Tn[ihoriz, :]
-    Ti_col = GV.Ti[ihoriz, :]
-    Te_col = GV.Te[ihoriz, :]
-
     # Now we compute reaction rates for just this column
     rxd, coefs = get_volume_rates(sp, atmdict, n_horiz;
                                   species_role=role,
                                   which=which,
                                   globvars...,
                                   # pass the column slices for Tn, Ti, Te
-                                  Tn=Tn_col[2:end-1], Ti=Ti_col[2:end-1], Te=Te_col[2:end-1])
+                                  Tn=GV.Tn[ihoriz, 2:end-1], Ti=GV.Ti[ihoriz, 2:end-1], Te=GV.Te[ihoriz, 2:end-1])
 
     # # Make the column rates dictionary for production: sum up the column rates for each reaction
     columnrate = Dict{String, Float64}()
@@ -107,7 +96,7 @@ function get_column_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}},
                                    species_role=role,
                                    which=which,
                                    globvars...,
-                                   Tn=Tn_col[2:end-1], Ti=Ti_col[2:end-1], Te=Te_col[2:end-1])
+                                   Tn=GV.Tn[ihoriz, 2:end-1], Ti=GV.Ti[ihoriz, 2:end-1], Te=GV.Te[ihoriz, 2:end-1])
         columnrate2 = Dict{String, Float64}()
 
         for k in keys(rxd2)
@@ -154,9 +143,9 @@ function get_volume_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{Array{ftype_n
     check_requirements(keys(GV), required)
 
     # Make sure temperatures are correct format
-    # @assert size(GV.Tn) == (n_horiz, GV.num_layers+2) "Tn must be (n_horiz, num_layers+2)"
-    # @assert size(GV.Ti) == (n_horiz, GV.num_layers+2) "Ti must be (n_horiz, num_layers+2)"
-    # @assert size(GV.Te) == (n_horiz, GV.num_layers+2) "Te must be (n_horiz, num_layers+2)"
+    @assert size(GV.Tn) == (n_horiz, GV.num_layers+2) "Tn must be (n_horiz, num_layers+2)"
+    @assert size(GV.Ti) == (n_horiz, GV.num_layers+2) "Ti must be (n_horiz, num_layers+2)"
+    @assert size(GV.Te) == (n_horiz, GV.num_layers+2) "Te must be (n_horiz, num_layers+2)"
 
     # Fill in the rate x density dictionary ------------------------------------------------------------------------------
     rxn_dat = Dict{String, Vector{Array{ftype_ncur}}}()
@@ -167,11 +156,6 @@ function get_volume_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{Array{ftype_n
 
     # Now we loop over each horizontal column
     for ihoriz in 1:n_horiz
-        # Extract FULL temperature arrays for this column (length=num_layers+2)
-        Tn_col = GV.Tn[ihoriz, :]
-        Ti_col = GV.Ti[ihoriz, :]
-        Te_col = GV.Te[ihoriz, :]
-
         # For each reaction in the filtered list:
         for rxn in filtered_rxn_list
             # get the reactants and products in string form for use in plot labels
@@ -230,11 +214,6 @@ function get_volume_rates(sp::Symbol, source_rxn::Vector{Any}, source_rxn_rc_fun
     required = [:all_species, :ion_species, :Jratedict, :num_layers, :Tn, :Ti, :Te]
     check_requirements(keys(GV), required)
 
-    # Now Tn_col, Ti_col, Te_col each is length num_layers+2
-    Tn_col = GV.Tn[ihoriz, :]
-    Ti_col = GV.Ti[ihoriz, :]
-    Te_col = GV.Te[ihoriz, :]
-
    # Fill in the rate x density dictionary ------------------------------------------------------------------------------
     if typeof(source_rxn[3]) == Symbol # for photodissociation
         if remove_sp_density == false
@@ -248,7 +227,7 @@ function get_volume_rates(sp::Symbol, source_rxn::Vector{Any}, source_rxn_rc_fun
         # evaluate the rate coef for just the interior alt range
         remove_me = remove_sp_density == true ? sp : nothing
         density_prod = reactant_density_product(atmdict, source_rxn[1], ihoriz; removed_sp=remove_me, globvars...)
-        rate_coef = source_rxn_rc_func(Tn_col[2:end-1], Ti_col[2:end-1], Te_col[2:end-1], Mtot)
+        rate_coef = source_rxn_rc_func(GV.Tn[ihoriz, 2:end-1], GV.Ti[ihoriz, 2:end-1], GV.Te[ihoriz, 2:end-1], Mtot)
         vol_rates = density_prod .* rate_coef # This is k * [R1] * [R2] where [] is density of a reactant.
     end
 
@@ -345,14 +324,9 @@ function volume_rate_wrapper(sp, source_rxns, source_rxn_rc_funcs, atmdict, Mtot
     # altitude. This orientation matches how we populate the array below.
     rates = Array{ftype_ncur}(undef, GV.num_layers, length(source_rxns))
 
-    # Extract the temperature for this horizontal column explicitly
-    Tn_col = GV.Tn[ihoriz, :]
-    Ti_col = GV.Ti[ihoriz, :]
-    Te_col = GV.Te[ihoriz, :]
-
     # Loop through reactions
     for (i, source_rxn) in enumerate(source_rxns)
-        rate_coef = source_rxn_rc_funcs[source_rxn](Tn_col[2:end-1], Ti_col[2:end-1], Te_col[2:end-1], Mtot)
+        rate_coef = source_rxn_rc_funcs[source_rxn](GV.Tn[ihoriz, 2:end-1], GV.Ti[ihoriz, 2:end-1], GV.Te[ihoriz, 2:end-1], Mtot)
         rates[:, i] = reactant_density_product(atmdict, source_rxn[1], ihoriz; globvars...) .* rate_coef
     end
 

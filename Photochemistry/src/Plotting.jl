@@ -471,18 +471,13 @@ function plot_Jrates(sp, atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}}, n_hor
                   sansserif=GV.sansserif_choice, monospace=GV.monospace_choice)
 
     for ihoriz in 1:n_horiz
-        # Extract temperature arrays for the current column
-        Tn_col = GV.Tn[ihoriz, :]
-        Ti_col = GV.Ti[ihoriz, :]
-        Te_col = GV.Te[ihoriz, :]
-
         # Obtain the reaction rates specifically for this horizontal column
         rxd_prod, prod_rc = get_volume_rates(sp, atmdict, n_horiz; 
                                 which="Jrates", globvars..., 
-                                Tn=Tn_col[2:end-1], Ti=Ti_col[2:end-1], Te=Te_col[2:end-1])
+                                Tn=GV.Tn[ihoriz, 2:end-1], Ti=GV.Ti[ihoriz, 2:end-1], Te=GV.Te[ihoriz, 2:end-1])
         rxd_loss, loss_rc = get_volume_rates(sp, atmdict, n_horiz; 
                                 which="Jrates", globvars..., 
-                                Tn=Tn_col[2:end-1], Ti=Ti_col[2:end-1], Te=Te_col[2:end-1])
+                                Tn=GV.Tn[ihoriz, 2:end-1], Ti=GV.Ti[ihoriz, 2:end-1], Te=GV.Te[ihoriz, 2:end-1])
 
     minx = 1e10
     maxx = 0
@@ -1647,19 +1642,14 @@ function top_mechanisms(x, sp, atmdict, p_or_r, n_horiz; savepath=nothing, filen
         # Reaction strings used for labeling dataframes
         rxn_strings = vec([format_chemistry_string(r[1], r[2]) for r in relevant_reactions])
 
-        # Extract temperature arrays specific to this horizontal column
-        Tn_col = GV.Tn[ihoriz, :]
-        Ti_col = GV.Ti[ihoriz, :]
-        Te_col = GV.Te[ihoriz, :]
-
         # Get volume rates by altitude 
         by_alt = volume_rate_wrapper(sp, relevant_reactions, rc_funcs, atmdict, Mtot, ihoriz; 
-                                     globvars..., Tn=Tn_col, Ti=Ti_col, Te=Te_col) # corrected for ihoriz
+                                     globvars...) # corrected for ihoriz
         by_alt_df = DataFrame(by_alt, rxn_strings)
     
         # Get the column value and its sorted equivalent (corrected call)
         sorted_column_val = get_column_rates(sp, atmdict, ihoriz; which="all", role=p_or_r, startalt_i=count_above, 
-                                             returntype="df", globvars..., Tn=Tn_col[2:end-1], Ti=Ti_col[2:end-1], Te=Te_col[2:end-1]) 
+                                             returntype="df", globvars..., Tn=GV.Tn[ihoriz, 2:end-1], Ti=GV.Ti[ihoriz, 2:end-1], Te=GV.Te[ihoriz, 2:end-1]) 
     
         # Top number of reactions, limit x
         if nrow(sorted_column_val) < x

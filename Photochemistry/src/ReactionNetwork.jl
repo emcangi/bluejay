@@ -72,11 +72,6 @@ function calculate_and_write_column_rates(rxn_filename, atm_state; globvars...)
 
             # Loop over horizontal columns to calculate rates
             for ihoriz in 1:n_horiz
-                # explicitly get temperatures [horizontal, vertical]
-                Tn_col = GV.Tn[ihoriz, :]
-                Ti_col = GV.Ti[ihoriz, :]
-                Te_col = GV.Te[ihoriz, :]
-
                 # Total atmospheric density explicitly for this horizontal column
                 Mtot = n_tot(atm_state, ihoriz; GV.all_species)
 
@@ -84,9 +79,9 @@ function calculate_and_write_column_rates(rxn_filename, atm_state; globvars...)
                     these_reactants[1], this_rxn, this_rxn_func,
                     atm_state, Mtot, ihoriz;
                     Jratedict,
-                    Tn = Tn_col[2:end-1],
-                    Ti = Ti_col[2:end-1],
-                    Te = Te_col[2:end-1],
+                    Tn = GV.Tn[ihoriz, 2:end-1],
+                    Ti = GV.Ti[ihoriz, 2:end-1],
+                    Te = GV.Te[ihoriz, 2:end-1],
                     globvars...
                 )
 
