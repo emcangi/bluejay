@@ -192,19 +192,17 @@ end
 
 nans_present(a) = any(x->isnan(x), a)
 
-"""
-    arrays_equal_with_nan(A, B)
-
-Compare two arrays elementwise while treating `NaN` pairs as matching.
-
-`A` and `B` may be any `AbstractArray` types.  The function first
-checks that their axes are identical; if not, it immediately returns
-`false`.  It then tests each corresponding element, returning `true`
-only when every pair is either equal (`==`) or both `NaN`.
-
-Returns `false` if the dimensions differ or any comparison fails.
-"""
 function arrays_equal_with_nan(A::AbstractArray, B::AbstractArray)
+    #=
+    Compare two arrays elementwise while treating `NaN` pairs as matching.
+    
+    `A` and `B` may be any `AbstractArray` types.  The function first
+    checks that their axes are identical; if not, it immediately returns
+    `false`.  It then tests each corresponding element, returning `true`
+    only when every pair is either equal (`==`) or both `NaN`.
+    
+    Returns `false` if the dimensions differ or any comparison fails.
+    =#
     axes(A) == axes(B) || return false
     return all(((x, y) -> x == y || (isnan(x) && isnan(y))).(A, B))
 end

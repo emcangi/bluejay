@@ -530,8 +530,8 @@ function get_transport_PandL_rate(sp::Symbol, atmdict::Dict{Symbol, Vector{Array
     # println("Activity in the top layer for sp $(sp) AS FLUX:")
     # println("Flux calculated from flux bc. for H and D, this should be the nonthermal flux: $([thesebcs[ihoriz][2, 2]*GV.dz for ihoriz in 1:GV.n_horiz])")
     # println("Calculated flux from velocity bc. For H and D this should be thermal escape: $([atmdict[sp][ihoriz][end]*thesebcs[ihoriz][2, 1]*GV.dz for ihoriz in 1:GV.n_horiz])")
-    # println("Down to layer below: $(-atmdict[sp][end]*fluxcoefs_all[sp][end, 1]*GV.dz)")
-    # println("In from layer below: $(atmdict[sp][end-1]*fluxcoefs_all[sp][end-1, 2]*GV.dz)")
+    # println("Down to layer below: $([-atmdict[sp][ihoriz][end]*fluxcoefs_all[sp][ihoriz][end, 1]*GV.dz for ihoriz in 1:GV.n_horiz])")
+    # println("In from layer below: $([atmdict[sp][ihoriz][end-1]*fluxcoefs_all[sp][ihoriz][end-1, 2]*GV.dz for ihoriz in 1:GV.n_horiz])")
     if returnfluxes
         tflux = zeros(ftype_ncur, GV.n_horiz)
         ntflux = zeros(ftype_ncur, GV.n_horiz)
@@ -608,47 +608,39 @@ function get_directional_fluxes(
     thesebcs = bc_dict[sp]
 
     # Fill array 
-    flux  = [fill(convert(ftype_ncur, NaN), length(GV.alt)) for _ in 1:n_horiz]
-    up    = [fill(convert(ftype_ncur, NaN), length(GV.alt)) for _ in 1:n_horiz]
-    down  = [fill(convert(ftype_ncur, NaN), length(GV.alt)) for _ in 1:n_horiz]
+    flux  = fill(convert(ftype_ncur, NaN), n_horiz, length(GV.alt))
+    up    = fill(convert(ftype_ncur, NaN), n_horiz, length(GV.alt))
+    down  = fill(convert(ftype_ncur, NaN), n_horiz, length(GV.alt))
 
     for ihoriz in 1:n_horiz
-        flux[ihoriz][1] = NaN  # 0 alt
-        up[ihoriz][1] = NaN
-        down[ihoriz][1] = NaN
-
         # Lower boundary
         up2 = thesebcs[ihoriz][1, 2]  # in from the boundary layer (upwards)
         down2 = atmdict[sp][ihoriz][1] * thesebcs[ihoriz][1, 1]  # out to boundary (downwards)
-        flux[ihoriz][2] = up2 - down2
-        up[ihoriz][2] = up2
-        down[ihoriz][2] = down2
+        flux[ihoriz, 2] = up2 - down2
+        up[ihoriz, 2] = up2
+        down[ihoriz, 2] = down2
 
         # Interior layers
-        for ialt in 3:length(flux[ihoriz]) - 2
+        for ialt in 3:size(flux, 2) - 2
             up_i = atmdict[sp][ihoriz][ialt-1] * fluxcoefs_bulk_layers[sp][ihoriz][ialt-1, 2]
             down_i = atmdict[sp][ihoriz][ialt] * fluxcoefs_bulk_layers[sp][ihoriz][ialt, 1]
-            flux[ihoriz][ialt] = up_i - down_i
-            up[ihoriz][ialt] = up_i
-            down[ihoriz][ialt] = down_i
+            flux[ihoriz, ialt] = up_i - down_i
+            up[ihoriz, ialt] = up_i
+            down[ihoriz, ialt] = down_i
         end
 
         # Upper boundary
         up_penult = atmdict[sp][ihoriz][end] * thesebcs[ihoriz][2, 1]
         down_penult = thesebcs[ihoriz][2, 2]
-        flux[ihoriz][end-1] = up_penult - down_penult
-        up[ihoriz][end-1] = up_penult
-        down[ihoriz][end-1] = down_penult
-
-        flux[ihoriz][end] = NaN
-        up[ihoriz][end] = NaN
-        down[ihoriz][end] = NaN
-
-        # Multiply by dz so the array is truly a flux
-        flux[ihoriz] .*= GV.dz
-        up[ihoriz]   .*= GV.dz
-        down[ihoriz] .*= GV.dz
+        flux[ihoriz, end-1] = up_penult - down_penult
+        up[ihoriz, end-1] = up_penult
+        down[ihoriz, end-1] = down_penult
     end
+
+    # Multiply by dz so the array is truly a flux
+    flux = flux .* GV.dz
+    up = up .* GV.dz
+    down = down .* GV.dz
 
     # Use these for a sanity check if you like. 
     # println("Activity in the top layer for sp $(sp) AS FLUX:")
