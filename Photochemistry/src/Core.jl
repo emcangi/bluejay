@@ -2390,7 +2390,8 @@ thermaldiff(sp) = get(Dict(:H=>-0.25, :H2=>-0.25, :D=>-0.25, :HD=>-0.25,
 
 function update_diffusion_and_scaleH(
     species_list,
-    atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}}; 
+    atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}},
+    D_arr;
     globvars...
 ) 
     #=
@@ -2402,6 +2403,7 @@ function update_diffusion_and_scaleH(
     Inputs:
         - atmdict: Atmospheric state dictionary with boundary layers already included
         - species_list: The species for which to generate molecular or ambipolar D.
+        - D_arr: Pre-initialized 2D array for reuse across species (performance optimization)
 
     Outputs:
         - K: Vector of length n_horiz, each entry is a 1D array of K vs altitude
@@ -2452,13 +2454,14 @@ function update_diffusion_and_scaleH(
     Dcoef_dict = Dict{Symbol, Vector{Vector{ftype_ncur}}}()
 
     for s in species_list
-        # Freshly initialized array per species and column (no reuse)
-        D_coefs_for_s = [
-            zeros(ftype_ncur, num_alts_with_bdy) for _ in 1:n_horiz
-        ]
+        # Reuse the D_arr array for performance
+        # Reset for each species - D_arr is a Vector of Arrays
+        for ihoriz in 1:n_horiz
+            D_arr[ihoriz] .= 0.0
+        end
 
         # Calculate diffusion coefficient for this species
-        Dcoef!(D_coefs_for_s,
+        Dcoef!(D_arr,
                GV.Tprof_for_diffusion[charge_type(s)],  # (num_alts_with_bdy, n_horiz)
                s,
                ncur_with_bdys;
@@ -2466,7 +2469,7 @@ function update_diffusion_and_scaleH(
         )
 
         # Store the calculated coefficients
-        Dcoef_dict[s] = deepcopy(D_coefs_for_s)
+        Dcoef_dict[s] = [copy(D_arr[ihoriz]) for ihoriz in 1:n_horiz]
     end
 
     # ------------------------------------------------------------------
@@ -2535,8 +2538,10 @@ function update_transport_coefficients(
 
     n_horiz = GV.n_horiz
     # 1) Build the K, H0, and Dcoef_dict
+    # Initialize D_arr for performance optimization - Vector of Arrays structure
+    D_arr = [zeros(ftype_ncur, size(GV.Tn, 2)) for _ in 1:n_horiz]
     K_eddy_arr, H0_dict, Dcoef_dict = update_diffusion_and_scaleH(
-        species_list, atmdict; globvars...
+        species_list, atmdict, D_arr; globvars...
     )
     # K_eddy_arr is a Vector of length n_horiz; each is 1D array of K vs altitude
     # H0_dict = Dict("neutral" => [...], "ion"=>[...]) each an array of length n_horiz
@@ -2650,9 +2655,12 @@ function update_horiz_transport_coefficients(species_list, atmdict::Dict{Symbol,
     n_horiz = GV.n_horiz
     # Get flux coefficients
     # Calculate diffusion coefficients and scale heights
+    # Initialize D_arr for performance optimization - Vector of Arrays structure
+    D_arr = [zeros(ftype_ncur, size(GV.Tn, 2)) for _ in 1:n_horiz]
     K_eddy_arr, H0_dict, Dcoef_dict = update_diffusion_and_scaleH(
         species_list,
-        atmdict;
+        atmdict,
+        D_arr;
         globvars...
     )
 

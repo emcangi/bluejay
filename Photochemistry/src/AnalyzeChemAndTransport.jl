@@ -269,9 +269,9 @@ function reactant_density_product(atmdict::Dict{Symbol, Vector{Array{ftype_ncur}
     Input:
         atmdict: the atmospheric state dictionary
         reactants: a list of reactant symbols.
-	    ihoriz: Vertical column index
+        ihoriz: Vertical column index
     Output: 
-        density_product: returns n_A * n_B for all altitudes for the reaction A + B for column ihoriz--> ...
+        density_product: returns n_A * n_B for all altitudes for the reaction A + B --> ... for column ihoriz
     =#
 
     GV = values(globvars)
@@ -285,10 +285,10 @@ function reactant_density_product(atmdict::Dict{Symbol, Vector{Array{ftype_ncur}
     density_product = ones(GV.num_layers)
     for r in reactants
         if r != :M && r != :E
-           # species densities by altitude
-           density_product .*= atmdict[r][ihoriz]  # multiply by each reactant density
+            # species densities by altitude
+            density_product .*= atmdict[r][ihoriz]  # multiply by each reactant density
         elseif r == :M
-           density_product .*= sum([atmdict[sp][ihoriz] for sp in GV.all_species])
+            density_product .*= sum([atmdict[sp][ihoriz] for sp in GV.all_species])
         elseif r == :E
             density_product .*= sum([atmdict[sp][ihoriz] for sp in GV.ion_species])
         else
@@ -369,7 +369,7 @@ function diffusion_timescale(s::Symbol, T_arr::Array, atmdict, n_horiz::Int64; g
     Dcoef_template = zeros(size(T_arr)) 
 
     # Other stuff
-    ncur_with_bdys =  ncur_with_boundary_layers(atmdict; GV.all_species, GV.n_alt_index, GV.n_horiz)
+    ncur_with_bdys = ncur_with_boundary_layers(atmdict; GV.all_species, GV.n_alt_index, GV.n_horiz)
     
     # Molecular diffusion timescale: H_s^2 / D, scale height over diffusion constant
     Hs = scaleH(GV.alt, s, T_arr; globvars...)
@@ -470,7 +470,7 @@ function get_transport_PandL_rate(sp::Symbol, atmdict::Dict{Symbol, Vector{Array
         atmdict: species number density by altitude for each vertical column
         returnfluxes: whether to return fluxes (thermal and nonthermal) instead of production/loss
         nonthermal: whether to consider nonthermal escape
-	    n_horiz: Number of vertical columns in simulation
+        n_horiz: Number of vertical columns in simulation
     Output
         Array of production and loss (#/cm³/s) at each atmospheric layer boundary.
         i = 1 in the net_bulk_flow array corresponds to the boundary at 1 km,
@@ -492,7 +492,9 @@ function get_transport_PandL_rate(sp::Symbol, atmdict::Dict{Symbol, Vector{Array
     end
 
     # Generate the fluxcoefs dictionary and boundary conditions dictionary
-    Keddy_arr, H0_dict, Dcoef_dict = update_diffusion_and_scaleH(GV.all_species, atmdict; globvars...)
+    # Initialize D_arr for performance optimization - Vector of Arrays structure
+    D_arr = [zeros(ftype_ncur, size(GV.Tn, 2)) for _ in 1:GV.n_horiz]
+    Keddy_arr, H0_dict, Dcoef_dict = update_diffusion_and_scaleH(GV.all_species, atmdict, D_arr; globvars...)
     fluxcoefs_all = fluxcoefs(GV.all_species, Keddy_arr, Dcoef_dict, H0_dict; globvars...)
 
     # For the bulk layers only to make the loops below more comprehendable: 
@@ -590,8 +592,10 @@ function get_directional_fluxes(
     end
 
     # Generate vertical transport coefficients and boundary conditions for all columns
+    # Initialize D_arr for performance optimization - Vector of Arrays structure
+    D_arr = [zeros(ftype_ncur, size(GV.Tn, 2)) for _ in 1:GV.n_horiz]
     Keddy_arr, H0_dict, Dcoef_dict =
-        update_diffusion_and_scaleH(GV.all_species, atmdict; globvars...)
+        update_diffusion_and_scaleH(GV.all_species, atmdict, D_arr; globvars...)
     fluxcoefs_all = fluxcoefs(GV.all_species, Keddy_arr, Dcoef_dict, H0_dict; globvars...)
 
     # For the bulk layers only to make the loops below more comprehensible
