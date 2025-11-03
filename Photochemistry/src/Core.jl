@@ -85,31 +85,25 @@ function electron_density(atmdict; globvars...)
         electron density array by altitude
     =#
     GV = values(globvars)
-    required = [:e_profile_type, :ion_species, :non_bdy_layers]
+    required = [:e_profile_type, :ion_species, :non_bdy_layers, :n_horiz]
     check_requirements(keys(GV), required)
 
-    # Determine how many horizontal columns are present.
-    n_horiz = get(GV, :n_horiz, 1)
+    n_horiz = GV.n_horiz
+    num_layers = length(GV.non_bdy_layers)
 
     if GV.e_profile_type == "constant"
-        # Fill with a constant electron density profile for every column.
-        template = fill(1e5, length(GV.non_bdy_layers))
-        return [deepcopy(template) for _ in 1:n_horiz]
+        return fill(1e5, n_horiz, num_layers)
 
     elseif GV.e_profile_type == "quasineutral"
-        # Multi column atmospheres store species as vectors of altitude arrays.
-        # Handle both the legacy single column format and the new multicolumn
-        # format.
-        if atmdict[GV.ion_species[1]] isa Vector
-            return [sum(atmdict[sp][ihoriz] for sp in GV.ion_species)
-                    for ihoriz in 1:n_horiz]
-        else
-            return [sum(atmdict[sp] for sp in GV.ion_species)]
+        # Sum ion species densities to get electron density for each column
+        E = zeros(n_horiz, num_layers)
+        for ihoriz in 1:n_horiz
+            E[ihoriz, :] = sum([atmdict[sp][ihoriz] for sp in GV.ion_species])
         end
+        return E
 
     elseif GV.e_profile_type == "none"
-        template = zeros(length(GV.non_bdy_layers))
-        return [copy(template) for _ in 1:n_horiz]
+        return zeros(n_horiz, num_layers)
 
     else
         throw("Unhandled electron profile specification: $(GV.e_profile_type)")
@@ -193,8 +187,7 @@ function meanmass(atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}}, ihoriz::Int6
 
     n_horiz = GV.n_horiz
 
-    # counted_species = setdiff(GV.all_species, ignore)
-    counted_species = [s for s in GV.all_species if haskey(atmdict, s) && !(s in ignore)]
+    counted_species = setdiff(GV.all_species, ignore)
 
     # Delete ignored species from the dictionary since we have to transform it
     trimmed_atmdict = deepcopy(atmdict)
@@ -235,13 +228,12 @@ function n_tot(atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}}, z, ihoriz::Int6
     required = [:n_alt_index, :all_species]
     check_requirements(keys(GV), required)
 
-    # counted_species = setdiff(GV.all_species, ignore)
-    counted_species = [s for s in GV.all_species if haskey(atmdict, s) && !(s in ignore)]
+    counted_species = setdiff(GV.all_species, ignore)
 
     thisaltindex = GV.n_alt_index[z]
     # Sum the densities of all counted species at the specified altitude and
     # horizontal column.
-    return sum(atmdict[s][ihoriz][thisaltindex] for s in counted_species)
+    return sum([atmdict[s][ihoriz][thisaltindex] for s in counted_species])
 end
 
 function n_tot(atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}}, ihoriz::Int64; ignore=[], globvars...)
@@ -261,8 +253,7 @@ function n_tot(atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}}, ihoriz::Int64; 
     required =  [:all_species]
     check_requirements(keys(GV), required)
     
-    # counted_species = setdiff(GV.all_species, ignore)
-    counted_species = [s for s in GV.all_species if haskey(atmdict, s) && !(s in ignore)]
+    counted_species = setdiff(GV.all_species, ignore)
     # allocate an array to gather density profiles for this vertical column
     if isempty(counted_species)
         return zeros(length(atmdict[collect(keys(atmdict))[1]][ihoriz]))
@@ -299,11 +290,6 @@ function optical_depth(n_cur_densities; globvars...)
 
     for jspecies in GV.Jratelist
         species = GV.absorber[jspecies]
-
-        # Skip species absent from either the current atmosphere or the cross-section dictionary
-        if !(haskey(n_cur_densities, species) && haskey(GV.crosssection, jspecies))
-            continue
-        end
 
         for ihoriz in 1:n_horiz
             jcolumn = convert(Float64, 0.)
@@ -1125,11 +1111,6 @@ function update_Jrates!(n_cur_densities::Dict{Symbol, Vector{Array{ftype_ncur}}}
 
     # Initialize and calculate Jrates independently for each horizontal column
     for j in GV.Jratelist
-        # Skip J-rates lacking cross sections or whose absorber species is absent
-        if !(haskey(GV.crosssection, j) && haskey(n_cur_densities, GV.absorber[j]))
-            continue
-        end
-
         n_cur_densities[j] = [zeros(ftype_ncur, GV.num_layers) for ihoriz in 1:n_horiz]
 
         for ihoriz in 1:n_horiz
@@ -2084,11 +2065,6 @@ function fluxcoefs(sp::Symbol, Kv, Dv, H0v, ihoriz::Int64; globvars...)
     Hsu = zeros(GV.n_all_layers)
     H0u = zeros(GV.n_all_layers)
 
-    # Local column references
-    Tn_col = GV.Tn[ihoriz, :]   # 1D array for neutrals
-    Tp_col = GV.Tp[ihoriz, :]   # 1D array for plasma
-    Hs_col = GV.Hs_dict[sp][ihoriz]
-
     # Retrieve arrays specific to this vertical column
     thisD  = Dv[sp][ihoriz]
     thisK  = Kv[ihoriz]
@@ -2097,22 +2073,22 @@ function fluxcoefs(sp::Symbol, Kv, Dv, H0v, ihoriz::Int64; globvars...)
     # Calculate the coefficients between this layer and the lower layer.
     Dl[2:end]     = @. (thisD[1:end-1] + thisD[2:end]) /  2.0
     Kl[2:end]     = @. (thisK[1:end-1] + thisK[2:end]) / 2.0
-    Tl_n[2:end]   = @. (Tn_col[1:end-1] + Tn_col[2:end]) / 2.0
-    Tl_p[2:end]   = @. (Tp_col[1:end-1] + Tp_col[2:end]) / 2.0
-    dTdzl_n[2:end]= @. (Tn_col[2:end] - Tn_col[1:end-1]) / GV.dz
-    dTdzl_p[2:end]= @. (Tp_col[2:end] - Tp_col[1:end-1]) / GV.dz
-    Hsl[2:end]    = @. (Hs_col[1:end-1] + Hs_col[2:end]) / 2.0
+    Tl_n[2:end]   = @. (GV.Tn[ihoriz, 1:end-1] + GV.Tn[ihoriz, 2:end]) / 2.0
+    Tl_p[2:end]   = @. (GV.Tp[ihoriz, 1:end-1] + GV.Tp[ihoriz, 2:end]) / 2.0
+    dTdzl_n[2:end]= @. (GV.Tn[ihoriz, 2:end] - GV.Tn[ihoriz, 1:end-1]) / GV.dz
+    dTdzl_p[2:end]= @. (GV.Tp[ihoriz, 2:end] - GV.Tp[ihoriz, 1:end-1]) / GV.dz
+    Hsl[2:end]    = @. (GV.Hs_dict[sp][ihoriz][1:end-1] + GV.Hs_dict[sp][ihoriz][2:end]) / 2.0
     H0l[2:end]    = @. (thisH0[1:end-1] + thisH0[2:end]) / 2.0
 
     if GV.planet=="Mars"
         # Handle the lower boundary layer:
         Dl[1]      = @. (1 + thisD[1]) /  2.0
         Kl[1]      = @. (1 + thisK[1]) / 2.0
-        Tl_n[1]    = @. (1 + Tn_col[1]) / 2.0
-        Tl_p[1]    = @. (1 + Tp_col[1]) / 2.0
-        dTdzl_n[1] = @. (Tn_col[1] - 1) / GV.dz
-        dTdzl_p[1] = @. (Tp_col[1] - 1) / GV.dz
-        Hsl[1]     = @. (1 + Hs_col[1]) / 2.0
+        Tl_n[1]    = @. (1 + GV.Tn[ihoriz, 1]) / 2.0
+        Tl_p[1]    = @. (1 + GV.Tp[ihoriz, 1]) / 2.0
+        dTdzl_n[1] = @. (GV.Tn[ihoriz, 1] - 1) / GV.dz
+        dTdzl_p[1] = @. (GV.Tp[ihoriz, 1] - 1) / GV.dz
+        Hsl[1]     = @. (1 + GV.Hs_dict[sp][ihoriz][1]) / 2.0
         H0l[1]     = @. (1 + thisH0[1]) / 2.0
     elseif GV.planet=="Venus"
         # Downward transport away from the lower boundary layer, which is outside the model
@@ -2130,22 +2106,22 @@ function fluxcoefs(sp::Symbol, Kv, Dv, H0v, ihoriz::Int64; globvars...)
     # Upward transport from each altitude to the cell above
     Du[1:end-1]     = @. (thisD[1:end-1] + thisD[2:end]) /  2.0
     Ku[1:end-1]     = @. (thisK[1:end-1] + thisK[2:end]) / 2.0
-    Tu_n[1:end-1]   = @. (Tn_col[1:end-1] + Tn_col[2:end]) / 2.0
-    Tu_p[1:end-1]   = @. (Tp_col[1:end-1] + Tp_col[2:end]) / 2.0
-    dTdzu_n[1:end-1]= @. (Tn_col[2:end] - Tn_col[1:end-1]) / GV.dz
-    dTdzu_p[1:end-1]= @. (Tp_col[2:end] - Tp_col[1:end-1]) / GV.dz
-    Hsu[1:end-1]    = @. (Hs_col[1:end-1] + Hs_col[2:end]) / 2.0
+    Tu_n[1:end-1]   = @. (GV.Tn[ihoriz, 1:end-1] + GV.Tn[ihoriz, 2:end]) / 2.0
+    Tu_p[1:end-1]   = @. (GV.Tp[ihoriz, 1:end-1] + GV.Tp[ihoriz, 2:end]) / 2.0
+    dTdzu_n[1:end-1]= @. (GV.Tn[ihoriz, 2:end] - GV.Tn[ihoriz, 1:end-1]) / GV.dz
+    dTdzu_p[1:end-1]= @. (GV.Tp[ihoriz, 2:end] - GV.Tp[ihoriz, 1:end-1]) / GV.dz
+    Hsu[1:end-1]    = @. (GV.Hs_dict[sp][ihoriz][1:end-1] + GV.Hs_dict[sp][ihoriz][2:end]) / 2.0
     H0u[1:end-1]    = @. (thisH0[1:end-1] + thisH0[2:end]) / 2.0
 
     if GV.planet=="Mars"
         # Handle upper boundary layer:
         Du[end]      = @. (thisD[end] + 1) /  2.0
         Ku[end]      = @. (thisK[end] + 1) / 2.0
-        Tu_n[end]    = @. (Tn_col[end] + 1) / 2.0
-        Tu_p[end]    = @. (Tp_col[end] + 1) / 2.0
-        dTdzu_n[end] = @. (1 - Tn_col[end]) / GV.dz
-        dTdzu_p[end] = @. (1 - Tp_col[end]) / GV.dz
-        Hsu[end]     = @. (Hs_col[end] + 1) / 2.0
+        Tu_n[end]    = @. (GV.Tn[ihoriz, end] + 1) / 2.0
+        Tu_p[end]    = @. (GV.Tp[ihoriz, end] + 1) / 2.0
+        dTdzu_n[end] = @. (1 - GV.Tn[ihoriz, end]) / GV.dz
+        dTdzu_p[end] = @. (1 - GV.Tp[ihoriz, end]) / GV.dz
+        Hsu[end]     = @. (GV.Hs_dict[sp][ihoriz][end] + 1) / 2.0
         H0u[end]     = @. (thisH0[end] + 1) / 2.0
     elseif GV.planet=="Venus"
         # Upwards flux from the upper boundary layer, which is outside the model

@@ -107,7 +107,7 @@ function plot_atm(atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}}, savepath::St
         xlab = L"Species mixing ratio (ppm)"
 
         # E_prof = E_prof ./ ntot
-        E_prof = [E_prof[ihoriz] ./ ntot[ihoriz] for ihoriz in 1:n_horiz]
+        E_prof = [E_prof[ihoriz, :] ./ ntot[ihoriz] for ihoriz in 1:n_horiz]
 
         atmdict = atmdict_MR
     end
@@ -193,31 +193,29 @@ function plot_atm(atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}}, savepath::St
 
             # plot the neutrals according to logical groups --------------------------------------
             for sp in GV.neutral_species
-                if haskey(atmdict, sp)
-                    ax_idx = get(axes_by_sp, sp, 1)
-                    atm_ax[ax_idx, 1].plot(
-                        convert(Array{Float64}, atmdict[sp][ihoriz]), GV.plot_grid,
-                        color=get(GV.speciescolor, sp, "black"), linewidth=2,
-                        label=string_to_latexstr(string(sp)), linestyle=get(GV.speciesstyle, sp, "-"), zorder=2
-                    ) # added haskey checks in plot_atm so that only species present in the atmosphere dictionary are plotted, preventing KeyError exceptions
-                end
+                ax_idx = get(axes_by_sp, sp, 1)
+                atm_ax[ax_idx, 1].plot(
+                    convert(Array{Float64}, atmdict[sp][ihoriz]), GV.plot_grid,
+                    color=get(GV.speciescolor, sp, "black"), linewidth=2,
+                    label=string_to_latexstr(string(sp)), linestyle=get(GV.speciesstyle, sp, "-"), zorder=2
+                )
             end
 
             # plot the ions according to logical groups ------------------------------------------
             for sp in GV.ion_species
-                if haskey(atmdict, sp)
-                    ax_idx = get(axes_by_sp, sp, 1)
-                    atm_ax[ax_idx, 2].plot(
-                        convert(Array{Float64}, atmdict[sp][ihoriz]), GV.plot_grid,
-                        color=get(GV.speciescolor, sp, "black"), linewidth=2,
-                        label=string_to_latexstr(string(sp)), linestyle=get(GV.speciesstyle, sp, "-"), zorder=2
-                    )
-                end
+                ax_idx = get(axes_by_sp, sp, 1)
+                atm_ax[ax_idx, 2].plot(
+                    convert(Array{Float64}, atmdict[sp][ihoriz]), GV.plot_grid,
+                    color=get(GV.speciescolor, sp, "black"), linewidth=2,
+                    label=string_to_latexstr(string(sp)), linestyle=get(GV.speciesstyle, sp, "-"), zorder=2
+                )
             end
 
             # plot electron profile --------------------------------------------------------------
+            # Handle both matrix format (when not mixing_ratio) and vector-of-vectors format (when mixing_ratio)
+            E_col = mixing_ratio ? E_prof[ihoriz] : E_prof[ihoriz, :]
             atm_ax[1, 2].plot(
-                convert(Array{Float64}, E_prof[ihoriz]), GV.plot_grid, color="black", 
+                convert(Array{Float64}, E_col), GV.plot_grid, color="black", 
                 linewidth=2, linestyle=":", zorder=10, label=L"e$^-$"
             )
 
@@ -251,13 +249,11 @@ function plot_atm(atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}}, savepath::St
             atm_fig, atm_ax = subplots(figsize=(16,6))
             tight_layout()
             for sp in GV.neutral_species
-                if haskey(atmdict, sp)
-                    atm_ax.plot(convert(Array{Float64}, atmdict[sp][ihoriz]), GV.plot_grid,
-                                color=get(GV.speciescolor, sp, "black"),
-                                linewidth=2, label=sp, linestyle=get(GV.speciesstyle, sp, "-"), zorder=1)
-                    atm_ax.set_xlim(xlim_1[1], xlim_1[2])
-                    atm_ax.set_ylabel("Altitude [km]")
-                end
+                atm_ax.plot(convert(Array{Float64}, atmdict[sp][ihoriz]), GV.plot_grid,
+                            color=get(GV.speciescolor, sp, "black"),
+                            linewidth=2, label=sp, linestyle=get(GV.speciesstyle, sp, "-"), zorder=1)
+                atm_ax.set_xlim(xlim_1[1], xlim_1[2])
+                atm_ax.set_ylabel("Altitude [km]")
             end
             atm_ax.tick_params(which="both", labeltop=true, top=true)
             plot_bg(atm_ax)

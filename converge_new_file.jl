@@ -132,9 +132,9 @@ function evolve_atmosphere(atm_init::Dict{Symbol, Vector{Array{ftype_ncur}}}, lo
     find_nonfinites(nstart, collec_name="nstart")
 
     # Set up parameters
-    M = zeros(GV.num_layers, n_horiz)
+    M = zeros(n_horiz, GV.num_layers)
     for ihoriz in 1:n_horiz
-        M[:, ihoriz] = n_tot(atm_init, ihoriz; GV.all_species)
+        M[ihoriz, :] = n_tot(atm_init, ihoriz; GV.all_species)
     end
     E = electron_density(atm_init; GV.e_profile_type, GV.non_bdy_layers, GV.ion_species, n_horiz)
     params_Gear = [GV.Dcoef_arr_template, M, E]
@@ -252,7 +252,7 @@ function chemJmat(n_active_longlived, n_active_shortlived, n_inactive, Jrates, t
                           nmat_inactive[:, ialt, ihoriz];                   
                           Jrates[:, ihoriz, ialt];                         # COLUMN-SPECIFIC Jrates
                           GV.Tn[ihoriz, ialt]; GV.Ti[ihoriz, ialt]; GV.Te[ihoriz, ialt];
-                          M[ialt, ihoriz]; E[ihoriz][ialt];
+                          M[ihoriz, ialt]; E[ihoriz, ialt];
                           tup[ihoriz, ialt, :]; tlower[ihoriz][:,ialt];     
                           tdown[ihoriz, ialt+1, :]; tlower[ihoriz][:,ialt+1];
                           ihoriz == n_horiz ? tfrontedge[ialt][:,1] : tforwards[ihoriz, ialt, :];
@@ -269,7 +269,7 @@ function chemJmat(n_active_longlived, n_active_shortlived, n_inactive, Jrates, t
                           nmat_inactive[:, ialt, ihoriz];
                           Jrates[:, ihoriz, ialt];                         # COLUMN-SPECIFIC Jrates
                           GV.Tn[ihoriz, ialt]; GV.Ti[ihoriz, ialt]; GV.Te[ihoriz, ialt];
-                          M[ialt, ihoriz]; E[ihoriz][ialt];
+                          M[ihoriz, ialt]; E[ihoriz, ialt];
                           tupper[ihoriz][:,1]; tdown[ihoriz, ialt, :];
                           tupper[ihoriz][:,2]; tup[ihoriz, ialt-1, :];
                           ihoriz == n_horiz ? tfrontedge[ialt][:,1] : tforwards[ihoriz, ialt, :];
@@ -286,7 +286,7 @@ function chemJmat(n_active_longlived, n_active_shortlived, n_inactive, Jrates, t
                           nmat_inactive[:, ialt, ihoriz];
                           Jrates[:, ihoriz, ialt];                         # COLUMN-SPECIFIC Jrates
                           GV.Tn[ihoriz, ialt]; GV.Ti[ihoriz, ialt]; GV.Te[ihoriz, ialt];
-                          M[ialt, ihoriz]; E[ihoriz][ialt];
+                          M[ihoriz, ialt]; E[ihoriz, ialt];
                           tup[ihoriz, ialt, :]; 
                           tdown[ihoriz, ialt, :];
                           tdown[ihoriz, ialt+1, :];
@@ -367,7 +367,7 @@ function ratefn(n_active_longlived, n_active_shortlived, n_inactive, Jrates, tup
                   nmat_inactive[:, ialt, ihoriz];                  # inactive_species;
                   Jrates[:, ihoriz, ialt];                         # Jratelist (column-specific);
                   GV.Tn[ihoriz, ialt]; GV.Ti[ihoriz, ialt]; GV.Te[ihoriz, ialt];   # :Tn; :Ti; :Te;
-                  M[ialt, ihoriz]; E[ihoriz][ialt];                # total density and electrons
+                  M[ihoriz, ialt]; E[ihoriz, ialt];                # total density and electrons
                   tup[ihoriz, ialt, :]; tlower[ihoriz][:, ialt]; tdown[ihoriz, ialt+1, :]; tlower[ihoriz][:, ialt+1]; # local transport coefficients
                   ihoriz == n_horiz ? tfrontedge[ialt][:,1] : tforwards[ihoriz, ialt, :];
                   (ihoriz == 1 ? tbackedge[ialt][:,2] : tforwards[ihoriz-1, ialt, :]);
@@ -388,7 +388,7 @@ function ratefn(n_active_longlived, n_active_shortlived, n_inactive, Jrates, tup
                       nmat_inactive[:, ialt, ihoriz];
                       Jrates[:, ihoriz, ialt];                     # Jratelist (column-specific);
                       GV.Tn[ihoriz, ialt]; GV.Ti[ihoriz, ialt]; GV.Te[ihoriz, ialt];
-                      M[ialt, ihoriz]; E[ihoriz][ialt];
+                      M[ihoriz, ialt]; E[ihoriz, ialt];
                       tup[ihoriz, ialt, :];
                       tdown[ihoriz, ialt, :];
                       tdown[ihoriz, ialt+1, :];
@@ -413,7 +413,7 @@ function ratefn(n_active_longlived, n_active_shortlived, n_inactive, Jrates, tup
                   nmat_inactive[:, ialt, ihoriz];
                   Jrates[:, ihoriz, ialt];                           # Jratelist (column-specific);
                   GV.Tn[ihoriz, ialt]; GV.Ti[ihoriz, ialt]; GV.Te[ihoriz, ialt];
-                  M[ialt, ihoriz]; E[ihoriz][ialt];
+                  M[ihoriz, ialt]; E[ihoriz, ialt];
                   tupper[ihoriz][:,1];
                   tdown[ihoriz, ialt, :];
                   tupper[ihoriz][:,2];
@@ -911,7 +911,7 @@ function set_concentrations!(external_storage, n_active_long, n_active_short, n_
                   nmat_inactive[:,1,ihoriz];
                   Jrates[:,ihoriz,1];
                   GV.Tn[ihoriz,1]; GV.Ti[ihoriz,1]; GV.Te[ihoriz,1];
-                  M[1, ihoriz]; E[ihoriz][1]]
+                  M[ihoriz, 1]; E[ihoriz, 1]]
 
         argvec = convert(Array{ftype_chem}, argvec)
         new_densities[:,1,ihoriz] .= set_concentrations_local(argvec...)
@@ -923,7 +923,7 @@ function set_concentrations!(external_storage, n_active_long, n_active_short, n_
                       nmat_inactive[:,ialt,ihoriz];
                       Jrates[:,ihoriz,ialt];
                       GV.Tn[ihoriz,ialt]; GV.Ti[ihoriz,ialt]; GV.Te[ihoriz,ialt];
-                      M[ialt, ihoriz]; E[ihoriz][ialt]]
+                      M[ihoriz, ialt]; E[ihoriz, ialt]]
 
             argvec = convert(Array{ftype_chem}, argvec)
             new_densities[:,ialt,ihoriz] .= set_concentrations_local(argvec...)
@@ -935,7 +935,7 @@ function set_concentrations!(external_storage, n_active_long, n_active_short, n_
                   nmat_inactive[:,end,ihoriz];
                   Jrates[:,ihoriz,end];
                   GV.Tn[ihoriz,end]; GV.Ti[ihoriz,end]; GV.Te[ihoriz,end];
-                  M[end, ihoriz]; E[ihoriz][end]]
+                  M[ihoriz, end]; E[ihoriz, end]]
 
         argvec = convert(Array{ftype_chem}, argvec)
         new_densities[:,end,ihoriz] .= set_concentrations_local(argvec...)
@@ -971,9 +971,9 @@ function update!(n_current::Dict{Symbol, Vector{Array{ftype_ncur}}}, t, dt; abst
                                    :Te, :Ti, :Tn, :Tp, :Tprof_for_diffusion, :upper_lower_bdy_i, :zmax, :horiz_wind_v, :enable_horiz_transport])
 
     # calculate total atmospheric density for each horizontal column separately
-    M = zeros(GV.num_layers, n_horiz)
+    M = zeros(n_horiz, GV.num_layers)
     for ihoriz in 1:n_horiz
-        M[:, ihoriz] = n_tot(n_current, ihoriz; GV.all_species)
+        M[ihoriz, :] = n_tot(n_current, ihoriz; GV.all_species)
     end
     E = electron_density(n_current; GV.e_profile_type, GV.non_bdy_layers, GV.ion_species, n_horiz)
 
@@ -1811,9 +1811,9 @@ if ftype_ncur==Double64
     write_to_log(logfile, "$(Dates.format(now(), "(HH:MM:SS)")) Started first chemical jacobian compile")
 
     # Set up the initial state and check for any problems
-    M = zeros(GV.num_layers, n_horiz)
+    M = zeros(n_horiz, GV.num_layers)
     for ihoriz in 1:n_horiz
-        M[:, ihoriz] = n_tot(n_current, ihoriz; all_species)
+        M[ihoriz, :] = n_tot(n_current, ihoriz; all_species)
     end
     E = electron_density(n_current; e_profile_type, non_bdy_layers, ion_species, n_horiz)
 
