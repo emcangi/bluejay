@@ -198,7 +198,7 @@ function meanmass(atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}}, ihoriz::Int6
     # Gets the atmosphere as a matrix with rows = altitudes, cols = species, and the third dimension as vertical columns
     # so we can do matrix multiplication. Only counted species are included so
     # that ignored species do not contribute to the mean.
-    n_mat = permutedims(atm_dict_to_matrix(trimmed_atmdict, counted_species, n_horiz), (2, 1, 3))
+    n_mat = permutedims(atm_dict_to_matrix(trimmed_atmdict, counted_species; globvars...), (2, 1, 3))
 
     m = [GV.molmass[sp] for sp in counted_species] # this will always be 1D
 
@@ -399,14 +399,18 @@ end
 # Subsection - functions that manipulate the atmospheric dictionary/matrix object.
 #---------------------------------------------------------------------------------#
 
-function atm_dict_to_matrix(atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}}, species_list, n_horiz::Int64)
+function atm_dict_to_matrix(atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}}, species_list; globvars...)
     #=
     Converts atmospheric state dictionary atmdict to a matrix,
     such that rows correspond to species in the order listed in species_list
     and columns correspond to altitudes in the order lowest-->highest
     and the third dimension corresponds to the vertical column in the order lowest-->highest.
     =#
+    GV = values(globvars)
+    required = [:n_horiz]
+    check_requirements(keys(GV), required)
     
+    n_horiz = GV.n_horiz
     num_alts = length(atmdict[collect(keys(atmdict))[1]][1])
     n_mat = zeros(length(species_list), num_alts, n_horiz)
     
@@ -419,13 +423,20 @@ function atm_dict_to_matrix(atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}}, sp
     return n_mat
 end
 
-function atm_matrix_to_dict(n_matrix, species_list, n_horiz::Int64)
+function atm_matrix_to_dict(n_matrix, species_list; globvars...)
     #=
     Input:
         n_matrix: matrix of the atmospheric state
+        species_list: list of species symbols
+        globvars: keyword arguments including n_horiz
     Output:
         dictionary for only the species in species_list
     =#
+    GV = values(globvars)
+    required = [:n_horiz]
+    check_requirements(keys(GV), required)
+    
+    n_horiz = GV.n_horiz
     atmdict = Dict{Symbol, Vector{Array{ftype_ncur}}}([species_list[k]=>[n_matrix[k, :, ihoriz] for ihoriz in 1:n_horiz] for k in 1:length(species_list)])
     
     return atmdict
@@ -481,7 +492,7 @@ function flatten_atm(atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}}, species_l
     # Construct a matrix in the (species, altitude, column) layout and then
     # flatten it with Julia's column-major ordering so that unflatten_atm can
     # correctly reshape it.
-    return vec(atm_dict_to_matrix(atmdict, species_list, n_horiz))
+    return vec(atm_dict_to_matrix(atmdict, species_list; globvars...))
 end
 
 function ncur_with_boundary_layers(atmdict_no_bdys::Dict{Symbol, Vector{Array{ftype_ncur}}}; globvars...)
@@ -539,7 +550,7 @@ function unflatten_atm(n_vec, species_list; globvars...)
     n_horiz = GV.n_horiz
     n_matrix = reshape(n_vec, (length(species_list), GV.num_layers, n_horiz))
 
-    return atm_matrix_to_dict(n_matrix, species_list, n_horiz)
+    return atm_matrix_to_dict(n_matrix, species_list; globvars...)
 end
 
 #===============================================================================#
@@ -1158,8 +1169,7 @@ function escape_probability(sp, atmdict, ihoriz; globvars...)::Array
                   "Venus"=>[0.868, 0.058]
                  )[GV.planet]
 
-    totdens = n_tot(atmdict, ihoriz; GV.all_species, GV.dz)
-    return params[1] .* exp.(-params[2] .* GV.collision_xsect[sp] .* column_density_above(totdens; globvars...))
+    return params[1] .* exp.(-params[2] .* GV.collision_xsect[sp] .* column_density_above(n_tot(atmdict, ihoriz; GV.all_species, GV.dz); globvars...))
 end
 
 function escaping_hot_atom_production(sp, source_rxns, source_rxn_rc_funcs, atmdict, Mtot, ihoriz; returntype="array", globvars...)
@@ -1272,14 +1282,8 @@ function T_Mars(Tsurf, Tmeso, Texo; lapserate=-1.4e-5, z_meso_top=108e5, weird_T
     i_meso = findall(z->z_meso_bottom <= z <= z_meso_top, GV.alt)
     i_upper = findall(z->z > z_meso_top, GV.alt)
     i_meso_top = findfirst(z->z==z_meso_top, GV.alt)
-    i_stitch_elec = findfirst(z->z==z_stitch_electrons, GV.alt)
-    if i_stitch_elec === nothing
-        i_stitch_elec = length(GV.alt)
-    end
-    i_stitch_ions = findfirst(z->z==z_stitch_ions, GV.alt)
-    if i_stitch_ions === nothing
-        i_stitch_ions = length(GV.alt)
-    end
+    i_stitch_elec = searchsortednearest(GV.alt, z_stitch_electrons)
+    i_stitch_ions = searchsortednearest(GV.alt, z_stitch_ions)
 
     function NEUTRALS()
         function upper_atmo_neutrals(z_arr)
@@ -1743,8 +1747,6 @@ function boundaryconditions(fluxcoef_dict, atmdict, M; nonthermal=true, globvars
             	bc_dict[:D][ihoriz][2, :] .+= [0, -(1/GV.dz)*nonthermal_escape_flux(GV.hot_D_network, prod_hotD; returntype="number", globvars...)]
             	bc_dict[:H2][ihoriz][2, :] .+= [0, -(1/GV.dz)*nonthermal_escape_flux(GV.hot_H2_network, prod_hotH2; returntype="number", globvars...)]
             	bc_dict[:HD][ihoriz][2, :] .+= [0, -(1/GV.dz)*nonthermal_escape_flux(GV.hot_HD_network, prod_hotHD; returntype="number", globvars...)]
-	 #   else
-	 #       println("At least one of H, D, H2 and HD is not in the model.",'\n')
             end
 	end
     end
@@ -1753,14 +1755,16 @@ end
 
 function boundaryconditions_horiz(
     atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}},
-    horiz_wind_v::Vector{Vector{Float64}},
-    n_horiz::Int64;
+    horiz_wind_v::Vector{Vector{Float64}};
     cyclic::Bool=true,
     globvars...
 )
     #= 
     Inputs:
-        M: total atmospheric density, required for the nonthermal escape boundary condition.
+        atmdict: Atmospheric state dictionary
+        horiz_wind_v: Horizontal wind velocities for each vertical column
+        cyclic: Boolean flag for cyclic boundary conditions (default: true)
+        globvars: keyword arguments including n_horiz
     Outputs:
         boundary conditions for species in a 2 x 2 matrix, format:  
         [n_1 -> n_0, n_0 -> n_1;      
@@ -1800,10 +1804,10 @@ function boundaryconditions_horiz(
     =#
     
     GV = values(globvars)
-    required = [:all_species, :speciesbclist_horiz, :dx, :planet]
+    required = [:all_species, :speciesbclist_horiz, :dx, :planet, :n_horiz]
     check_requirements(keys(GV), required)
     
-    # bc_dict_horiz = Dict{Symbol, Vector{Array{ftype_ncur}}}([s=>[[0.0 0.0; 0.0 0.0] for ialt in 1:GV.num_layers] for s in GV.all_species])
+    n_horiz = GV.n_horiz
     bc_dict_horiz = Dict{Symbol, Vector{Array{ftype_ncur}}}(
         [s => [fill(0.0, 2, 2) for ialt in 1:GV.num_layers] for s in GV.all_species]
     )
@@ -2036,31 +2040,26 @@ function fluxcoefs(sp::Symbol, Kv, Dv, H0v, ihoriz::Int64; globvars...)
     Hsu = zeros(GV.n_all_layers)
     H0u = zeros(GV.n_all_layers)
 
-    # Retrieve arrays specific to this vertical column
-    thisD  = Dv[sp][ihoriz]
-    thisK  = Kv[ihoriz]
-    thisH0 = H0v[charge_type(sp)][ihoriz]
-
     # Calculate the coefficients between this layer and the lower layer.
-    Dl[2:end]     = @. (thisD[1:end-1] + thisD[2:end]) /  2.0
-    Kl[2:end]     = @. (thisK[1:end-1] + thisK[2:end]) / 2.0
+    Dl[2:end]     = @. (Dv[sp][ihoriz][1:end-1] + Dv[sp][ihoriz][2:end]) /  2.0
+    Kl[2:end]     = @. (Kv[ihoriz][1:end-1] + Kv[ihoriz][2:end]) / 2.0
     Tl_n[2:end]   = @. (GV.Tn[ihoriz, 1:end-1] + GV.Tn[ihoriz, 2:end]) / 2.0
     Tl_p[2:end]   = @. (GV.Tp[ihoriz, 1:end-1] + GV.Tp[ihoriz, 2:end]) / 2.0
     dTdzl_n[2:end]= @. (GV.Tn[ihoriz, 2:end] - GV.Tn[ihoriz, 1:end-1]) / GV.dz
     dTdzl_p[2:end]= @. (GV.Tp[ihoriz, 2:end] - GV.Tp[ihoriz, 1:end-1]) / GV.dz
     Hsl[2:end]    = @. (GV.Hs_dict[sp][ihoriz][1:end-1] + GV.Hs_dict[sp][ihoriz][2:end]) / 2.0
-    H0l[2:end]    = @. (thisH0[1:end-1] + thisH0[2:end]) / 2.0
+    H0l[2:end]    = @. (H0v[charge_type(sp)][ihoriz][1:end-1] + H0v[charge_type(sp)][ihoriz][2:end]) / 2.0
 
     if GV.planet=="Mars"
         # Handle the lower boundary layer:
-        Dl[1]      = @. (1 + thisD[1]) /  2.0
-        Kl[1]      = @. (1 + thisK[1]) / 2.0
+        Dl[1]      = @. (1 + Dv[sp][ihoriz][1]) /  2.0
+        Kl[1]      = @. (1 + Kv[ihoriz][1]) / 2.0
         Tl_n[1]    = @. (1 + GV.Tn[ihoriz, 1]) / 2.0
         Tl_p[1]    = @. (1 + GV.Tp[ihoriz, 1]) / 2.0
         dTdzl_n[1] = @. (GV.Tn[ihoriz, 1] - 1) / GV.dz
         dTdzl_p[1] = @. (GV.Tp[ihoriz, 1] - 1) / GV.dz
         Hsl[1]     = @. (1 + GV.Hs_dict[sp][ihoriz][1]) / 2.0
-        H0l[1]     = @. (1 + thisH0[1]) / 2.0
+        H0l[1]     = @. (1 + H0v[charge_type(sp)][ihoriz][1]) / 2.0
     elseif GV.planet=="Venus"
         # Downward transport away from the lower boundary layer, which is outside the model
         # These should never be used but we need to fill the array
@@ -2075,25 +2074,25 @@ function fluxcoefs(sp::Symbol, Kv, Dv, H0v, ihoriz::Int64; globvars...)
     end
 
     # Upward transport from each altitude to the cell above
-    Du[1:end-1]     = @. (thisD[1:end-1] + thisD[2:end]) /  2.0
-    Ku[1:end-1]     = @. (thisK[1:end-1] + thisK[2:end]) / 2.0
+    Du[1:end-1]     = @. (Dv[sp][ihoriz][1:end-1] + Dv[sp][ihoriz][2:end]) /  2.0
+    Ku[1:end-1]     = @. (Kv[ihoriz][1:end-1] + Kv[ihoriz][2:end]) / 2.0
     Tu_n[1:end-1]   = @. (GV.Tn[ihoriz, 1:end-1] + GV.Tn[ihoriz, 2:end]) / 2.0
     Tu_p[1:end-1]   = @. (GV.Tp[ihoriz, 1:end-1] + GV.Tp[ihoriz, 2:end]) / 2.0
     dTdzu_n[1:end-1]= @. (GV.Tn[ihoriz, 2:end] - GV.Tn[ihoriz, 1:end-1]) / GV.dz
     dTdzu_p[1:end-1]= @. (GV.Tp[ihoriz, 2:end] - GV.Tp[ihoriz, 1:end-1]) / GV.dz
     Hsu[1:end-1]    = @. (GV.Hs_dict[sp][ihoriz][1:end-1] + GV.Hs_dict[sp][ihoriz][2:end]) / 2.0
-    H0u[1:end-1]    = @. (thisH0[1:end-1] + thisH0[2:end]) / 2.0
+    H0u[1:end-1]    = @. (H0v[charge_type(sp)][ihoriz][1:end-1] + H0v[charge_type(sp)][ihoriz][2:end]) / 2.0
 
     if GV.planet=="Mars"
         # Handle upper boundary layer:
-        Du[end]      = @. (thisD[end] + 1) /  2.0
-        Ku[end]      = @. (thisK[end] + 1) / 2.0
+        Du[end]      = @. (Dv[sp][ihoriz][end] + 1) /  2.0
+        Ku[end]      = @. (Kv[ihoriz][end] + 1) / 2.0
         Tu_n[end]    = @. (GV.Tn[ihoriz, end] + 1) / 2.0
         Tu_p[end]    = @. (GV.Tp[ihoriz, end] + 1) / 2.0
         dTdzu_n[end] = @. (1 - GV.Tn[ihoriz, end]) / GV.dz
         dTdzu_p[end] = @. (1 - GV.Tp[ihoriz, end]) / GV.dz
         Hsu[end]     = @. (GV.Hs_dict[sp][ihoriz][end] + 1) / 2.0
-        H0u[end]     = @. (thisH0[end] + 1) / 2.0
+        H0u[end]     = @. (H0v[charge_type(sp)][ihoriz][end] + 1) / 2.0
     elseif GV.planet=="Venus"
         # Upwards flux from the upper boundary layer, which is outside the model
         # These should never be used but we need to fill the array
@@ -2142,29 +2141,23 @@ end
 
 function fluxcoefs(species_list::Vector, K, D, H0; globvars...) 
     #=
-    New optimized version of fluxcoefs that calls the lower level version of fluxcoefs,
-    producing a dictionary that contains both up and down flux coefficients for each layer of
-    the atmosphere including boundary layers. Created to optimize calls to this function
-    during the solution of the production and loss equation.
+    Optimized version of fluxcoefs that produces a dictionary containing both up and down 
+    flux coefficients for each layer of the atmosphere including boundary layers.
 
-    Here, D and Hs depend on the current atmospheric densities, and need to be pre-calculated
+    This function calls the lower level version of fluxcoefs for each species and horizontal column.
+    D and Hs depend on the current atmospheric densities and need to be pre-calculated
     within the upper level function which calls this one.
-    The parameters below which vary by species are dictionaries, and those that are arrays
-    don't depend on the species. All profiles are by altitude. All lengths are the same
-    as for the alt variable (full altitude grid including boundary layers).
     
     Inputs:
-        species_list: Species for which to generate transport coefficients. This allows the code to only do it for
-                transport species during the main simulation run, and for all species when trying to plot 
-                rate balances after the run.
-        T_neutral: 1D neutral temperature profile
-        T_plasma: the same, but for the plasma temperature
-        K: Array; 1D eddy diffusion profile by altitude for current atmospheric state
-        D: Dictionary (key=species); 1D molecular diffusion profiles for current atmospheric state
-        H0: Dictionary (key="neutral" or "ion"); 1D mean atmospheric scale height profiles for each type
-        Hs: Dictionary (key=species); 1D species scale height profiles
+        species_list: Vector of species symbols for which to generate transport coefficients
+        K: Vector of eddy diffusion coefficient arrays for each horizontal column
+        D: Dictionary (key=species); molecular diffusion coefficient arrays for each horizontal column
+        H0: Dictionary (key="neutral" or "ion"); mean atmospheric scale height arrays for each horizontal column
+        globvars: Global variables including Tn, Tp, Hs_dict, n_all_layers, dz, n_horiz
     Outputs:
-        fluxcoef_dict: dictionary of flux coefficients of the form [flux down, flux up] by altitude 
+        fluxcoef_dict: Dictionary of flux coefficients (key=species). 
+                       For each species, contains an array for each horizontal column.
+                       Each array has dimensions (n_all_layers, 2) where columns are [flux down, flux up]
 
     =#
 
@@ -2271,12 +2264,6 @@ function fluxcoefs_horiz(
         end
     end
 
-    # if !GV.enable_horiz_transport && all(all(v .== 0.0) for v in horiz_wind_v)
-    #     maxval = maximum(abs, vcat([vec(mat) for col in values(fluxcoef_dict) for mat in col]...))
-    #     println("DEBUG: horiz transport disabled, max coefficient = ", maxval)
-    # end
-
-    # return fluxcoef_dict_horiz
     return fluxcoef_dict
 end
 
@@ -2639,7 +2626,7 @@ function update_horiz_transport_coefficients(species_list, atmdict::Dict{Symbol,
     @assert size(tforwards) == expected_tb_shape
     @assert size(tbackwards) == expected_tb_shape
 
-    bc_dict_horiz = boundaryconditions_horiz(atmdict, GV.horiz_wind_v, n_horiz; cyclic=cyclic, globvars...)
+    bc_dict_horiz = boundaryconditions_horiz(atmdict, GV.horiz_wind_v; cyclic=cyclic, globvars...)
 
     # transport coefficients for boundaries
     tbackedge = Vector{Array{Float64}}(undef, GV.num_layers)
@@ -2654,17 +2641,6 @@ function update_horiz_transport_coefficients(species_list, atmdict::Dict{Symbol,
     expected_edge_shape = (length(GV.transport_species), 2)
     @assert all(size(mat) == expected_edge_shape for mat in tbackedge) "horizontal back edge shape mismatch"
     @assert all(size(mat) == expected_edge_shape for mat in tfrontedge) "horizontal front edge shape mismatch"
-
-    # if !GV.enable_horiz_transport && all(all(v .== 0.0) for v in GV.horiz_wind_v)
-    #     max_for  = maximum(abs, tforwards)
-    #     max_back = maximum(abs, tbackwards)
-    #     max_backedge = maximum(abs, vcat([vec(m) for m in tbackedge]...))
-    #     max_frontedge = maximum(abs, vcat([vec(m) for m in tfrontedge]...))
-    #     println("DEBUG: horiz transport disabled -- max forward=", max_for,
-    #             " max backward=", max_back,
-    #             " back edge=", max_backedge,
-    #             " front edge=", max_frontedge)
-    # end    
 
     if debug
         println("[update_horiz_transport_coefficients] horizontal transport coefficients:")
@@ -2895,21 +2871,6 @@ function setup_water_profile!(atmdict; constfrac=1, dust_storm_on=false, make_sa
     end
 
     plot_water_profile(atmdict, GV.results_dir*GV.sim_folder_name; watersat=satarray, H2Oinitf=H2Oinitfrac_all[1], plot_grid=GV.plot_grid, showonly=showonly, globvars...)
-
-    # # ----------------------------------------------------------------------
-    # # Consistency checks when horizontal transport is disabled
-    # # ----------------------------------------------------------------------
-    # if !GV.enable_horiz_transport && GV.n_horiz > 1
-    #     base_H2O = atmdict[:H2O][1]
-    #     base_HDO = atmdict[:HDO][1]
-
-    #     for ihoriz in 2:GV.n_horiz
-    #         @assert size(atmdict[:H2O][ihoriz]) == size(base_H2O) "H2O profile shape mismatch across columns"
-    #         @assert size(atmdict[:HDO][ihoriz]) == size(base_HDO) "HDO profile shape mismatch across columns"
-    #         @assert all(atmdict[:H2O][ihoriz] .== base_H2O) "H2O profiles differ across columns with horizontal transport disabled"
-    #         @assert all(atmdict[:HDO][ihoriz] .== base_HDO) "HDO profiles differ across columns with horizontal transport disabled"
-    #     end
-    # end
 end
 
 function water_tanh_prof(z; f=10, z0=62, dz=11)
