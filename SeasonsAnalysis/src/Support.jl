@@ -31,7 +31,6 @@ end
 function parent_folders_from_full_path(list_of_full_paths)
     #=
     Given a list of full file pathnames, return their parent directories.
-    Using `dirname` avoids reliance on fragile regular expressions.
     Returns paths without trailing separators for platform independence.
     Use `joinpath()` to construct full paths from these directories.
     =#

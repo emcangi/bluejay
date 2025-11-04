@@ -22,8 +22,14 @@ end
 
 function create_folder(foldername::String, parentdir::String)
     #=
-    Ensure that parentdir and foldername exist. Creates them if necessary.
-    This prevents readdir errors when parentdir does not already exist.
+    Creates a folder within an enclosing directory.
+
+    Inputs:
+        foldername: folder to be created
+        parentdir: directory in which to create foldername; will be created if it doesn't already exist.
+
+    Outputs:
+        None
     =#
     # Create the parent directory path if it does not exist
     if !isdir(parentdir)
@@ -74,10 +80,10 @@ function get_ncurrent(readfile::String; globvars...)
     
     # This accounts for the old format of some files. 
     try
-        global n_current_tag_list = map(Symbol, h5read(readfile,"n_current/species"))
+        global species_list = map(Symbol, h5read(readfile,"n_current/species"))
         global n_current_mat = h5read(readfile,"n_current/n_current_mat");
     catch
-        global n_current_tag_list = map(Symbol, h5read(readfile,"ncur/species"))
+        global species_list = map(Symbol, h5read(readfile,"ncur/species"))
         global n_current_mat = h5read(readfile,"ncur/ncur_mat");
     end
     
@@ -105,7 +111,7 @@ function get_ncurrent(readfile::String; globvars...)
     end
 
     # Slice or pad the profiles so that their length matches the altitude grid
-    for ispecies in eachindex(n_current_tag_list)
+    for ispecies in eachindex(species_list)
         profile = convert(Vector{ftype_ncur}, n_current_mat[:, ispecies])
 
         if length(profile) > target_layers
@@ -114,10 +120,8 @@ function get_ncurrent(readfile::String; globvars...)
             profile = vcat(profile, fill(last(profile), target_layers - length(profile)))
         end
 
-        # n_current[n_current_tag_list[ispecies]] = fill(profile, n_horiz)
-        
         # Duplicate the profile for each column so that updates to one column do not modify the others by aliasing the same array.
-        n_current[n_current_tag_list[ispecies]] = [copy(profile) for _ in 1:n_horiz]
+        n_current[species_list[ispecies]] = [copy(profile) for _ in 1:n_horiz]
     end
     if isdefined(Main, :all_species)
         zero_prof = fill(ftype_ncur(0.0), target_layers)

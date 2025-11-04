@@ -38,7 +38,6 @@ function populate_xsect_dict(pd_dataf, xsecfolder; ion_xsects=true, globvars...)
     check_requirements(keys(GV), required)
 
     # Set up =======================================================================
-    # xsect_dict = Dict{Symbol, Array{Array{Float64}}}()
     xsect_dict = Dict{Symbol, Vector{Vector{Array{Float64}}}}()
     compute_by_T(f) = [ [f(GV.Tn[ihoriz, ialt]) for ialt  in 1:GV.n_all_layers] for ihoriz in 1:GV.n_horiz ]
 
