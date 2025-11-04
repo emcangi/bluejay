@@ -34,7 +34,6 @@ function populate_xsect_dict(pd_dataf, xsecfolder; ion_xsects=true, globvars...)
     =#
 
     GV = values(globvars)
-    # required = [:Tn, :n_all_layers]
     required = [:Tn, :n_all_layers, :n_horiz]
     check_requirements(keys(GV), required)
 

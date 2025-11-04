@@ -378,7 +378,12 @@ function diffusion_timescale(s::Symbol, T_arr::Array, atmdict, n_horiz::Int64; g
    
     # Eddy timescale... this was in here only as scale H... 
     H0 = scaleH(ncur_with_bdys, T_arr; globvars...)
-    K = [Keddy(alt, n_tot(ncur_with_bdys, ihoriz; GV.all_species, GV.molmass); GV.planet) for ihoriz in 1:n_horiz]
+    # Calculate total atmospheric density as 2D matrix
+    nt = zeros(n_horiz, length(alt))
+    for ihoriz in 1:n_horiz
+        nt[ihoriz, :] = n_tot(ncur_with_bdys, ihoriz; GV.all_species, GV.molmass)
+    end
+    K = [Keddy(alt, nt, ihoriz; globvars...) for ihoriz in 1:n_horiz]
     eddy_timescale = ([H0 for ihoriz in 1:n_horiz] .^ 2) ./ K
 
     # Combined timescale

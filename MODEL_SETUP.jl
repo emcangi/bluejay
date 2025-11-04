@@ -440,7 +440,9 @@ elseif planet=="Venus"
     HClmr = 3.66e-7
     SOmr = 1e-7
 
-    const KoverH_lowerbdy = [Keddy([zmin], [ntot_at_lowerbdy[ihoriz]]; planet)[1]/scaleH_lowerboundary(zmin, Tn_arr[ihoriz, 1]; molmass, M_P, R_P, zmin) for ihoriz in 1:n_horiz]
+    # Create 2D matrix for ntot at lower boundary (n_horiz × 1)
+    ntot_at_lowerbdy_2d = reshape(ntot_at_lowerbdy, n_horiz, 1)
+    const KoverH_lowerbdy = [Keddy([zmin], ntot_at_lowerbdy_2d, ihoriz; planet)[1]/scaleH_lowerboundary(zmin, Tn_arr[ihoriz, 1]; molmass, M_P, R_P, zmin) for ihoriz in 1:n_horiz]
     const manual_speciesbclist=Dict(# major species neutrals at lower boundary (estimated from Fox&Sung 2001, Hedin+1985, agrees pretty well with VIRA)
                                     :CO2=>Dict("n"=>[[CO2mr*ntot_at_lowerbdy[ihoriz], NaN] for ihoriz in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
                                     :Ar=>Dict("n"=>[[5e11, NaN] for _ in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),

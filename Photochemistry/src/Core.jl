@@ -1754,17 +1754,15 @@ function boundaryconditions(fluxcoef_dict, atmdict, M; nonthermal=true, globvars
 end
 
 function boundaryconditions_horiz(
-    atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}},
-    horiz_wind_v::Vector{Vector{Float64}};
+    atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}};
     cyclic::Bool=true,
     globvars...
 )
     #= 
     Inputs:
         atmdict: Atmospheric state dictionary
-        horiz_wind_v: Horizontal wind velocities for each vertical column
         cyclic: Boolean flag for cyclic boundary conditions (default: true)
-        globvars: keyword arguments including n_horiz
+        globvars: keyword arguments including n_horiz, horiz_wind_v
     Outputs:
         boundary conditions for species in a 2 x 2 matrix, format:  
         [n_1 -> n_0, n_0 -> n_1;      
@@ -1804,10 +1802,11 @@ function boundaryconditions_horiz(
     =#
     
     GV = values(globvars)
-    required = [:all_species, :speciesbclist_horiz, :dx, :planet, :n_horiz]
+    required = [:all_species, :speciesbclist_horiz, :dx, :planet, :n_horiz, :horiz_wind_v]
     check_requirements(keys(GV), required)
     
     n_horiz = GV.n_horiz
+    horiz_wind_v = GV.horiz_wind_v
     bc_dict_horiz = Dict{Symbol, Vector{Array{ftype_ncur}}}(
         [s => [fill(0.0, 2, 2) for ialt in 1:GV.num_layers] for s in GV.all_species]
     )
@@ -2183,27 +2182,35 @@ end
 function fluxcoefs_horiz(
     species_list::Vector,
     K::Vector{Vector{ftype_ncur}},
-    D::Dict{Symbol, Vector{Vector{ftype_ncur}}},
-    horiz_wind_v::Vector{Vector{Float64}};
+    D::Dict{Symbol, Vector{Vector{ftype_ncur}}};
     cyclic::Bool = true,
     globvars...
 )
     #=
     Compute horizontal transport coefficients for each species and column.
 
-    Each entry fluxcoef_dict[s][i] contains a n_all_layers x 2 matrix of
-    coefficients linking column i to the column behind (column 1) and the column
-    in front (column 2). Diffusion coefficients are averaged between neighbouring
-    columns and scaled by dx² while advection uses an upwind scheme based on the
-    provided horizontal wind profile. Passing cyclic=true wraps the indices so
-    that column 1 connects to column n_horiz and vice versa.
+    Inputs:
+        species_list: Vector of species symbols
+        K: Vector of eddy diffusion coefficient arrays (one per horizontal column)
+        D: Dictionary of molecular diffusion coefficient arrays (one per species per column)
+        cyclic: Boolean flag for cyclic boundary conditions (default: true)
+        globvars: Keyword arguments including dx, n_all_layers, enable_horiz_transport, n_horiz, horiz_wind_v
+
+    Output:
+        fluxcoef_dict: Dictionary mapping species to vectors of coefficient arrays.
+                       Each entry fluxcoef_dict[s][ihoriz] is a (n_all_layers × 2) matrix
+                       where column 1 = flux to column behind, column 2 = flux to column in front.
+                       Diffusion coefficients are averaged between neighbouring columns and scaled by dx².
+                       Advection uses an upwind scheme based on the horizontal wind profile.
+                       If cyclic=true, column 1 connects to column n_horiz and vice versa.
     =#
 
     GV = values(globvars)
-    required = [:dx, :n_all_layers, :enable_horiz_transport, :n_horiz]
+    required = [:dx, :n_all_layers, :enable_horiz_transport, :n_horiz, :horiz_wind_v]
     check_requirements(keys(GV), required)
 
     n_horiz = GV.n_horiz
+    horiz_wind_v = GV.horiz_wind_v
     
     # the return dictionary: Each species has 2 entries for every layer of the atmosphere.
     # fluxcoef_horiz_dict = Dict{Symbol, Vector{Array{ftype_ncur}}}([s=>[fill(0., GV.n_all_layers, 2) for ihoriz in 1:n_horiz] for s in species_list])
@@ -2267,19 +2274,17 @@ function fluxcoefs_horiz(
     return fluxcoef_dict
 end
 
-function Keddy(z::Vector, nt; ihoriz=nothing, globvars...)
+function Keddy(z::Vector, nt::Matrix, ihoriz::Int64; globvars...)
     #=
     Input:
         z: Altitude in cm
-        nt: Total atmospheric density.
-            - For single-column case: Vector (#/cm³)
-            - For multi-column, this should be a Matrix (n_horiz × #altitudes) with horizontal index first, and `ihoriz` must be specified.
+        nt: Total atmospheric density as a Matrix (n_horiz × n_altitudes) with horizontal index first
+        ihoriz: Horizontal column index
     Output:
         k: eddy diffusion coefficients at all altitudes.
            Units: cm^2/s
 
-    If running multi-column, make sure to specify the column index (ihoriz).
-    This version accommodates both single-column and multi-column simulations.
+    Note: nt is always a 2D matrix, even in single-column mode (where n_horiz=1).
     =#
 
     GV = values(globvars)
@@ -2295,22 +2300,11 @@ function Keddy(z::Vector, nt; ihoriz=nothing, globvars...)
         k[z .<= 60e5] .= 10. ^ 6
 
         # Upper atmosphere (>60 km), altitude-dependent Keddy
-        if ndims(nt) == 1  # Single-column case
-            k[upperatm] .= 2e13 ./ sqrt.(nt[upperatm])
-        elseif ndims(nt) == 2  # Multi-column case
-            @assert !isnothing(ihoriz) "ihoriz must be specified for multi-column simulations."
-            k[upperatm] .= 2e13 ./ sqrt.(nt[ihoriz, upperatm])
-        else
-            throw("Invalid dimensions for nt. Expecting Vector or Matrix.")
-        end
+        k[upperatm] .= 2e13 ./ sqrt.(nt[ihoriz, upperatm])
 
     elseif GV.planet == "Venus"
-        # Venus: just an altitude-dependent eddy diffusion
-        if ndims(nt) == 1  # Single-column case
-            k .= 8e12 .* nt .^ (-0.5)
-        else  # Multi-column case
-            k .= 8e12 .* (nt[ihoriz, :] .^ (-0.5))
-        end
+        # Venus: altitude-dependent eddy diffusion
+        k .= 8e12 .* (nt[ihoriz, :] .^ (-0.5))
     end
 
     return k
@@ -2329,22 +2323,21 @@ function update_diffusion_and_scaleH(
     globvars...
 ) 
     #=
-    Calculates:
-        1) The eddy diffusion coefficient K for each column;
-        2) The mean scale height H₀ for each column (both neutral and ion);
-        3) The molecular (or ambipolar) diffusion coefficients, stored in Dcoef_dict.
+    Calculates and returns eddy diffusion coefficients, mean scale heights, and molecular/ambipolar 
+    diffusion coefficients for each horizontal column.
 
     Inputs:
-        - atmdict: Atmospheric state dictionary with boundary layers already included
-        - species_list: The species for which to generate molecular or ambipolar D.
-        - D_arr: Pre-initialized 2D array for reuse across species (performance optimization)
+        atmdict: Atmospheric state dictionary with boundary layers already included
+        species_list: The species for which to generate molecular or ambipolar D
+        D_arr: Pre-initialized 2D array for reuse across species (performance optimization)
+        globvars: Keyword arguments including n_horiz, alt, temperature profiles, etc.
 
     Outputs:
-        - K: Vector of length n_horiz, each entry is a 1D array of K vs altitude
-        - H0_dict: Dict("neutral"=>[H0_neutral_col1, H0_neutral_col2, ...],
-                        "ion"=>[H0_ion_col1, H0_ion_col2, ...])
-        - Dcoef_dict: Dict(s1 => [[D alt array col1], [D alt array col2], ...],
-                            s2 => [...], ...)
+        K: Vector of length n_horiz, each entry is a 1D array of eddy diffusion coefficients vs altitude
+        H0_dict: Dictionary with keys "neutral" and "ion", each containing a vector of scale height 
+                 arrays (one per horizontal column)
+        Dcoef_dict: Dictionary mapping species symbols to vectors of molecular/ambipolar diffusion 
+                    coefficient arrays (one per horizontal column)
     =#
     GV = values(globvars)
     required = [
@@ -2362,16 +2355,14 @@ function update_diffusion_and_scaleH(
     )
     num_alts_with_bdy = length(ncur_with_bdys[GV.all_species[1]][1])
 
+    # Calculate total atmospheric density as 2D matrix (n_horiz × n_altitudes)
+    nt = zeros(n_horiz, num_alts_with_bdy)
+    for ihoriz in 1:n_horiz
+        nt[ihoriz, :] = n_tot(ncur_with_bdys, ihoriz; GV.all_species, GV.n_alt_index)
+    end
+
     # 1) Eddy diffusion, explicitly calculated for each column
-    K = [
-        Keddy(
-            GV.alt,
-            n_tot(ncur_with_bdys, ihoriz; GV.all_species, GV.n_alt_index);
-            ihoriz = ihoriz,
-            globvars...
-        )
-        for ihoriz in 1:n_horiz
-    ]
+    K = [Keddy(GV.alt, nt, ihoriz; globvars...) for ihoriz in 1:n_horiz]
 
     # 2) Mean atmospheric scale heights (neutral and ion), column-wise explicitly
     H0_dict = Dict{String, Vector{Vector{ftype_ncur}}}()
@@ -2428,7 +2419,6 @@ function update_transport_coefficients(
     D_coefs::Vector{Matrix{Float64}},  # Unused
     M::Matrix{Float64};  # now explicitly 2D: num_layers × n_horiz
     calc_nonthermal=true,
-    debug=false,
     globvars...
 )
     # Call the real function that doesn't expect D_coefs
@@ -2437,7 +2427,6 @@ function update_transport_coefficients(
         atmdict,
         M;
         calc_nonthermal=calc_nonthermal,
-        debug=debug,
         globvars...
     )
 end
@@ -2447,7 +2436,6 @@ function update_transport_coefficients(
     atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}},
     M::Matrix{ftype_ncur};  # now explicitly 2D: num_layers × n_horiz
     calc_nonthermal=true,
-    debug=false,
     globvars...
 )
     #=
@@ -2477,9 +2465,6 @@ function update_transport_coefficients(
     K_eddy_arr, H0_dict, Dcoef_dict = update_diffusion_and_scaleH(
         species_list, atmdict, D_arr; globvars...
     )
-    # K_eddy_arr is a Vector of length n_horiz; each is 1D array of K vs altitude
-    # H0_dict = Dict("neutral" => [...], "ion"=>[...]) each an array of length n_horiz
-    # Dcoef_dict[s] = [[D vs alt col1], [D vs alt col2], ...]
 
     # 2) Build the flux coefficients dictionary
     fluxcoefs_all = fluxcoefs(
@@ -2532,29 +2517,11 @@ function update_transport_coefficients(
         ]))
     end
 
-    if debug
-        println("[update_transport_coefficients] vertical transport coefficients:")
-        nprint = min(3, GV.num_layers)
-        for ihoriz in 1:n_horiz
-            println("  column ", ihoriz, " tup[1:" , nprint, "] = ",
-                    tup[ihoriz, 1:nprint, :])
-            println("  column ", ihoriz, " tdown[1:" , nprint, "] = ",
-                    tdown[ihoriz, 1:nprint, :])
-        end
-        if !GV.enable_horiz_transport && n_horiz > 1
-            identical = all(
-                arrays_equal_with_nan(tup[ihoriz, :, :], tup[1, :, :]) &&
-                arrays_equal_with_nan(tdown[ihoriz, :, :], tdown[1, :, :])
-                for ihoriz in 2:n_horiz)
-            println("  identical across columns? ", identical)
-        end
-    end
-
     return tlower, tup, tdown, tupper
 end
 
 function update_horiz_transport_coefficients(species_list, atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}}, D_coefs, M;
-                                       calc_nonthermal=true, cyclic=true, debug=false, globvars...)
+                                       calc_nonthermal=true, cyclic=true, globvars...)
     #=
     Input:
         species_list: Species which will have transport coefficients updated
@@ -2569,7 +2536,7 @@ function update_horiz_transport_coefficients(species_list, atmdict::Dict{Symbol,
         cyclic: wrap the horizontal domain so that material leaving one edge
                 enters from the opposite side
 
-    Return: 
+    Output: 
         Horizontal transport coefficients for all atmospheric layers, units 1/s
 
         tbackedge: horizontal transport coefficients at the back edge. shape: a vector of GV.num_layers arrays of size (2 x length(GV.transport_species))
@@ -2602,8 +2569,7 @@ function update_horiz_transport_coefficients(species_list, atmdict::Dict{Symbol,
     fluxcoefs_horiz_all = fluxcoefs_horiz(
         species_list,
         K_eddy_arr,
-        Dcoef_dict,
-        GV.horiz_wind_v;
+        Dcoef_dict;
         cyclic=cyclic,
         globvars...
     )
@@ -2626,7 +2592,7 @@ function update_horiz_transport_coefficients(species_list, atmdict::Dict{Symbol,
     @assert size(tforwards) == expected_tb_shape
     @assert size(tbackwards) == expected_tb_shape
 
-    bc_dict_horiz = boundaryconditions_horiz(atmdict, GV.horiz_wind_v; cyclic=cyclic, globvars...)
+    bc_dict_horiz = boundaryconditions_horiz(atmdict; cyclic=cyclic, globvars...)
 
     # transport coefficients for boundaries
     tbackedge = Vector{Array{Float64}}(undef, GV.num_layers)
@@ -2641,23 +2607,6 @@ function update_horiz_transport_coefficients(species_list, atmdict::Dict{Symbol,
     expected_edge_shape = (length(GV.transport_species), 2)
     @assert all(size(mat) == expected_edge_shape for mat in tbackedge) "horizontal back edge shape mismatch"
     @assert all(size(mat) == expected_edge_shape for mat in tfrontedge) "horizontal front edge shape mismatch"
-
-    if debug
-        println("[update_horiz_transport_coefficients] horizontal transport coefficients:")
-        nprint = min(3, GV.num_layers)
-        for ihoriz in 1:n_horiz
-            println("  column ", ihoriz, " forwards[1:" , nprint, "] = ",
-                    tforwards[ihoriz, 1:nprint, :])
-            println("  column ", ihoriz, " backwards[1:" , nprint, "] = ",
-                    tbackwards[ihoriz, 1:nprint, :])
-        end
-        if !GV.enable_horiz_transport
-            max_for  = maximum(abs, tforwards)
-            max_back = maximum(abs, tbackwards)
-            println("  horizontal disabled -> max forward=", max_for,
-                    " max backward=", max_back)
-        end
-    end
 
     return tbackedge, tforwards, tbackwards, tfrontedge
 end
@@ -2775,7 +2724,6 @@ function setup_water_profile!(atmdict; constfrac=1, dust_storm_on=false, make_sa
     # Set the initial fraction of the atmosphere for water to take up, plus the saturation fraction
     # ================================================================================================================
     # Currently this doesn't change behavior based on planet. 5/15/24
-    # H2Oinitfrac, H2Osatfrac = set_h2oinitfrac_bySVP(atmdict, hygropause_alt; globvars...)
 
     H2Oinitfrac_all = Vector{Vector{ftype_ncur}}(undef, GV.n_horiz)
     H2Osatfrac_all = Vector{Vector{ftype_ncur}}(undef, GV.n_horiz)
@@ -2799,7 +2747,6 @@ function setup_water_profile!(atmdict; constfrac=1, dust_storm_on=false, make_sa
             toplim_dict = Dict("mesosphere"=>GV.upper_lower_bdy_i, "everywhere"=>GV.n_alt_index[GV.alt[end]])
             a = 1
             b = toplim_dict[excess_water_in]
-            # H2Oinitfrac[a:b] = H2Oinitfrac[a:b] .* water_tanh_prof(GV.non_bdy_layers./1e5; z0=GV.ealt, f=GV.ffac)[a:b]
             for ihoriz in 1:GV.n_horiz
                 prof = H2Oinitfrac_all[ihoriz]
                 prof[a:b] .= prof[a:b] .* water_tanh_prof(GV.non_bdy_layers./1e5; z0=GV.ealt, f=GV.ffac)[a:b]
@@ -2808,7 +2755,6 @@ function setup_water_profile!(atmdict; constfrac=1, dust_storm_on=false, make_sa
 
             # Set the upper atmo to be a constant mixing ratio, wherever the disturbance ends
             if excess_water_in=="everywhere"
-                # H2Oinitfrac[GV.upper_lower_bdy_i:end] .= H2Oinitfrac[GV.upper_lower_bdy_i]
                 for ihoriz in 1:GV.n_horiz
                     prof = H2Oinitfrac_all[ihoriz]
                     prof[GV.upper_lower_bdy_i:end] .= prof[GV.upper_lower_bdy_i]
@@ -2833,8 +2779,8 @@ function setup_water_profile!(atmdict; constfrac=1, dust_storm_on=false, make_sa
             for ihoriz in 1:GV.n_horiz
                 H2Oppm = 1e-6*map(z->GV.H2O_excess .* exp(-((z-GV.ealt)/sigma)^2), GV.non_bdy_layers/1e5) + H2Oinitfrac_all[ihoriz]
                 HDOppm = 1e-6*map(z->GV.HDO_excess .* exp(-((z-GV.ealt)/sigma)^2), GV.non_bdy_layers/1e5) + HDOinitfrac_all[ihoriz]
-                atmdict[:H2O][ihoriz][1:GV.upper_lower_bdy_i] = (H2Oppm .* n_tot(atmdict, ihoriz; GV.n_alt_index, GV.all_species))[1:GV.upper_lower_bdy_i]
-                atmdict[:HDO][ihoriz][1:GV.upper_lower_bdy_i] = (HDOppm .* n_tot(atmdict, ihoriz; GV.all_species))[1:GV.upper_lower_bdy_i]
+                atmdict[:H2O][ihoriz, 1:GV.upper_lower_bdy_i] = (H2Oppm .* n_tot(atmdict, ihoriz; GV.n_alt_index, GV.all_species))[1:GV.upper_lower_bdy_i]
+                atmdict[:HDO][ihoriz, 1:GV.upper_lower_bdy_i] = (HDOppm .* n_tot(atmdict, ihoriz; GV.all_species))[1:GV.upper_lower_bdy_i]
             end
         end
     elseif GV.planet=="Venus"
@@ -2856,8 +2802,8 @@ function setup_water_profile!(atmdict; constfrac=1, dust_storm_on=false, make_sa
 
             for ihoriz in 1:GV.n_horiz
                 ntot = ntot_all[ihoriz]
-                atmdict[:H2O][ihoriz][1:n] = vmr_h2o .* ntot[1:n]
-                atmdict[:HDO][ihoriz][1:n] = vmr_hdo .* ntot[1:n]
+                atmdict[:H2O][ihoriz, 1:n] = vmr_h2o .* ntot[1:n]
+                atmdict[:HDO][ihoriz, 1:n] = vmr_hdo .* ntot[1:n]
             end
         end
     end
