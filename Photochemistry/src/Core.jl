@@ -787,27 +787,11 @@ function eval_rate_coef(
     eval_k = mk_function(:((Tn, Ti, Te, M) -> $krate))
 
     # Grab the temperature profiles for this column and drop the boundary layers
-    Tn_data = GV.Tn
-    Ti_data = GV.Ti
-    Te_data = GV.Te
-
-    # When get_volume_rates is called for a single column, Tn, Ti and Te may
-    # already be 1-D vectors. Support both cases gracefully.
-    if ndims(Tn_data) == 2
-        Tn_col = Tn_data[ihoriz, 2:end-1]
-        Ti_col = Ti_data[ihoriz, 2:end-1]
-        Te_col = Te_data[ihoriz, 2:end-1]
-    else
-        # The arrays already exclude boundary layers
-        Tn_col = Tn_data
-        Ti_col = Ti_data
-        Te_col = Te_data
-    end
-
+    # Temperature arrays are guaranteed to be 2D with shape [n_horiz, n_alt]
     return eval_k(
-        Tn_col,
-        Ti_col,
-        Te_col,
+        GV.Tn[ihoriz, 2:end-1],
+        GV.Ti[ihoriz, 2:end-1],
+        GV.Te[ihoriz, 2:end-1],
         sum([atmdict[sp][ihoriz] for sp in GV.all_species]),
     )
 end 
@@ -1066,8 +1050,7 @@ function update_Jrates!(n_cur_densities::Dict{Symbol, Vector{Array{ftype_ncur}}}
 
     Input:
         n_cur_densities: The present atmospheric state. This will be updated to include Jrates by this function.
-    n_cur_densities structure: 
-        Dict{Symbol, Vector{Array{ftype_ncur}}} (species -> [horizontal columns][altitudes])
+        n_cur_densities structure: Dict{Symbol, Vector{Array{ftype_ncur}}} (species -> [horizontal columns][altitudes])
     =#
 
     GV = values(globvars)
@@ -1121,18 +1104,6 @@ function update_Jrates!(n_cur_densities::Dict{Symbol, Vector{Array{ftype_ncur}}}
             end
         end
     end
-
-    # # Verify identical Jrates when horizontal transport is disabled
-    # if n_horiz > 1 && !GV.enable_horiz_transport
-    #     for j in GV.Jratelist
-    #         if haskey(n_cur_densities, j)
-    #             first = n_cur_densities[j][1]
-    #             for col in n_cur_densities[j][2:end]
-    #                 @assert isapprox(col, first; rtol=1e-8, atol=0.0) "Jrate mismatch across columns for $(j)"
-    #             end
-    #         end
-    #     end
-    # end
 end
 
 #===============================================================================#
