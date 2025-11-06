@@ -44,7 +44,7 @@ function make_jacobian(n, p, t)
 
     tlower, tup, tdown, tupper = update_transport_coefficients(GV.transport_species, # Species for which to update coefficients so it's not a mistake to pass it twice.
                                                                n_cur_all, D_arr, M, n_horiz; calc_nonthermal=nontherm, globvars...)
-                                                               # Tn, Tp, Hs_dict, bcdict=speciesbclist, 
+                                                               # Tn, Tp, Hs_dict, bcdict=speciesbclist_vert, 
                                                                # all_species, neutral_species, transport_species, molmass, n_alt_index, 
                                                                # polarizability, alt, num_layers, n_all_layers, dz, T_for_diff=Tprof_for_diffusion, q)
 

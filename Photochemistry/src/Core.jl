@@ -1570,15 +1570,15 @@ function boundaryconditions(fluxcoef_dict, atmdict, M; nonthermal=true, globvars
     =#
     
     GV = values(globvars)
-    required = [:all_species, :speciesbclist, :dz, :planet, :n_horiz]
+    required = [:all_species, :speciesbclist_vert, :dz, :planet, :n_horiz]
     check_requirements(keys(GV), required)
     
     n_horiz = GV.n_horiz
     bc_dict = Dict{Symbol, Vector{Array{ftype_ncur}}}([s=>[[0 0; 0 0] for ihoriz in 1:n_horiz] for s in GV.all_species])
 
-    for sp in keys(GV.speciesbclist)
-        try 
-            global these_bcs = GV.speciesbclist[sp]
+    for sp in keys(GV.speciesbclist_vert)
+        try
+            global these_bcs = GV.speciesbclist_vert[sp]
         catch KeyError
             println("No entry $(sp) in bcdict")
             continue
@@ -1899,7 +1899,7 @@ function Dcoef!(D_arr, T_arr, sp::Symbol, atmdict::Dict{Symbol, Vector{Array{fty
     GV = values(globvars)
     required = [
         :all_species, :molmass, :neutral_species, :n_alt_index, :polarizability,
-        :q, :speciesbclist, :use_ambipolar, :use_molec_diff, :n_horiz
+        :q, :speciesbclist_vert, :use_ambipolar, :use_molec_diff, :n_horiz
     ]
     check_requirements(keys(GV), required)
 
@@ -1936,15 +1936,15 @@ function Dcoef!(D_arr, T_arr, sp::Symbol, atmdict::Dict{Symbol, Vector{Array{fty
                     species_density .= atmdict[n][ihoriz]
 
                     # Optionally override with boundary condition if specified
-                    if haskey(GV.speciesbclist, n)
-                        if haskey(GV.speciesbclist[n], "n")
+                    if haskey(GV.speciesbclist_vert, n)
+                        if haskey(GV.speciesbclist_vert[n], "n")
                             # lower boundary
-                            if !isnan(GV.speciesbclist[n]["n"][ihoriz][1])
-                                species_density[1] = GV.speciesbclist[n]["n"][ihoriz][1]
+                            if !isnan(GV.speciesbclist_vert[n]["n"][ihoriz][1])
+                                species_density[1] = GV.speciesbclist_vert[n]["n"][ihoriz][1]
                             end
                             # upper boundary 
-                            if !isnan(GV.speciesbclist[n]["n"][ihoriz][2])
-                                species_density[end] = GV.speciesbclist[n]["n"][ihoriz][2]
+                            if !isnan(GV.speciesbclist_vert[n]["n"][ihoriz][2])
+                                species_density[end] = GV.speciesbclist_vert[n]["n"][ihoriz][2]
                             end
                         end
                     end
@@ -2341,7 +2341,7 @@ function update_diffusion_and_scaleH(
     =#
     GV = values(globvars)
     required = [
-        :all_species, :alt, :speciesbclist, :M_P, :molmass, :neutral_species,
+        :all_species, :alt, :speciesbclist_vert, :M_P, :molmass, :neutral_species,
         :n_alt_index, :polarizability, :planet, :R_P, :q, :Tn, :Tp,
         :Tprof_for_diffusion, :use_ambipolar, :use_molec_diff, :n_horiz
     ]
@@ -2449,7 +2449,7 @@ function update_transport_coefficients(
     =#
     GV = values(globvars)
     required = [
-        :all_species, :alt, :speciesbclist, :dz, :hot_H_network, :hot_H_rc_funcs, 
+        :all_species, :alt, :speciesbclist_vert, :dz, :hot_H_network, :hot_H_rc_funcs, 
         :hot_D_network, :hot_D_rc_funcs, :hot_H2_network, :hot_H2_rc_funcs,
         :hot_HD_network, :hot_HD_rc_funcs, :Hs_dict, :ion_species, :M_P, :molmass,
         :neutral_species, :non_bdy_layers, :num_layers, :n_all_layers, :n_alt_index,
@@ -2546,7 +2546,7 @@ function update_horiz_transport_coefficients(species_list, atmdict::Dict{Symbol,
     =#
 
     GV = values(globvars)
-    required = [:all_species, :alt, :speciesbclist, :dx, :hot_H_network, :hot_H_rc_funcs, :hot_D_network, :hot_D_rc_funcs,
+    required = [:all_species, :alt, :speciesbclist_vert, :dx, :hot_H_network, :hot_H_rc_funcs, :hot_D_network, :hot_D_rc_funcs,
                :hot_H2_network, :hot_H2_rc_funcs, :hot_HD_network, :hot_HD_rc_funcs, :Hs_dict,
                :ion_species, :M_P, :molmass, :neutral_species, :non_bdy_layers, :num_layers, :n_all_layers, :n_alt_index,
                :polarizability, :q, :R_P, :Tn, :Ti, :Te, :Tp, :Tprof_for_diffusion, :transport_species,

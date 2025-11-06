@@ -117,7 +117,7 @@ function evolve_atmosphere(atm_init::Dict{Symbol, Vector{Array{ftype_ncur}}}, lo
                                    :hot_H2_network, :hot_H2_rc_funcs, :hot_HD_network, :hot_HD_rc_funcs, :Hs_dict, 
                                    :inactive_species, :ion_species, :Jratelist, :logfile, :M_P, :molmass, :n_all_layers, :n_alt_index, :n_inactive, :n_steps, 
                                    :neutral_species, :non_bdy_layers, :num_layers, :plot_grid, :polarizability, :q, :R_P, :reaction_network, 
-                                   :season_length_in_sec, :sol_in_sec, :solarflux, :speciesbclist, :speciesbclist_horiz, :speciescolor, :speciesstyle, 
+                                   :season_length_in_sec, :sol_in_sec, :solarflux, :speciesbclist_vert, :speciesbclist_horiz, :speciescolor, :speciesstyle, 
                                    :Te, :Ti, :Tn, :Tp, :Tprof_for_diffusion, :transport_species, 
                                    :upper_lower_bdy_i, :zmax, :horiz_wind_v, :enable_horiz_transport])
         
@@ -205,7 +205,7 @@ function evolve_atmosphere(atm_init::Dict{Symbol, Vector{Array{ftype_ncur}}}, lo
 end
 
 function chemJmat(n_active_longlived, n_active_shortlived, n_inactive, Jrates, tup, tdown, tlower, tupper, tforwards, tbackwards, tfrontedge, tbackedge, M, E;
-                  check_eigen=false, globvars...)
+                  globvars...)
 
     #=
     Collects coordinate tuples of (I, J, V) [row index, column index, value] for a sparse matrix
@@ -221,8 +221,6 @@ function chemJmat(n_active_longlived, n_active_shortlived, n_inactive, Jrates, t
         tforwards, tbackwards, tfrontedge, tbackedge: Horizontal transport coefficients.
         M: Total density by altitude for each horizontal column.
         E: Electron density profile for each horizontal column.
-    optional input:
-        check_eigen: Checks eigenvalues of the jacobian if true.
     Output:
         Sparse matrix representing the chemical jacobian.
     =#              
@@ -428,7 +426,7 @@ function ratefn(n_active_longlived, n_active_shortlived, n_inactive, Jrates, tup
 
         # Overwrite water entries if required
         if remove_rates_flag && planet != "Venus"
-            if in(:H2O, GV.active_longlived) && in(:HDO, GV.active_longlived)
+            if all(sp->sp in GV.active_longlived, [:H2O, :HDO])
                 returnrates[GV.H2Oi, 1:GV.upper_lower_bdy_i, ihoriz] .= 0
                 returnrates[GV.HDOi, 1:GV.upper_lower_bdy_i, ihoriz] .= 0
             end
@@ -497,7 +495,7 @@ function converge(n_current::Dict{Symbol, Vector{Array{ftype_ncur}}}, log_t_star
                                    :Dcoef_arr_template, :dt_decr_factor, :dt_incr_factor, :dz, :dx, :e_profile_type, :error_checking_scheme, 
                                    :H2Oi, :HDOi, :Hs_dict, :inactive_species, :ion_species, :Jratelist, :logfile, :molmass, 
                                    :n_all_layers, :n_alt_index, :n_inactive, :n_steps, :neutral_species, :non_bdy_layers, :num_layers, 
-                                   :plot_grid, :polarizability, :q, :reaction_network, :season_length_in_sec, :sol_in_sec, :solarflux, :speciesbclist, :speciesbclist_horiz,
+                                   :plot_grid, :polarizability, :q, :reaction_network, :season_length_in_sec, :sol_in_sec, :solarflux, :speciesbclist_vert, :speciesbclist_horiz,
                                    :speciescolor, :speciesstyle, 
                                    :Te, :Ti, :Tn, :Tp, :timestep_type, :Tprof_for_diffusion, :upper_lower_bdy_i, :zmax, :horiz_wind_v, :enable_horiz_transport])
     
@@ -610,7 +608,6 @@ function converge(n_current::Dict{Symbol, Vector{Array{ftype_ncur}}}, log_t_star
                 goodsteps += 1
                 if goodsteps >= goodstep_limit
                     dt *= GV.dt_incr_factor
-                    # dt *= dt_incr_local
                     goodsteps = 0
                 end
             catch e
@@ -650,7 +647,7 @@ function get_rates_and_jacobian(n, p, t; globvars...)
                                    :hot_H2_network, :hot_H2_rc_funcs, :hot_HD_network, :hot_HD_rc_funcs,
                                    :inactive_species, :ion_species,  :Jratelist,
                                    :molmass, :neutral_species, :n_horiz, :non_bdy_layers, :num_layers, :n_all_layers, :n_alt_index, :n_inactive, 
-                                   :plot_grid, :polarizability, :q, :reaction_network, :solarflux, :speciesbclist, :speciesbclist_horiz, :speciescolor, :speciesstyle,
+                                   :plot_grid, :polarizability, :q, :reaction_network, :solarflux, :speciesbclist_vert, :speciesbclist_horiz, :speciescolor, :speciesstyle,
                                    :Tn, :Ti, :Te, :Tp, :Tprof_for_diffusion, :transport_species, :upper_lower_bdy_i, :zmax, :horiz_wind_v, :enable_horiz_transport])
 
     # Unpack the parameters ---------------------------------------------------------------
@@ -733,7 +730,7 @@ function next_timestep(nstart, params, t, dt; reltol=1e-2, abstol=1e-12, verbose
                                    :hot_H2_network, :hot_H2_rc_funcs, :hot_HD_network, :hot_HD_rc_funcs, :Hs_dict, 
                                    :inactive_species, :ion_species,  :Jratelist, :logfile, :molmass, 
                                    :n_all_layers, :n_alt_index, :n_inactive, :neutral_species, :non_bdy_layers, :num_layers, 
-                                   :plot_grid, :polarizability, :q, :reaction_network,  :speciesbclist, :speciesbclist_horiz, :speciescolor, :speciesstyle,
+                                   :plot_grid, :polarizability, :q, :reaction_network,  :speciesbclist_vert, :speciesbclist_horiz, :speciescolor, :speciesstyle,
                                    :Te, :Ti, :Tn, :Tp, :Tprof_for_diffusion, :upper_lower_bdy_i, :zmax, :horiz_wind_v, :enable_horiz_transport])
 
     # absolute and relative tolerance on rate update
@@ -967,7 +964,7 @@ function update!(n_current::Dict{Symbol, Vector{Array{ftype_ncur}}}, t, dt; abst
                                    :Dcoef_arr_template, :dz, :dx, :e_profile_type, :error_checking_scheme, :H2Oi, :HDOi, :Hs_dict, 
                                    :inactive_species, :ion_species, :Jratelist, :logfile, :molmass, 
                                    :n_all_layers, :n_alt_index, :n_inactive, :neutral_species, :non_bdy_layers, :num_layers, 
-                                   :plot_grid, :polarizability, :q, :reaction_network, :solarflux, :speciesbclist, :speciesbclist_horiz, :speciescolor, :speciesstyle,
+                                   :plot_grid, :polarizability, :q, :reaction_network, :solarflux, :speciesbclist_vert, :speciesbclist_horiz, :speciescolor, :speciesstyle,
                                    :Te, :Ti, :Tn, :Tp, :Tprof_for_diffusion, :upper_lower_bdy_i, :zmax, :horiz_wind_v, :enable_horiz_transport])
 
     # calculate total atmospheric density for each horizontal column separately
@@ -1110,9 +1107,9 @@ if adding_new_species==true
                     else 
                         throw(excep)
                     end
-                    if nn in keys(speciesbclist) 
-                        if "n" in keys(speciesbclist[nn])
-                            n_current[nn] = ones(num_layers) * speciesbclist[nn]["n"][1] #  use lower boundary density bc
+                    if nn in keys(speciesbclist_vert) 
+                        if "n" in keys(speciesbclist_vert[nn])
+                            n_current[nn] = ones(num_layers) * speciesbclist_vert[nn]["n"][1] #  use lower boundary density bc
                         else
                             n_current[nn] = zeros(num_layers)
                         end
@@ -1699,13 +1696,13 @@ println("$(Dates.format(now(), "(HH:MM:SS)")) Creating the simulation log file..
 
 # Boundary condition write out messages
 bc_type = Dict("n"=>"density", "f"=>"thermal flux", "v"=>"velocity", "ntf"=>"nonthermal flux")
-# for k in keys(speciesbclist)
-#     for k2 in keys(speciesbclist[k])
-#         push!(PARAMETERS_BCS, ("$(string(k))", "$(bc_type[string(k2)])", "$(speciesbclist[k][k2][1])", "$(speciesbclist[k][k2][2])")) 
-for sp in keys(speciesbclist)
-    for bctype in keys(speciesbclist[sp])
-        for ihoriz in 1:length(speciesbclist[sp][bctype])
-            vals = speciesbclist[sp][bctype][ihoriz]
+# for k in keys(speciesbclist_vert)
+#     for k2 in keys(speciesbclist_vert[k])
+#         push!(PARAMETERS_BCS, ("$(string(k))", "$(bc_type[string(k2)])", "$(speciesbclist_vert[k][k2][1])", "$(speciesbclist_vert[k][k2][2])")) 
+for sp in keys(speciesbclist_vert)
+    for bctype in keys(speciesbclist_vert[sp])
+        for ihoriz in 1:length(speciesbclist_vert[sp][bctype])
+            vals = speciesbclist_vert[sp][bctype][ihoriz]
             push!(PARAMETERS_BCS, (string(sp), bc_type[string(bctype)], ihoriz, vals[1], vals[2]))
         end
     end
@@ -1883,7 +1880,7 @@ try
                                  ion_species, inactive_species, Jratelist, logfile, M_P, molmass, monospace_choice, sansserif_choice,
                                  neutral_species, n_horiz, non_bdy_layers, num_layers, n_all_layers, n_alt_index, n_inactive, n_steps, 
                                  polarizability, planet, plot_grid, q, R_P, reaction_network, rshortcode, 
-                                 season_length_in_sec, sol_in_sec, solarflux, speciesbclist, speciesbclist_horiz, speciescolor, speciesstyle, horiz_wind_v,
+                                 season_length_in_sec, sol_in_sec, solarflux, speciesbclist_vert, speciesbclist_horiz, speciescolor, speciesstyle, horiz_wind_v,
                                  enable_horiz_transport, transportnet, transportnet_horiz,
                                  Tn=Tn_arr, Ti=Ti_arr, Te=Te_arr, Tp=Tplasma_arr, Tprof_for_diffusion, transport_species, opt="",
                                  upper_lower_bdy_i, use_ambipolar, use_molec_diff, zmax)
@@ -1933,7 +1930,7 @@ if problem_type == "SS"
                                  ion_species, Jratedict, molmass, neutral_species,
                                  non_bdy_layers, num_layers, n_all_layers, n_alt_index,
                                  polarizability, plot_grid, q, rshortcode, reaction_network,
-                                 speciesbclist, speciesbclist_horiz, Tn=Tn_arr, Ti=Ti_arr,
+                                 speciesbclist_vert, speciesbclist_horiz, Tn=Tn_arr, Ti=Ti_arr,
                                  Te=Te_arr, Tp=Tplasma_arr, Tprof_for_Hs, Tprof_for_diffusion,
                                  transport_species, upper_lower_bdy_i, upper_lower_bdy, zmax)
     end
@@ -1977,7 +1974,7 @@ elseif problem_type == "ODE"
                                          ion_species, Jratedict, molmass, neutral_species,
                                          non_bdy_layers, num_layers, n_all_layers, n_alt_index,
                                          polarizability, plot_grid, q, rshortcode, reaction_network,
-                                         speciesbclist, speciesbclist_horiz, Tn=Tn_arr, Ti=Ti_arr,
+                                         speciesbclist_vert, speciesbclist_horiz, Tn=Tn_arr, Ti=Ti_arr,
                                          Te=Te_arr, Tp=Tplasma_arr, Tprof_for_Hs, Tprof_for_diffusion,
                                          transport_species, upper_lower_bdy_i, upper_lower_bdy, zmax)
             end
@@ -2019,7 +2016,7 @@ elseif problem_type == "Gear"
                                  ion_species, Jratedict, M_P, molmass, monospace_choice,
                                  neutral_species, non_bdy_layers, num_layers, n_all_layers, n_alt_index,
                                  polarizability, planet, plot_grid, q, R_P, rshortcode, reaction_network,
-                                 sansserif_choice, speciesbclist, speciesbclist_horiz,
+                                 sansserif_choice, speciesbclist_vert, speciesbclist_horiz,
                                  Tn=Tn_arr, Ti=Ti_arr, Te=Te_arr, Tp=Tplasma_arr,
                                  Tprof_for_Hs, Tprof_for_diffusion, transport_species,
                                  upper_lower_bdy_i, upper_lower_bdy, use_ambipolar, use_molec_diff, zmax)

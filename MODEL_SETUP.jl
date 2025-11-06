@@ -402,10 +402,10 @@ const Hs_dict = Dict{Symbol, Vector{Vector{Float64}}}([sp => [scaleH(alt, sp, Tp
 # "see boundaryconditions()" -- nonthermal escape depends on the dynamic density of the
 # atmosphere, so it can't be imposed as a constant here and is calculated on the fly.
 # The default lists below give every column the same lower/upper values. Modify
-# `speciesbclist[sp][bc][ihoriz]` if a particular column should use different
+# `speciesbclist_vert[sp][bc][ihoriz]` if a particular column should use different
 # boundary values.
 if planet=="Mars"
-    const speciesbclist = Dict(
+    const speciesbclist_vert = Dict(
                         :CO2=>Dict("n"=>[[2.1e17, NaN] for _ in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
                         :Ar=>Dict("n"=>[[2.0e-2*2.1e17, NaN] for _ in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
                         :N2=>Dict("n"=>[[1.9e-2*2.1e17, NaN] for _ in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
@@ -443,7 +443,7 @@ elseif planet=="Venus"
     # Create 2D matrix for ntot at lower boundary (n_horiz × 1)
     ntot_at_lowerbdy_2d = reshape(ntot_at_lowerbdy, n_horiz, 1)
     const KoverH_lowerbdy = [Keddy([zmin], ntot_at_lowerbdy_2d, ihoriz; planet)[1]/scaleH_lowerboundary(zmin, Tn_arr[ihoriz, 1]; molmass, M_P, R_P, zmin) for ihoriz in 1:n_horiz]
-    const manual_speciesbclist=Dict(# major species neutrals at lower boundary (estimated from Fox&Sung 2001, Hedin+1985, agrees pretty well with VIRA)
+    const manual_speciesbclist_vert=Dict(# major species neutrals at lower boundary (estimated from Fox&Sung 2001, Hedin+1985, agrees pretty well with VIRA)
                                     :CO2=>Dict("n"=>[[CO2mr*ntot_at_lowerbdy[ihoriz], NaN] for ihoriz in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
                                     :Ar=>Dict("n"=>[[5e11, NaN] for _ in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
                                     :CO=>Dict("n"=>[[COmr*ntot_at_lowerbdy[ihoriz], NaN] for ihoriz in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
@@ -497,16 +497,16 @@ elseif planet=="Venus"
                                     );
 
     # add in downward mixing velocity boundary condition for all other species
-    auto_speciesbclist = Dict()
+    auto_speciesbclist_vert = Dict()
     for sp in all_species
-        if sp in keys(manual_speciesbclist)
-            auto_speciesbclist[sp] = manual_speciesbclist[sp]
-        else
-            auto_speciesbclist[sp] = Dict("v"=>[[-KoverH_lowerbdy[ihoriz], 0.0] for ihoriz in 1:n_horiz])
+        if sp in keys(manual_speciesbclist_vert)
+            auto_speciesbclist_vert[sp] = manual_speciesbclist_vert[sp]
+        else 
+            auto_speciesbclist_vert[sp] = Dict("v"=>[[-KoverH_lowerbdy[ihoriz], 0.0] for ihoriz in 1:n_horiz])
         end
     end
 
-    const speciesbclist = deepcopy(auto_speciesbclist)
+    const speciesbclist_vert = deepcopy(auto_speciesbclist_vert)
 end
 
 #                                     Boundary conditions (back edge and front edge)

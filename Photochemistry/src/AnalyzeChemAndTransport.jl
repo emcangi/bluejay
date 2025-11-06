@@ -362,7 +362,7 @@ function diffusion_timescale(s::Symbol, T_arr::Array, atmdict, n_horiz::Int64; g
     globvars = (globvars..., n_horiz=n_horiz)
     GV = globvars  # Use the NamedTuple directly to preserve field names
     required = [:all_species, :alt, :molmass, :M_P, :n_alt_index, :n_horiz, :neutral_species, :polarizability, :planet, :q, :R_P, 
-                :speciesbclist, :use_ambipolar, :use_molec_diff]
+                :speciesbclist_vert, :use_ambipolar, :use_molec_diff]
     check_requirements(keys(GV), required)
 
     # Get diffusion coefficient array template
@@ -427,7 +427,7 @@ function final_escape(thefolder, thefile, n_horiz::Int64; globvars...)
                                                                hot_H_network=GV.hHnet, hot_D_network=GV.hDnet, hot_H2_network=GV.hH2net, hot_HD_network=GV.hHDnet,
                                                                hot_H_rc_funcs=GV.hHrc, hot_D_rc_funcs=GV.hDrc, hot_H2_rc_funcs=GV.hH2rc, hot_HD_rc_funcs=GV.hHDrc, 
                                                                Hs_dict=vardict["Hs_dict"], ion_species=vardict["ion_species"], neutral_species=vardict["neutral_species"],
-                                                               speciesbclist=vardict["speciesbclist"],
+                                                               speciesbclist_vert=vardict["speciesbclist_vert"],
                                                                Tprof_for_Hs=vardict["Tprof_for_Hs"], Tprof_for_diffusion=vardict["Tprof_for_diffusion"], 
                                                                transport_species=vardict["transport_species"], 
                                                                Tn=vardict["Tn_arr"], Ti=vardict["Ti_arr"], Te=vardict["Te_arr"], Tp=vardict["Tplasma_arr"],
@@ -486,7 +486,7 @@ function get_transport_PandL_rate(sp::Symbol, atmdict::Dict{Symbol, Vector{Array
     globvars = (globvars..., n_horiz=n_horiz)
     GV = globvars  # Use the NamedTuple directly to preserve field names
     required = [:all_species, :alt, :dz, :Hs_dict, :molmass,  :n_alt_index, :n_horiz,
-                :neutral_species, :num_layers, :polarizability, :q, :speciesbclist, :Te, :Ti, :Tn, :Tp, 
+                :neutral_species, :num_layers, :polarizability, :q, :speciesbclist_vert, :Te, :Ti, :Tn, :Tp, 
                 :Tprof_for_Hs, :Tprof_for_diffusion, :transport_species, :use_ambipolar, :use_molec_diff]
     check_requirements(keys(GV), required)
 
@@ -586,7 +586,7 @@ function get_directional_fluxes(
 
     GV = values(globvars)
     required = [:all_species, :alt, :dz, :Hs_dict, :molmass, :n_alt_index,
-               :neutral_species, :num_layers, :polarizability, :q, :speciesbclist, :Te, :Ti, :Tn, :Tp, 
+               :neutral_species, :num_layers, :polarizability, :q, :speciesbclist_vert, :Te, :Ti, :Tn, :Tp, 
                :Tprof_for_Hs, :Tprof_for_diffusion, :transport_species, :use_ambipolar, :use_molec_diff]
     check_requirements(keys(GV), required)
 

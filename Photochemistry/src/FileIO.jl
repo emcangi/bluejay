@@ -255,7 +255,7 @@ function load_bcdict_from_paramdf(df)
     Assumes that the column names are 'Species', 'Type', 'Lower' and 'Upper.'
 
     Output:
-        speciesbclist_reconstructed: full speciesbclist dictionary object
+        speciesbclist_reconstructed: full speciesbclist_vert dictionary object
     =#
 
     # Some of the older runs might have just "flux" in the log, which really means thermal flux alone
@@ -404,7 +404,7 @@ function load_from_paramlog(folder; quiet=true, globvars...)
     end
    
     # Boundary conditions
-    speciesbclist = load_bcdict_from_paramdf(df_bcs);
+    speciesbclist_vert = load_bcdict_from_paramdf(df_bcs);
     
     vardict = Dict("DH"=>DH, 
                    "ions_included"=>ions_included,
@@ -422,7 +422,7 @@ function load_from_paramlog(folder; quiet=true, globvars...)
                    "Tprof_for_Hs"=>Tprof_for_Hs,
                    "Tprof_for_diffusion"=>Tprof_for_diffusion,
                    "Hs_dict"=>Hs_dict,
-                   "speciesbclist"=>speciesbclist,
+                   "speciesbclist_vert"=>speciesbclist_vert,
                    "rxn_spreadsheet"=>rxn_spreadsheet,
                    "Jratelist"=>Jratelist,
                    "non_bdy_layers"=>non_bdy_layers,

@@ -305,7 +305,7 @@ function plot_directional_flux(
     =#
     GV = values(globvars)
     required = [:all_species, :alt, :dz, :Hs_dict, :molmass, :n_alt_index, :neutral_species, :polarizability, :q, :plot_grid,
-                :speciesbclist, :Tn, :Ti, :Te, :Tp, :Tprof_for_Hs, :Tprof_for_diffusion, :transport_species]
+                :speciesbclist_vert, :Tn, :Ti, :Te, :Tp, :Tprof_for_Hs, :Tprof_for_diffusion, :transport_species]
     
     check_requirements(keys(GV), required)
     
@@ -456,7 +456,7 @@ function plot_Jrates(sp, atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}}, n_hor
 
     GV = values(globvars)
     required = [:all_species, :ion_species, :monospace_choice, :num_layers, :plot_grid, 
-                :reaction_network, :sansserif_choice, :speciesbclist, :Tn, :Ti, :Te]
+                :reaction_network, :sansserif_choice, :speciesbclist_vert, :Tn, :Ti, :Te]
     check_requirements(keys(GV), required)
 
     # Plot setup
@@ -525,7 +525,7 @@ function plot_net_volume_change(sp, atmdict; globvars...)
     required = [:all_species, :alt, :collision_xsect, :dz, :Hs_dict,  :hot_H_network, :hot_D_network, :hot_H2_network, :hot_HD_network, 
                  :hot_H_rc_funcs, :hot_D_rc_funcs, :hot_H2_rc_funcs, :hot_HD_rc_funcs,
                 :ion_species, :Jratedict, :molmass, :n_alt_index, :n_all_layers, :num_layers, :neutral_species, :non_bdy_layers, :polarizability, :q, 
-                :speciesbclist, :Tn, :Ti, :Te, :Tp, :Tprof_for_Hs, :Tprof_for_diffusion, :transport_species]
+                :speciesbclist_vert, :Tn, :Ti, :Te, :Tp, :Tprof_for_Hs, :Tprof_for_diffusion, :transport_species]
     
     check_requirements(keys(GV), required)
 
@@ -555,7 +555,7 @@ function plot_production_and_loss(final_atm, results_dir, thefolder, n_horiz::In
                :hot_H2_rc_funcs, :hot_HD_rc_funcs, :Hs_dict, :hot_H_network, :hot_D_network, :hot_H2_network, :hot_HD_network,
                :hrshortcode, :ion_species, :Jratedict, :molmass, :neutral_species, :non_bdy_layers, :nonthermal,
                :num_layers, :n_all_layers, :n_alt_index, :polarizability, :plot_grid, :q, :rshortcode, :reaction_network,
-               :speciesbclist, :Tn, :Ti, :Te, :Tp, :Tprof_for_Hs, :Tprof_for_diffusion, 
+               :speciesbclist_vert, :Tn, :Ti, :Te, :Tp, :Tprof_for_Hs, :Tprof_for_diffusion, 
                :transport_species, :upper_lower_bdy_i, :upper_lower_bdy, :zmax]
     check_requirements(keys(GV), required)
 
@@ -632,7 +632,7 @@ function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}},
     GV = values(globvars)
     required =  [:all_species, :alt, :chem_species, :dz, :hrshortcode, :Hs_dict, :ion_species, 
                  :molmass, :monospace_choice, :n_all_layers, :n_alt_index, :neutral_species, :num_layers, 
-                 :plot_grid, :polarizability, :q, :rshortcode, :reaction_network, :sansserif_choice, :speciesbclist, 
+                 :plot_grid, :polarizability, :q, :rshortcode, :reaction_network, :sansserif_choice, :speciesbclist_vert, 
                  :Te, :Ti, :Tn, :Tp, :Tprof_for_Hs, :Tprof_for_diffusion, :transport_species, 
                  :upper_lower_bdy, :upper_lower_bdy_i, :zmax]
     check_requirements(keys(GV), required)
@@ -1232,21 +1232,30 @@ function plot_temp_prof(Tprof_1; opt="", cols=[medgray, "xkcd:bright orange", "c
     end
 
     # plot the control temps
+    for ihoriz in 1:size(Tprof_1, 1)
+        Tn_1d = Tprof_1[ihoriz, :]
+        
+        # surface
+        ax.scatter(Tn_1d[1], 0, marker="o", color=medgray, zorder=10)
+        if ihoriz == 1  # Only label once to avoid clutter
+            ax.text(Tn_1d[1]+10, 0, "$(Int64(round(Tn_1d[1], digits=0))) K", color=medgray)
+        end
 
-    # Tn_1d = Tprof_1[1, :]
+        # mesosphere
+        meso_ind = findfirst(x->x==minimum(Tn_1d), Tn_1d)
+        if meso_ind !== nothing && meso_ind+5 <= length(GV.alt)
+            ax.scatter(Tn_1d[meso_ind], GV.alt[meso_ind+5]/1e5, marker="o", color=medgray, zorder=10)
+            if ihoriz == 1  # Only label once to avoid clutter
+                ax.text(Tn_1d[meso_ind]+5, GV.alt[meso_ind+5]/1e5, "$(Int64(round(Tn_1d[meso_ind], digits=0))) K", color=medgray)
+            end
+        end
 
-    # # surface
-    # ax.scatter(Tn_1d[1], 0, marker="o", color=medgray, zorder=10)
-    # ax.text(Tn_1d[1]+10, 0, #=L"\mathrm{T}_{\mathrm{surface}}"*=#"$(Int64(round(Tn_1d[1], digits=0))) K ")
-
-    # # mesosphere
-    # meso_ind = findfirst(x->x==minimum(Tn_1d), Tn_1d)
-    # ax.scatter(Tn_1d[meso_ind], GV.alt[meso_ind+5]/1e5, marker="o", color=medgray, zorder=10)
-    # ax.text(Tn_1d[meso_ind]+5, GV.alt[meso_ind+5]/1e5, #=L"\mathrm{T}_{\mathrm{meso}}"*=#"$(Int64(round(Tn_1d[meso_ind], digits=0))) K ")
-
-    # # exosphere
-    # ax.scatter(Tn_1d[end], 250, marker="o", color=medgray, zorder=10)
-    # ax.text(Tn_1d[end]*1.05, 240, #=L"\mathrm{T}_{\mathrm{exo}}"*=#"$(Int64(round(Tn_1d[end], digits=0))) K ")
+        # exosphere
+        ax.scatter(Tn_1d[end], 250, marker="o", color=medgray, zorder=10)
+        if ihoriz == 1  # Only label once to avoid clutter
+            ax.text(Tn_1d[end]*1.05, 240, "$(Int64(round(Tn_1d[end], digits=0))) K", color=medgray)
+        end
+    end
     
     # final labels
     ax.set_ylabel("Altitude [km]")
@@ -1620,7 +1629,7 @@ function top_mechanisms(x, sp, atmdict, p_or_r, n_horiz; savepath=nothing, filen
                 :n_alt_index, :reaction_network, :sansserif_choice, :Tn, :Ti, :Te, :dz, :zmax, :plot_grid]
     check_requirements(keys(GV), required)
 
-    for ihoriz in 1:n_horiz # MULTICOL loop to plot multiple vertical columns individually
+    for ihoriz in 1:n_horiz
     
         # String used for various labels
         rxntype = p_or_r == "product" ? "production" : "loss"
