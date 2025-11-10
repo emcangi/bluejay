@@ -667,14 +667,14 @@ function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}},
     end
 
     # Arrays to store the total reactions per second for this species of interest
-    total_prod_rate = zeros(GV.num_layers, n_horiz)
-    total_loss_rate = zeros(GV.num_layers, n_horiz)
+    total_prod_rate = zeros(n_horiz, GV.num_layers)
+    total_loss_rate = zeros(n_horiz, GV.num_layers)
 
     # Arrays to hold the total chemical production and loss 
-    total_chem_prod = zeros(GV.num_layers, n_horiz)
-    total_chem_loss = zeros(GV.num_layers, n_horiz)
-    total_chem_prod_ratecoef = zeros(GV.num_layers, n_horiz)
-    total_chem_loss_ratecoef = zeros(GV.num_layers, n_horiz)
+    total_chem_prod = zeros(n_horiz, GV.num_layers)
+    total_chem_loss = zeros(n_horiz, GV.num_layers)
+    total_chem_prod_ratecoef = zeros(n_horiz, GV.num_layers)
+    total_chem_loss_ratecoef = zeros(n_horiz, GV.num_layers)
 
     if sp in GV.chem_species
         # --------------------------------------------------------------------------------
@@ -696,11 +696,11 @@ function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}},
         )
         # Water is turned off in the lower atmosphere, so we should represent that.
         if sp in [:H2O, :HDO]
-	    for ihoriz in 1:n_horiz
-            	for (prod_k, loss_k) in zip(keys(rxd_prod), keys(rxd_loss))
+            for ihoriz in 1:n_horiz
+                for (prod_k, loss_k) in zip(keys(rxd_prod), keys(rxd_loss))
                     rxd_prod[prod_k][ihoriz][1:GV.upper_lower_bdy_i] .= NaN
                     rxd_loss[loss_k][ihoriz][1:GV.upper_lower_bdy_i] .= NaN
-		end
+                end
             end
         end
 
@@ -729,13 +729,13 @@ function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}},
             # Add up the total chemical production. Accounts for cases where species is produced more than once.
             prods = split(match(pat, kv[1])[1], " + ")
             num_created = count(i->(i==string(sp)), prods)
-	    for ihoriz in 1:n_horiz
-            	total_chem_prod[:, ihoriz] .+= num_created .* kv[2][ihoriz]
-	    end
+        for ihoriz in 1:n_horiz
+            total_chem_prod[ihoriz, :] .+= num_created .* kv[2][ihoriz]
+        end
         end
         for kv in rate_coefs_prod
-	        for ihoriz in 1:n_horiz
-                total_chem_prod_ratecoef[:, ihoriz] .+= vec(kv[2][ihoriz])
+            for ihoriz in 1:n_horiz
+                total_chem_prod_ratecoef[ihoriz, :] .+= vec(kv[2][ihoriz])
             end
         end
 
@@ -754,28 +754,28 @@ function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}},
                 end
             end
             # total_chem_loss += kv[2]
-            for ihoriz in 1:n_horiz
-                total_chem_loss[:, ihoriz] .+= kv[2][ihoriz]
+        for ihoriz in 1:n_horiz
+            total_chem_loss[ihoriz, :] .+= kv[2][ihoriz]
             end
         end
         for kv in rate_coefs_loss
-	    for ihoriz in 1:n_horiz
-            	total_chem_loss_ratecoef[:, ihoriz] .+= vec(kv[2][ihoriz])
-	    end
+            for ihoriz in 1:n_horiz
+                total_chem_loss_ratecoef[ihoriz, :] .+= vec(kv[2][ihoriz])
+            end
         end
 
         # Plot the totals
-	for ihoriz in 1:n_horiz
-            ax[1].semilogx(total_chem_prod[:, ihoriz], GV.plot_grid, color="xkcd:forest green", linestyle=(0, (4,2)), marker=9, markevery=20, linewidth=2, label="Total chemical production", zorder=5)
-            ax[1].semilogx(total_chem_loss[:, ihoriz], GV.plot_grid, color="xkcd:shamrock", linestyle=(0, (4,2)), marker=8, markevery=20, linewidth=2, label="Total chemical loss", zorder=5)
-        end
+    for ihoriz in 1:n_horiz
+        ax[1].semilogx(total_chem_prod[ihoriz, :], GV.plot_grid, color="xkcd:forest green", linestyle=(0, (4,2)), marker=9, markevery=20, linewidth=2, label="Total chemical production", zorder=5)
+        ax[1].semilogx(total_chem_loss[ihoriz, :], GV.plot_grid, color="xkcd:shamrock", linestyle=(0, (4,2)), marker=8, markevery=20, linewidth=2, label="Total chemical loss", zorder=5)
+    end
 
         # set the x lims for chem axis
-        prod_without_nans = [filter(x->!isnan(x), total_chem_prod[:, ihoriz]) for ihoriz in 1:n_horiz]
-        loss_without_nans = [filter(x->!isnan(x), total_chem_loss[:, ihoriz]) for ihoriz in 1:n_horiz]
-	minx[1] = minimum( minimum([[minimum(prod_without_nans[ihoriz]), minimum(loss_without_nans[ihoriz])] for ihoriz in 1:n_horiz]) )
-        maxx[1] = maximum( maximum([[maximum(prod_without_nans[ihoriz]), maximum(loss_without_nans[ihoriz])] for ihoriz in 1:n_horiz]) )
-        
+        prod_without_nans = [filter(x->!isnan(x), total_chem_prod[ihoriz, :]) for ihoriz in 1:n_horiz]
+        loss_without_nans = [filter(x->!isnan(x), total_chem_loss[ihoriz, :]) for ihoriz in 1:n_horiz]
+        minx[1] = minimum(minimum([[minimum(prod_without_nans[ihoriz]), minimum(loss_without_nans[ihoriz])] for ihoriz in 1:n_horiz]))
+        maxx[1] = maximum(maximum([[maximum(prod_without_nans[ihoriz]), maximum(loss_without_nans[ihoriz])] for ihoriz in 1:n_horiz]))
+
         # Fix for UserWarning: prevent non-positive xlim on log-scaled axis
         if minx[1] <= 0
             minx[1] = 1e-12  # Set to a small positive value
@@ -791,12 +791,12 @@ function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}},
             ax_1_2.tick_params(axis="x", labelcolor="xkcd:royal purple")
             ax_1_2.set_ylabel("Rate coefficient (cm^3/s)", color="xkcd:royal purple")
             for ihoriz in 1:n_horiz
-                ax_1_2.semilogx(total_chem_prod_ratecoef[:, ihoriz], GV.plot_grid,
-                    color="xkcd:royal purple", linestyle=":", linewidth=3,
-                    label="Total chemical production rate coef", zorder=6)
-                ax_1_2.semilogx(total_chem_loss_ratecoef[:, ihoriz], GV.plot_grid,
-                    color="xkcd:lavender", linestyle=":", linewidth=3,
-                    label="Total chemical loss rate coef", zorder=6)
+                ax_1_2.semilogx(total_chem_prod_ratecoef[ihoriz, :], GV.plot_grid,
+                                color="xkcd:royal purple", linestyle=":", linewidth=3,
+                                label="Total chemical production rate coef", zorder=6)
+                ax_1_2.semilogx(total_chem_loss_ratecoef[ihoriz, :], GV.plot_grid,
+                                color="xkcd:lavender", linestyle=":", linewidth=3,
+                                label="Total chemical loss rate coef", zorder=6)
             end
             ax_1_2.legend()
         end
@@ -818,18 +818,18 @@ function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}},
         # now separate into two different arrays for ease of addition.
         production_i = [transportPL[ihoriz] .>= 0 for ihoriz in 1:n_horiz]  # boolean array for where transport entries > 0 (production),
         loss_i = [transportPL[ihoriz] .< 0 for ihoriz in 1:n_horiz] # and for where transport entries < 0 (loss).
-        total_transport_prod = zeros(GV.num_layers, n_horiz)
-        total_transport_loss = zeros(GV.num_layers, n_horiz)
+        total_transport_prod = zeros(n_horiz, GV.num_layers)
+        total_transport_loss = zeros(n_horiz, GV.num_layers)
         for ihoriz in 1:n_horiz
-            total_transport_prod[:, ihoriz] = production_i[ihoriz] .* transportPL[ihoriz]
-            total_transport_loss[:, ihoriz] = loss_i[ihoriz] .* abs.(transportPL[ihoriz])
+            total_transport_prod[ihoriz, :] = production_i[ihoriz] .* transportPL[ihoriz]
+            total_transport_loss[ihoriz, :] = loss_i[ihoriz] .* abs.(transportPL[ihoriz])
         end
 
         if sp in [:H2O, :HDO] # Water is turned off in the lower atmosphere, so we should represent that.
-	    for ihoriz in 1:n_horiz
-            	total_transport_prod[1:GV.upper_lower_bdy_i, ihoriz] .= NaN
-            	total_transport_loss[1:GV.upper_lower_bdy_i, ihoriz] .= NaN
-            end
+        for ihoriz in 1:n_horiz
+            total_transport_prod[ihoriz, 1:GV.upper_lower_bdy_i] .= NaN
+            total_transport_loss[ihoriz, 1:GV.upper_lower_bdy_i] .= NaN
+        end
         end
 
         # set the x lims for transport axis. Special because total_transport_prod, and etc are incomplete arrays.
@@ -845,18 +845,18 @@ function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}},
 	maxx[2] = 10.0^(ceil(log10(transport_max)))
 
         # Plot the transport production and loss without the boundary layers
-	for ihoriz in 1:n_horiz
-            ax[2].scatter(total_transport_prod[:, ihoriz], GV.plot_grid, color="red", marker=9, label="Total gain this layer", zorder=4)
-            ax[2].scatter(total_transport_loss[:, ihoriz], GV.plot_grid, color="blue", marker=8, label="Total loss this layer", zorder=4)
-	end
+        for ihoriz in 1:n_horiz
+            ax[2].scatter(total_transport_prod[ihoriz, :], GV.plot_grid, color="red", marker=9, label="Total gain this layer", zorder=4)
+            ax[2].scatter(total_transport_loss[ihoriz, :], GV.plot_grid, color="blue", marker=8, label="Total loss this layer", zorder=4)
+        end
         ax[2].set_xscale("log")
 
         ax[2].legend(fontsize=12)
 
         plottitle_ext = " by chemistry & transport"
     else
-        total_transport_prod = zeros(GV.num_layers, n_horiz)
-        total_transport_loss = zeros(GV.num_layers, n_horiz)
+        total_transport_prod = zeros(n_horiz, GV.num_layers)
+        total_transport_loss = zeros(n_horiz, GV.num_layers)
         minx[2] = 0
         maxx[2] = 1
         ax[2].text(0.1, 225, "Vertical transport is off for $(sp).")
@@ -867,12 +867,12 @@ function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}},
     total_prod_rate = total_transport_prod .+ total_chem_prod
     total_loss_rate = total_transport_loss .+ total_chem_loss
 
-    prod_without_nans = [filter(x->!isnan(x), total_prod_rate[:, ihoriz]) for ihoriz in 1:n_horiz]
-    loss_without_nans = [filter(x->!isnan(x), total_loss_rate[:, ihoriz]) for ihoriz in 1:n_horiz]
+    prod_without_nans = [filter(x->!isnan(x), total_prod_rate[ihoriz, :]) for ihoriz in 1:n_horiz]
+    loss_without_nans = [filter(x->!isnan(x), total_loss_rate[ihoriz, :]) for ihoriz in 1:n_horiz]
 
     for ihoriz in 1:n_horiz
-    	ax[3].semilogx(total_prod_rate[:, ihoriz], GV.plot_grid, color="black", marker=9, markevery=15, linewidth=2, label="Total production", zorder=3) 
-    	ax[3].semilogx(total_loss_rate[:, ihoriz], GV.plot_grid, color="gray", marker=8, markevery=15, linewidth=2, label="Total loss", zorder=3)
+        ax[3].semilogx(total_prod_rate[ihoriz, :], GV.plot_grid, color="black", marker=9, markevery=15, linewidth=2, label="Total production", zorder=3)
+        ax[3].semilogx(total_loss_rate[ihoriz, :], GV.plot_grid, color="gray", marker=8, markevery=15, linewidth=2, label="Total loss", zorder=3)
     end
 
     minx[3] = minimum(minimum([[minimum(prod_without_nans[ihoriz]), minimum(loss_without_nans[ihoriz])] for ihoriz in 1:n_horiz]))
