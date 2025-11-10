@@ -1002,6 +1002,26 @@ function update!(n_current::Dict{Symbol, Vector{Array{ftype_ncur}}}, t, dt; abst
     return n_current
 end
 
+function enforce_uniform_water_columns!(n_current, n_horiz, enable_horiz_transport; species=(:H2O, :HDO), context="")
+    if enable_horiz_transport || n_horiz <= 1
+        return
+    end
+
+    note = isempty(context) ? "" : " ($context)"
+    for species_id in species
+        reference = n_current[species_id][1]
+        for ihoriz in 2:n_horiz
+            column = n_current[species_id][ihoriz]
+            if !all(column .== reference)
+                @warn "Water species $(species_id) in column $(ihoriz) differs from column 1 with horizontal transport disabled; resetting to column 1$(note)."
+                column .= reference
+            end
+        end
+    end
+
+    return
+end
+
 
 # **************************************************************************** #
 #                                                                              #
@@ -1055,34 +1075,8 @@ if make_new_alt_grid==true
 elseif make_new_alt_grid==false 
     println("$(Dates.format(now(), "(HH:MM:SS)")) Loading atmosphere")
     n_current = get_ncurrent(initial_atm_file)
-    if !enable_horiz_transport && n_horiz > 1
-        base_H2O = n_current[:H2O][1]
-        base_HDO = n_current[:HDO][1]
-        for ihoriz in 2:n_horiz
-            @assert all(n_current[:H2O][ihoriz] .== base_H2O) "Initial H2O profile in column $(ihoriz) differs from column 1 with horizontal transport disabled"
-            @assert all(n_current[:HDO][ihoriz] .== base_HDO) "Initial HDO profile in column $(ihoriz) differs from column 1 with horizontal transport disabled"
-        end
-            end
+    enforce_uniform_water_columns!(n_current, n_horiz, enable_horiz_transport; context="after loading initial atmosphere")
 end
-
-#                 Set the boundary altitude below which water is fixed          #
-#===============================================================================#
-H2Osatfrac = zeros(num_layers, n_horiz)
-for ihoriz in 1:n_horiz
-    H2Osatfrac[:, ihoriz] = H2Osat[2:end-1] ./ map(z -> n_tot(n_current, z, ihoriz; all_species, n_alt_index), alt[2:end-1]) # get SVP as fraction of total atmo
-end
-# interior altitude grid is used in multicolumn
-const upper_lower_bdy = alt[2:end-1][something(findfirst(isequal(minimum(H2Osatfrac[:, 1])), H2Osatfrac[:, 1]), 0)] # in cm
-const upper_lower_bdy_i = n_alt_index[upper_lower_bdy]  # the uppermost layer at which water will be fixed, in cm
-# Control whether the removal of rates etc at "Fixed altitudes" runs. If the boundary is 
-# the bottom of the atmosphere, we shouldn't do it at all.
-const remove_rates_flag = true
-if upper_lower_bdy == zmin
-    const remove_rates_flag = false 
-end
-# Add these to the logging dataframes
-push!(PARAMETERS_ALT_INFO, ("upper_lower_bdy", upper_lower_bdy, "cm", "Altitude at which water goes from being fixed to calculated"));
-push!(PARAMETERS_ALT_INFO, ("upper_lower_bdy_i", upper_lower_bdy_i, "", "Index of the line above within the alt grid"));
 
 #                       Establish new species profiles                          #
 #===============================================================================#
@@ -1226,6 +1220,24 @@ E = electron_density(n_current; e_profile_type, non_bdy_layers, ion_species, n_h
 
 #                          Set up the water profile                             #
 #===============================================================================#
+# Determine the boundary altitude below which water is fixed
+H2Osatfrac = zeros(num_layers, n_horiz)
+for ihoriz in 1:n_horiz
+    H2Osatfrac[:, ihoriz] = H2Osat[2:end-1] ./ map(z -> n_tot(n_current, z, ihoriz; all_species, n_alt_index), alt[2:end-1]) # get SVP as fraction of total atmo
+end
+# interior altitude grid is used in multicolumn
+const upper_lower_bdy = alt[2:end-1][something(findfirst(isequal(minimum(H2Osatfrac[:, 1])), H2Osatfrac[:, 1]), 0)] # in cm
+const upper_lower_bdy_i = n_alt_index[upper_lower_bdy]  # the uppermost layer at which water will be fixed, in cm
+# Control whether the removal of rates etc at "Fixed altitudes" runs. If the boundary is 
+# the bottom of the atmosphere, we shouldn't do it at all.
+const remove_rates_flag = true
+if upper_lower_bdy == zmin
+    const remove_rates_flag = false 
+end
+# Add these to the logging dataframes
+push!(PARAMETERS_ALT_INFO, ("upper_lower_bdy", upper_lower_bdy, "cm", "Altitude at which water goes from being fixed to calculated"));
+push!(PARAMETERS_ALT_INFO, ("upper_lower_bdy_i", upper_lower_bdy_i, "", "Index of the line above within the alt grid"));
+
 # If you want to completely wipe out the water profile and install the initial one
 # (i.e. when running a stand alone simulation)
 if reinitialize_water_profile
@@ -1249,18 +1261,9 @@ if reinitialize_water_profile
                                         sim_folder_name, speciescolor, speciesstyle, upper_lower_bdy_i, monospace_choice, sansserif_choice,
                                         n_horiz, enable_horiz_transport)
     end
-
-    if !enable_horiz_transport && n_horiz > 1
-        base_H2O = n_current[:H2O][1]
-        base_HDO = n_current[:HDO][1]
-        for ihoriz in 2:n_horiz
-            @assert all(n_current[:H2O][ihoriz] .== base_H2O) "Post-setup H2O profile in column $(ihoriz) differs from column 1 with horizontal transport disabled"
-            @assert all(n_current[:HDO][ihoriz] .== base_HDO) "Post-setup HDO profile in column $(ihoriz) differs from column 1 with horizontal transport disabled"
-        end
-    end
 end
 
-# check_n_tot_consistency(n_current)
+enforce_uniform_water_columns!(n_current, n_horiz, enable_horiz_transport; context="after water profile initialization")
 
 # If you want to just modify the water profile, i.e. when running several simulations
 # in succession to simulate seasons: 
@@ -1341,9 +1344,11 @@ if update_water_profile
     end
 end
 
+enforce_uniform_water_columns!(n_current, n_horiz, enable_horiz_transport; context="after water profile update")
+
 # Calculate precipitable microns, including boundary layers (assumed same as nearest bulk layer)
-H2Oprum = [precip_microns(:H2O, [n_current[:H2O][ihoriz][1]; n_current[:H2O][ihoriz]; n_current[:H2O][ihoriz][end]]; molmass, dz) for ihoriz in 1:n_horiz]
-HDOprum = [precip_microns(:HDO, [n_current[:HDO][ihoriz][1]; n_current[:HDO][ihoriz]; n_current[:HDO][ihoriz][end]]; molmass, dz) for ihoriz in 1:n_horiz]
+H2Oprum = [let col = n_current[:H2O][ihoriz]; precip_microns(:H2O, [col[1]; col; col[end]]; molmass, dz) end for ihoriz in 1:n_horiz]
+HDOprum = [let col = n_current[:HDO][ihoriz]; precip_microns(:HDO, [col[1]; col; col[end]]; molmass, dz) end for ihoriz in 1:n_horiz]
 
 #           Define storage for species/Jrates not solved for actively           #
 #===============================================================================#
@@ -1696,27 +1701,20 @@ println("$(Dates.format(now(), "(HH:MM:SS)")) Creating the simulation log file..
 
 # Boundary condition write out messages
 bc_type = Dict("n"=>"density", "f"=>"thermal flux", "v"=>"velocity", "ntf"=>"nonthermal flux")
-# for k in keys(speciesbclist_vert)
-#     for k2 in keys(speciesbclist_vert[k])
-#         push!(PARAMETERS_BCS, ("$(string(k))", "$(bc_type[string(k2)])", "$(speciesbclist_vert[k][k2][1])", "$(speciesbclist_vert[k][k2][2])")) 
-for sp in keys(speciesbclist_vert)
-    for bctype in keys(speciesbclist_vert[sp])
-        for ihoriz in 1:length(speciesbclist_vert[sp][bctype])
-            vals = speciesbclist_vert[sp][bctype][ihoriz]
+for (sp, entries) in speciesbclist_vert
+    for (bctype, profiles) in entries
+        for (ihoriz, vals) in enumerate(profiles)
             push!(PARAMETERS_BCS, (string(sp), bc_type[string(bctype)], ihoriz, vals[1], vals[2]))
         end
     end
 end
 
 bc_type_horiz = Dict("n"=>"density", "f"=>"flux", "v"=>"velocity")
-# for k in keys(speciesbclist_horiz)
-#     for k2 in keys(speciesbclist_horiz[k])
-#         push!(PARAMETERS_BCS_HORIZ, ("$(string(k))", "$(bc_type_horiz[string(k2)])", "$(speciesbclist_horiz[k][k2][1])", "$(speciesbclist_horiz[k][k2][2])")) 
-for sp in keys(speciesbclist_horiz)
-    for bctype in keys(speciesbclist_horiz[sp])
-        for ialt in 1:length(speciesbclist_horiz[sp][bctype][1])
-            back_edge = speciesbclist_horiz[sp][bctype][1][ialt]
-            front_edge = speciesbclist_horiz[sp][bctype][2][ialt]
+for (sp, entries) in speciesbclist_horiz
+    for (bctype, edges) in entries
+        back_series, front_series = edges
+        for (ialt, back_edge) in enumerate(back_series)
+            front_edge = front_series[ialt]
             push!(PARAMETERS_BCS_HORIZ, (string(sp), bc_type_horiz[string(bctype)], ialt, back_edge, front_edge))
         end
     end
@@ -1752,16 +1750,17 @@ plot_temp_prof(Tn_arr; savepath=results_dir*sim_folder_name, Tprof_2=Ti_arr, Tpr
 
 # Absolute tolerance
 if problem_type == "Gear"
-    const atol = 1e-12 # absolute tolerance in ppm, used by Gear solver # NOTE: I think this is actually #/cm³ not ppm, because n_i+1 - n_i is compared against it.--Eryn
+    # const atol = 1e-12 # absolute tolerance in ppm, used by Gear solver # NOTE: I think this is actually #/cm³ not ppm, because n_i+1 - n_i is compared against it.--Eryn
+    const atol = abs_tol
     const abs_tol_for_plot = [fill(atol, length(n_tot(n_current, ihoriz; all_species)))
                               for ihoriz in 1:n_horiz]
 else
     # absolute tolerance relative to total atmosphere density, used by DifferentialEquations.jl solvers
-    const atol = vcat([1e-12 .* [n_tot(n_current, a, ihoriz; n_alt_index, all_species)
-                                 for sp in active_longlived
-                                 for a in non_bdy_layers]
+    const atol = vcat([abs_tol .* [n_tot(n_current, a, ihoriz; n_alt_index, all_species)
+                                   for sp in active_longlived
+                                   for a in non_bdy_layers]
                        for ihoriz in 1:n_horiz]...)
-    const abs_tol_for_plot = [1e-12 .* n_tot(n_current, ihoriz; n_alt_index, all_species)
+    const abs_tol_for_plot = [abs_tol .* n_tot(n_current, ihoriz; n_alt_index, all_species)
                               for ihoriz in 1:n_horiz]
 end
     
@@ -1818,7 +1817,7 @@ if ftype_ncur==Double64
     find_nonfinites(nstart, collec_name="nstart")
 
     # Set up parameters
-    Dcoef_arr_template = [zeros(size(Tn_arr)) for ihoriz in 1:n_horiz] # For making diffusion coefficient calculation go faster
+    Dcoef_arr_template = [zeros(size(Tn_arr)) for _ in 1:n_horiz]
     params = [#inactive, inactive_species, active_species, active_longlived, active_shortlived, Tn_arr, Ti_arr, Te_arr, Tplasma_arr,
               Dcoef_arr_template, M, E]
     params_exjac = deepcopy(params)  # I think this is so the Dcoef doesn't get filled in with the wrong info?
@@ -1865,7 +1864,7 @@ xlsx_parameter_log = "$(results_dir)$(sim_folder_name)/PARAMETERS.xlsx"
 ti = time()
 println("$(Dates.format(now(), "(HH:MM:SS)")) Beginning convergence")
 
-Dcoef_arr_template = [zeros(size(Tn_arr)) for ihoriz in 1:n_horiz] # initialize diffusion coefficient array
+Dcoef_arr_template = [zeros(size(Tn_arr)) for _ in 1:n_horiz] # initialize diffusion coefficient array
 
 atm_soln = Dict()
 
