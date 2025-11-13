@@ -14,13 +14,13 @@
 
 # Set the planet 
 # =======================================================================================================
-const planet = "Mars"
+const planet = "Venus"
     # OPTIONS: "Mars", "Venus"
 
 # Input and output files, directory
 # =======================================================================================================
 const results_dir = code_dir*"../Results_$(planet)/"
-const initial_atm_file = "$(planet)-Inputs/INITIAL_GUESS_MARS_bxz4YnHk.h5"  # File to use to initialize the atmosphere.
+const initial_atm_file = "$(planet)-Inputs/INITIAL_GUESS_VENUS_oUT0ZbGN.h5"  # File to use to initialize the atmosphere.
     # OPTIONS: 
     # INITIAL_GUESS_MARS.h5 --> Basic Mars starting file.
     # INITIAL_GUESS_MARS_bxz4YnHk.h5 --> A Mars atmosphere that includes N2O, NO2, and their ions;
@@ -212,6 +212,7 @@ const n_horiz = 2
 # For day-night transport setups (n_horiz=2), use larger values for physically realistic transport rates.
 # Day-night transport (n_horiz=2): Use 19000e5 cm (19,000 km, approx. Venus semi-circumference) for Venus.
 const horiz_column_width = planet == "Venus" ? 19000e5 : 10000e5  # 19,000 km for Venus, 10,000 km for Mars
+# Altitude-dependent width? (arc length at each altitude) const horiz_column_width_profile = π .* (R_P .+ alt); Update the code to use horiz_column_width_profile[ialt] TODO
 
 # Horizontal transport timescale in hours. This determines the wind speed via: wind_speed = horiz_column_width / (timescale * 3600)
 # For Venus: 23-44 hours corresponds to 230-120 m/s wind speeds
@@ -226,3 +227,52 @@ const horiz_wind_speed = horiz_transport_timescale > 0 ? horiz_column_width / (h
 # the model does not compute any cross-column mixing, matching the behaviour of
 # the single-column set-up even when multiple columns are present.
 const enable_horiz_transport = true
+
+# =======================================================================================================
+# Horizontal Column Scenario Configuration
+# =======================================================================================================
+# Define the characteristics of each horizontal column
+# Each entry specifies: temperature scenario, solar zenith angle, and optional boundary condition modifiers
+#
+# Available Texo_key options (from Texo_opts in MODEL_SETUP.jl):
+#   Mars: "min-P2", "mean-P2", "max-P2", "min-P3", "mean-P3", "max-P3"
+#   Venus: "min", "mean", "max"
+#
+# SZA notes: When SZA > 90°, the sun is below the horizon and solar flux will be set to zero
+
+const horiz_column_scenario = if n_horiz == 1
+    # Single column: standard uniform setup
+    [
+        Dict("name" => "uniform",
+             "Texo_key" => planet == "Venus" ? "mean" : "mean-P2",      # Options: "min", "mean", "max", "min-P2", "mean-P2", "max-P2", etc.
+             "SZA" => SZA)              # Solar zenith angle (degrees)
+    ]
+elseif planet == "Venus" && n_horiz == 2
+    # Venus day-night test: 2 columns
+    [
+        Dict("name" => "day",
+             "Texo_key" => "mean",
+             "SZA" => 60.0),            # Dayside solar zenith angle
+        Dict("name" => "night",
+             "Texo_key" => "min",
+             "SZA" => 120.0)            # Nightside: SZA > 90° means zero solar flux
+    ]
+elseif planet == "Mars" && n_horiz == 2
+    # Mars day-night test: 2 columns
+    [
+        Dict("name" => "day",
+             "Texo_key" => "mean-P2",
+             "SZA" => 45.0),
+        Dict("name" => "night",
+             "Texo_key" => "min-P2",
+             "SZA" => 110.0)            # Nightside: SZA > 90° means zero solar flux
+    ]
+else
+    # Default: replicate uniform conditions across all columns
+    [Dict("name" => "col_$i",
+          "Texo_key" => planet == "Venus" ? "mean" : "mean-P2",
+          "SZA" => SZA) for i in 1:n_horiz]
+end
+
+# Validate that the scenario matches n_horiz
+@assert length(horiz_column_scenario) == n_horiz "horiz_column_scenario must have exactly n_horiz=$n_horiz entries, but got $(length(horiz_column_scenario))"

@@ -2234,8 +2234,12 @@ function fluxcoefs_horiz(
 
                 if GV.enable_horiz_transport
                     if behind_idx >= 1
+                        # Arithmetic Mean
                         K_back = (K[ihoriz][ialt] + K[behind_idx][ialt]) / 2
                         D_back = (D[s][ihoriz][ialt] + D[s][behind_idx][ialt]) / 2
+                        # Harmonic Mean
+                        # K_back = 2 / (1/K[ihoriz][ialt] + 1/K[behind_idx][ialt])
+                        # D_back = 2 / (1/D[s][ihoriz][ialt] + 1/D[s][behind_idx][ialt])
                         diff_back = (K_back + D_back) / GV.dx^2
                     end
 

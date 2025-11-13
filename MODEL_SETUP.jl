@@ -229,14 +229,6 @@ const Texo_inclusive_opts = Dict("inclusive-ap"=>175.,
 const Tsurf = Dict("Mars"=>230., "Venus"=>735.)
 const Tmeso = Dict("Mars"=>130., "Venus"=>170.)
 
-# VENUS Day-Night TEST: Day/night control temperatures for Venus columns
-# const Tsurf_day   = Tsurf[planet]
-# const Tmeso_day   = Tmeso[planet]
-# const Texo_day    = Texo_opts[planet]["mean"]
-# const Tsurf_night = Tsurf[planet]
-# const Tmeso_night = Tmeso[planet]
-# const Texo_night  = Texo_opts[planet]["min"]
-
 # Create the temperature profile control array
 const controltemps = [Tsurf[planet], Tmeso[planet], Texo_opts[planet]["mean"]]
 if planet=="Venus"
@@ -277,34 +269,38 @@ elseif planet == "Venus"
                            "Venus-Inputs/FoxandSung2001_temps_mike.txt"; alt=alt)
 end
 
-# VENUS Day-Night TEST: Construct separate day and night temperature profiles
-# local T_day_dict
-# local T_night_dict
-# if planet == "Mars"
-#     T_day_dict   = T_Mars(controltemps[1], controltemps[2], controltemps[3]; alt=alt)
-#     T_night_dict = T_day_dict
-# elseif planet == "Venus"
-#     T_day_dict   = T_Venus(Tsurf_day, Tmeso_day, Texo_day,
-#                            "Venus-Inputs/FoxandSung2001_temps_mike.txt"; alt=alt)
-#     T_night_dict = T_Venus(Tsurf_night, Tmeso_night, Texo_night,
-#                            "Venus-Inputs/FoxandSung2001_temps_mike.txt"; alt=alt)
-# end
+# Build 2-D temperature arrays based on column scenario configuration
+if n_horiz == 1
+    # Single column: use the standard approach
+    const Tn_arr = repeat(T_array_dict["neutrals"]', n_horiz, 1)
+    const Ti_arr = repeat(T_array_dict["ions"]', n_horiz, 1)
+    const Te_arr = repeat(T_array_dict["electrons"]', n_horiz, 1)
+else
+    # Multi-column: construct temperature profiles for each column based on scenario
+    Tn_arr_temp = zeros(n_horiz, num_layers+2)
+    Ti_arr_temp = similar(Tn_arr_temp)
+    Te_arr_temp = similar(Tn_arr_temp)
 
-# Build 2-D temperature arrays by repeating the single-column profile across columns
-const Tn_arr = repeat(T_array_dict["neutrals"]', n_horiz, 1)
-const Ti_arr = repeat(T_array_dict["ions"]',     n_horiz, 1)
-const Te_arr = repeat(T_array_dict["electrons"]', n_horiz, 1)
+    for ihoriz in 1:n_horiz
+        scenario = horiz_column_scenario[ihoriz]
+        Texo_col = Texo_opts[planet][scenario["Texo_key"]]
 
-# VENUS Day-Night TEST: Build 2-D temperature arrays
-# const Tn_arr = zeros(n_horiz, num_layers+2)
-# const Ti_arr = similar(Tn_arr)
-# const Te_arr = similar(Tn_arr)
-# Tn_arr[1,:] .= T_day_dict["neutrals"]
-# Ti_arr[1,:] .= T_day_dict["ions"]
-# Te_arr[1,:] .= T_day_dict["electrons"]
-# Tn_arr[2,:] .= T_night_dict["neutrals"]
-# Ti_arr[2,:] .= T_night_dict["ions"]
-# Te_arr[2,:] .= T_night_dict["electrons"]
+        if planet == "Venus"
+            T_col_dict = T_Venus(Tsurf[planet], Tmeso[planet], Texo_col,
+                                 "Venus-Inputs/FoxandSung2001_temps_mike.txt"; alt=alt)
+        elseif planet == "Mars"
+            T_col_dict = T_Mars(Tsurf[planet], Tmeso[planet], Texo_col; alt=alt)
+        end
+
+        Tn_arr_temp[ihoriz, :] .= T_col_dict["neutrals"]
+        Ti_arr_temp[ihoriz, :] .= T_col_dict["ions"]
+        Te_arr_temp[ihoriz, :] .= T_col_dict["electrons"]
+    end
+
+    const Tn_arr = Tn_arr_temp
+    const Ti_arr = Ti_arr_temp
+    const Te_arr = Te_arr_temp
+end
 
 const Tplasma_arr = Ti_arr .+ Te_arr;
 # A comment on the plasma temperature: It's more rightly defined as (Te + Ti)/2, and comes into play in the diffusion
@@ -443,8 +439,14 @@ elseif planet=="Venus"
     # Create 2D matrix for ntot at lower boundary (n_horiz × 1)
     ntot_at_lowerbdy_2d = reshape(ntot_at_lowerbdy, n_horiz, 1)
     const KoverH_lowerbdy = [Keddy([zmin], ntot_at_lowerbdy_2d, ihoriz; planet)[1]/scaleH_lowerboundary(zmin, Tn_arr[ihoriz, 1]; molmass, M_P, R_P, zmin) for ihoriz in 1:n_horiz]
+    # VENUS Day-Night TEST: Distinguish lower boundary CO2 densities for day (column 1) and night (column 2)
+    # const CO2_lowerbdy = (planet == "Venus" && n_horiz == 2) ?
+    #     [CO2mr * 9.5e15, CO2mr * 9.3e15] :
+    #     [CO2mr * ntot_at_lowerbdy[ihoriz] for ihoriz in 1:n_horiz]
+
     const manual_speciesbclist_vert=Dict(# major species neutrals at lower boundary (estimated from Fox&Sung 2001, Hedin+1985, agrees pretty well with VIRA)
                                     :CO2=>Dict("n"=>[[CO2mr*ntot_at_lowerbdy[ihoriz], NaN] for ihoriz in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
+                                    # :CO2=>Dict("n"=>[[CO2_lowerbdy[ihoriz], NaN] for ihoriz in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
                                     :Ar=>Dict("n"=>[[5e11, NaN] for _ in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
                                     :CO=>Dict("n"=>[[COmr*ntot_at_lowerbdy[ihoriz], NaN] for ihoriz in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
                                     :O2=>Dict("n"=>[[O2mr*ntot_at_lowerbdy[ihoriz], NaN] for ihoriz in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),

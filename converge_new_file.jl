@@ -672,11 +672,16 @@ function get_rates_and_jacobian(n, p, t; globvars...)
     # Update Jrates
     n_cur_all = compile_ncur_all(n, n_short, GV.n_inactive; GV.active_longlived, GV.active_shortlived, GV.inactive_species, GV.num_layers, GV.n_horiz)
 
-    update_Jrates!(n_cur_all; GV.Jratelist, GV.crosssection, GV.num_layers, GV.absorber, GV.dz, GV.solarflux, GV.n_horiz, enable_horiz_transport=GV.enable_horiz_transport)
-    # VENUS Day-Night TEST
-    # update_Jrates!(n_cur_all, n_horiz; Jratelist=GV.Jratelist, crosssection=GV.crosssection,
-    #                 num_layers=GV.num_layers, absorber=GV.absorber, dz=GV.dz,
-    #                 solarflux=solarflux_cols, enable_horiz_transport=GV.enable_horiz_transport)
+    local solarflux_arg = GV.solarflux isa AbstractVector ? GV.solarflux : [GV.solarflux for _ in 1:GV.n_horiz]
+    update_Jrates!(n_cur_all;
+                    Jratelist=GV.Jratelist,
+                    crosssection=GV.crosssection,
+                    num_layers=GV.num_layers,
+                    absorber=GV.absorber,
+                    dz=GV.dz,
+                    solarflux=solarflux_arg,
+                    n_horiz=GV.n_horiz,
+                    enable_horiz_transport=GV.enable_horiz_transport)
 
     # copy all the Jrates into an external dictionary for storage
     for jr in GV.Jratelist                # time for this is ~0.000005 s
@@ -989,11 +994,16 @@ function update!(n_current::Dict{Symbol, Vector{Array{ftype_ncur}}}, t, dt; abst
     n_current = compile_ncur_all(nend, n_short, GV.n_inactive; GV.active_longlived, GV.active_shortlived, GV.inactive_species, GV.num_layers, GV.n_horiz)
 
     # ensure Jrates are included in n_current
-    update_Jrates!(n_current; GV.Jratelist, GV.crosssection, GV.num_layers, GV.absorber, GV.dz, GV.solarflux, GV.n_horiz, enable_horiz_transport=GV.enable_horiz_transport)
-    # VENUS Day-Night TEST
-    # update_Jrates!(n_current, n_horiz; Jratelist=GV.Jratelist, crosssection=GV.crosssection,
-    #                num_layers=GV.num_layers, absorber=GV.absorber, dz=GV.dz,
-    #                solarflux=solarflux_cols, enable_horiz_transport=GV.enable_horiz_transport)
+    local solarflux_arg = GV.solarflux isa AbstractVector ? GV.solarflux : [GV.solarflux for _ in 1:GV.n_horiz]
+    update_Jrates!(n_current;
+                   Jratelist=GV.Jratelist,
+                   crosssection=GV.crosssection,
+                   num_layers=GV.num_layers,
+                   absorber=GV.absorber,
+                   dz=GV.dz,
+                   solarflux=solarflux_arg,
+                   n_horiz=GV.n_horiz,
+                   enable_horiz_transport=GV.enable_horiz_transport)
 
     # Optionally adjust Jrates per horizontal column (commented out)
     # solarflux_multipliers = [1.0, 0.5, 2.0]
@@ -1658,20 +1668,28 @@ const crosssection = populate_xsect_dict(photochem_data_files, xsecfolder; ion_x
 #                                SOLAR INPUT                                   #
 #                                                                              #
 # **************************************************************************** #
-solarflux = readdlm(code_dir*solarfile,'\t', Float64, comments=true, comment_char='#')[1:2000,:]
-solarflux[:,2] = solarflux[:,2] * cosd(SZA)  # Adjust the flux according to specified SZA
-# VENUS Day-Night TEST: Compute column-specific solar fluxes
-# solarflux_base = readdlm(code_dir*solarfile,'\t', Float64, comments=true, comment_char='#')[1:2000,:]
-# const SZA_day   = SZA
-# const SZA_night = 120
-# solarflux_day   = deepcopy(solarflux_base); solarflux_day[:,2]  .*= cosd(SZA_day)
-# solarflux_night = deepcopy(solarflux_base); solarflux_night[:,2] .= 0.0
-# solarflux_cols  = [solarflux_day, solarflux_night]
-# const solarflux = solarflux_cols
+solarflux_base = readdlm(code_dir*solarfile,'\t', Float64, comments=true, comment_char='#')[1:2000,:]
+
+# Build column-specific solar flux arrays based on scenario configuration
+solarflux_per_column = []
+for ihoriz in 1:n_horiz
+    scenario = horiz_column_scenario[ihoriz]
+    solarflux_col = deepcopy(solarflux_base)
+
+    # Apply solar zenith angle from scenario
+    # When SZA > 90°, sun is below horizon and flux should be zero
+    if scenario["SZA"] > 90.0
+        solarflux_col[:,2] .= 0.0  # Zero flux for nightside
+    else
+        solarflux_col[:,2] .*= cosd(scenario["SZA"])
+    end
+
+    push!(solarflux_per_column, solarflux_col)
+end
 
 # pad all cross-sections to solar
 for j in Jratelist, ihoriz in 1:n_horiz, ialt in 1:length(alt)
-    crosssection[j][ihoriz][ialt] = padtosolar(solarflux, crosssection[j][ihoriz][ialt])
+    crosssection[j][ihoriz][ialt] = padtosolar(solarflux_per_column[ihoriz], crosssection[j][ihoriz][ialt])
 end
 
 update_Jrates!(n_current;
@@ -1680,9 +1698,8 @@ update_Jrates!(n_current;
                num_layers=num_layers,
                absorber=absorber,
                dz=dz,
-               solarflux=solarflux,
                n_horiz=n_horiz,
-            #    solarflux=solarflux_cols, # VENUS Day-Night TEST
+               solarflux=solarflux_per_column,
                enable_horiz_transport=enable_horiz_transport)
 # NOTE: The stored Jrates will have units of #/s.
 const external_storage = Dict{Symbol, Vector{Array{Float64}}}(
@@ -1877,9 +1894,9 @@ try
                                  hot_H_network, hot_H_rc_funcs, hot_D_network, hot_D_rc_funcs, hot_H2_network, hot_H2_rc_funcs, hot_HD_network, hot_HD_rc_funcs,
                                  hrshortcode, Hs_dict,
                                  ion_species, inactive_species, Jratelist, logfile, M_P, molmass, monospace_choice, sansserif_choice,
-                                 neutral_species, n_horiz, non_bdy_layers, num_layers, n_all_layers, n_alt_index, n_inactive, n_steps, 
-                                 polarizability, planet, plot_grid, q, R_P, reaction_network, rshortcode, 
-                                 season_length_in_sec, sol_in_sec, solarflux, speciesbclist_vert, speciesbclist_horiz, speciescolor, speciesstyle, horiz_wind_v,
+                                 neutral_species, n_horiz, non_bdy_layers, num_layers, n_all_layers, n_alt_index, n_inactive, n_steps,
+                                 polarizability, planet, plot_grid, q, R_P, reaction_network, rshortcode,
+                                 season_length_in_sec, sol_in_sec, solarflux=solarflux_per_column, speciesbclist_vert, speciesbclist_horiz, speciescolor, speciesstyle, horiz_wind_v,
                                  enable_horiz_transport, transportnet, transportnet_horiz,
                                  Tn=Tn_arr, Ti=Ti_arr, Te=Te_arr, Tp=Tplasma_arr, Tprof_for_diffusion, transport_species, opt="",
                                  upper_lower_bdy_i, use_ambipolar, use_molec_diff, zmax)
