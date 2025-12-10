@@ -283,7 +283,7 @@ else
 
     for ihoriz in 1:n_horiz
         scenario = horiz_column_scenario[ihoriz]
-        Texo_col = Texo_opts[planet][scenario["Texo_key"]]
+        Texo_col = haskey(scenario, "Texo_override") ? scenario["Texo_override"] : Texo_opts[planet][scenario["Texo_key"]]
 
         if planet == "Venus"
             T_col_dict = T_Venus(Tsurf[planet], Tmeso[planet], Texo_col,
@@ -295,6 +295,18 @@ else
         Tn_arr_temp[ihoriz, :] .= T_col_dict["neutrals"]
         Ti_arr_temp[ihoriz, :] .= T_col_dict["ions"]
         Te_arr_temp[ihoriz, :] .= T_col_dict["electrons"]
+
+        # Nightside scaling: keep dayside as-is (use file profile), scale down nightside upper-atmosphere
+        if planet == "Venus" && scenario["SZA"] > 90
+            # Scale temperatures above 90 km so the exobase matches the requested Texo_col
+            upper_idxs = findall(z -> z >= 90e5, alt)
+            if !isempty(upper_idxs)
+                scale_factor = Texo_col / Tn_arr_temp[ihoriz, upper_idxs[end]]
+                Tn_arr_temp[ihoriz, upper_idxs] .*= scale_factor
+                Ti_arr_temp[ihoriz, upper_idxs] .*= scale_factor
+                Te_arr_temp[ihoriz, upper_idxs] .*= scale_factor
+            end
+        end
     end
 
     const Tn_arr = Tn_arr_temp
@@ -321,10 +333,13 @@ const Tprof_for_Hs = Dict("neutral"=>Tn_arr, "ion"=>Ti_arr)
 # =======================================================================================================
 # Construct horizontal wind profiles for each column.  Each profile is an
 # array over altitude with values in cm/s.  The wind speed is taken from the
-# user-configurable parameter `horiz_wind_speed` in `INPUT_PARAMETERS.jl`.
+# user-configurable parameters in `INPUT_PARAMETERS.jl`.
 # Setting that value to zero disables horizontal advection.
 
-const horiz_wind_v = [fill(horiz_wind_speed, length(alt)) for ihoriz in 1:n_horiz]
+const horiz_wind_v_neutral = [fill(horiz_wind_speed_neutral, length(alt)) for ihoriz in 1:n_horiz]
+const horiz_wind_v_ion     = [fill(horiz_wind_speed_ion, length(alt)) for ihoriz in 1:n_horiz]
+# Legacy alias for code paths that have not yet been split; defaults to neutral profile.
+const horiz_wind_v = horiz_wind_v_neutral
 
 # Construct horizontal wind profiles by setting negative below the switch altitude and positive above
 # switch_alt = 140e5               # altitude in cm where winds reverse (~140 km)
@@ -431,6 +446,7 @@ elseif planet=="Venus"
     O2mr = 3e-3
     COmr = 4.5e-6
     CO2mr = 0.965
+    CO2mr_per_column = [get(horiz_column_scenario[ihoriz], "CO2_lowerbdy_vmr", CO2mr) for ihoriz in 1:n_horiz]
     # Krasnopolsky, 2010a: 400ppb at 74km in altitude, actual number likely lower 
     # (either 4.0E-7 or 4.8E-7); Zhang 2012: 3.66e-7
     HClmr = 3.66e-7
@@ -439,14 +455,10 @@ elseif planet=="Venus"
     # Create 2D matrix for ntot at lower boundary (n_horiz × 1)
     ntot_at_lowerbdy_2d = reshape(ntot_at_lowerbdy, n_horiz, 1)
     const KoverH_lowerbdy = [Keddy([zmin], ntot_at_lowerbdy_2d, ihoriz; planet)[1]/scaleH_lowerboundary(zmin, Tn_arr[ihoriz, 1]; molmass, M_P, R_P, zmin) for ihoriz in 1:n_horiz]
-    # VENUS Day-Night TEST: Distinguish lower boundary CO2 densities for day (column 1) and night (column 2)
-    # const CO2_lowerbdy = (planet == "Venus" && n_horiz == 2) ?
-    #     [CO2mr * 9.5e15, CO2mr * 9.3e15] :
-    #     [CO2mr * ntot_at_lowerbdy[ihoriz] for ihoriz in 1:n_horiz]
+    # Distinguish lower boundary CO2 densities per column via CO2mr_per_column and ntot_at_lowerbdy
 
     const manual_speciesbclist_vert=Dict(# major species neutrals at lower boundary (estimated from Fox&Sung 2001, Hedin+1985, agrees pretty well with VIRA)
-                                    :CO2=>Dict("n"=>[[CO2mr*ntot_at_lowerbdy[ihoriz], NaN] for ihoriz in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
-                                    # :CO2=>Dict("n"=>[[CO2_lowerbdy[ihoriz], NaN] for ihoriz in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
+                                    :CO2=>Dict("n"=>[[CO2mr_per_column[ihoriz]*ntot_at_lowerbdy[ihoriz], NaN] for ihoriz in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
                                     :Ar=>Dict("n"=>[[5e11, NaN] for _ in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
                                     :CO=>Dict("n"=>[[COmr*ntot_at_lowerbdy[ihoriz], NaN] for ihoriz in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
                                     :O2=>Dict("n"=>[[O2mr*ntot_at_lowerbdy[ihoriz], NaN] for ihoriz in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
@@ -708,7 +720,17 @@ push!(PARAMETERS_ALT_INFO, ("num_layers", num_layers, "", "Number of discretized
 
 # Atmospheric conditions.
 PARAMETERS_CONDITIONS = DataFrame(Field=[], Value=[], Unit=[]);
-push!(PARAMETERS_CONDITIONS, ("SZA", SZA, "deg"));
+# Log SZA: single value for single column, per-column values for multi-column
+if n_horiz == 1
+    push!(PARAMETERS_CONDITIONS, ("SZA", SZA, "deg"));
+else
+    # Log per-column SZA values
+    for ihoriz in 1:n_horiz
+        scenario = horiz_column_scenario[ihoriz]
+        col_name = haskey(scenario, "name") ? scenario["name"] : "col_$ihoriz"
+        push!(PARAMETERS_CONDITIONS, ("SZA_$col_name", scenario["SZA"], "deg"));
+    end
+end
 push!(PARAMETERS_CONDITIONS, ("TSURF", controltemps[1], "K"));
 push!(PARAMETERS_CONDITIONS, ("TMESO", controltemps[2], "K"));
 push!(PARAMETERS_CONDITIONS, ("TEXO", controltemps[3], "K"));

@@ -217,11 +217,16 @@ const horiz_column_width = planet == "Venus" ? 19000e5 : 10000e5  # 19,000 km fo
 # Horizontal transport timescale in hours. This determines the wind speed via: wind_speed = horiz_column_width / (timescale * 3600)
 # For Venus: 23-44 hours corresponds to 230-120 m/s wind speeds
 # For Mars: Set to 0 for no horizontal transport
-const horiz_transport_timescale = planet == "Venus" ? 30.0 : 0.0  # 30 hours for Venus, 0 for Mars
+const horiz_transport_timescale = planet == "Venus" ? 30.0 : 0.0  # Baseline shared value (hours)
+# Split neutral/ion timescales to reflect faster ion coupling on Venus (literature: ~10–20 h ions, ~20–40 h neutrals)
+const horiz_transport_timescale_neutral = planet == "Venus" ? 30.0 : horiz_transport_timescale
+const horiz_transport_timescale_ion = planet == "Venus" ? 15.0 : horiz_transport_timescale
 
 # Horizontal wind speed in cm/s calculated from timescale: wind_speed = width / (timescale * 3600)
 # This is used to initialize wind profiles in `MODEL_SETUP.jl`
 const horiz_wind_speed = horiz_transport_timescale > 0 ? horiz_column_width / (horiz_transport_timescale * 3600) : 0.0
+const horiz_wind_speed_neutral = horiz_transport_timescale_neutral > 0 ? horiz_column_width / (horiz_transport_timescale_neutral * 3600) : 0.0
+const horiz_wind_speed_ion = horiz_transport_timescale_ion > 0 ? horiz_column_width / (horiz_transport_timescale_ion * 3600) : 0.0
 
 # Whether to allow horizontal transport between columns. When set to `false`
 # the model does not compute any cross-column mixing, matching the behaviour of
@@ -233,7 +238,9 @@ const enable_horiz_transport = true
 # =======================================================================================================
 # Define the characteristics of each horizontal column
 # Each entry specifies: temperature scenario, solar zenith angle, and optional boundary condition modifiers
-#
+# Optional keys:
+#   Texo_override (numeric K) overrides Texo_key for that column
+#   CO2_lowerbdy_vmr sets a per-column lower boundary CO2 mixing ratio
 # Available Texo_key options (from Texo_opts in MODEL_SETUP.jl):
 #   Mars: "min-P2", "mean-P2", "max-P2", "min-P3", "mean-P3", "max-P3"
 #   Venus: "min", "mean", "max"
@@ -251,11 +258,15 @@ elseif planet == "Venus" && n_horiz == 2
     # Venus day-night test: 2 columns
     [
         Dict("name" => "day",
-             "Texo_key" => "mean",
-             "SZA" => 60.0),            # Dayside solar zenith angle
+             "Texo_key" => "max",       # Keeps the key for reference; Texo_override below is applied when present
+             "Texo_override" => 340.0,  # Dayside Texo (K); typical VTGCM/VTS3 dayside 320–360 K
+             "CO2_lowerbdy_vmr" => 0.965,
+             "SZA" => 0.0),             # Subsolar: SZA = 0° (maximum solar flux)
         Dict("name" => "night",
              "Texo_key" => "min",
-             "SZA" => 120.0)            # Nightside: SZA > 90° means zero solar flux
+             "Texo_override" => 210.0,  # Nightside Texo (K); typical nightside 180–230 K
+             "CO2_lowerbdy_vmr" => 0.960,
+             "SZA" => 180.0)            # Anti-solar: SZA = 180° (no solar flux)
     ]
 elseif planet == "Mars" && n_horiz == 2
     # Mars day-night test: 2 columns

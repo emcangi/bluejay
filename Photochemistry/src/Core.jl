@@ -2210,7 +2210,9 @@ function fluxcoefs_horiz(
     check_requirements(keys(GV), required)
 
     n_horiz = GV.n_horiz
-    horiz_wind_v = GV.horiz_wind_v
+    # Allow separate wind profiles for neutrals and ions; fall back to the shared profile if not provided.
+    horiz_wind_v_neutral = :horiz_wind_v_neutral in keys(GV) ? GV.horiz_wind_v_neutral : GV.horiz_wind_v
+    horiz_wind_v_ion     = :horiz_wind_v_ion in keys(GV)     ? GV.horiz_wind_v_ion     : GV.horiz_wind_v
     
     # the return dictionary: Each species has 2 entries for every layer of the atmosphere.
     # fluxcoef_horiz_dict = Dict{Symbol, Vector{Array{ftype_ncur}}}([s=>[fill(0., GV.n_all_layers, 2) for ihoriz in 1:n_horiz] for s in species_list])
@@ -2220,6 +2222,9 @@ function fluxcoefs_horiz(
     )
 
     for s in species_list
+        # Select wind profile by charge type
+        wind_profile = charge_type(s) == "ion" ? horiz_wind_v_ion : horiz_wind_v_neutral
+
         for ihoriz in 1:n_horiz
             if cyclic
                 behind_idx  = ihoriz == 1        ? n_horiz : ihoriz - 1
@@ -2251,9 +2256,9 @@ function fluxcoefs_horiz(
                 end
 
                 # Calculate velocities at the interfaces for proper upwind scheme
-                v_local = horiz_wind_v[ihoriz][ialt]
-                v_front = infront_idx <= n_horiz ? horiz_wind_v[infront_idx][ialt] : 0.0
-                v_back  = behind_idx >= 1     ? horiz_wind_v[behind_idx][ialt]  : 0.0
+                v_local = wind_profile[ihoriz][ialt]
+                v_front = infront_idx <= n_horiz ? wind_profile[infront_idx][ialt] : 0.0
+                v_back  = behind_idx >= 1     ? wind_profile[behind_idx][ialt]  : 0.0
 
                 # Interface velocities (average of adjacent cell velocities)
                 v_interface_front = (v_local + v_front) / 2  # Velocity at interface i+½
