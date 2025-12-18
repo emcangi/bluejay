@@ -1164,23 +1164,6 @@ else # Allows zeroing out the atmosphere even if not adding new species. Can be 
     end
 end
 
-#                 Set the boundary altitude below which water is fixed          #
-#===============================================================================#
-
-H2Osatfrac = H2Osat ./ map(z->n_tot(n_current, z; all_species, n_alt_index), alt)  # get SVP as fraction of total atmo
-const upper_lower_bdy = alt[something(findfirst(isequal(minimum(H2Osatfrac)), H2Osatfrac), 0)] # in cm
-const upper_lower_bdy_i = n_alt_index[upper_lower_bdy]  # the uppermost layer at which water will be fixed, in cm
-# Control whether the removal of rates etc at "Fixed altitudes" runs. If the boundary is 
-# the bottom of the atmosphere, we shouldn't do it at all.
-const remove_rates_flag = true
-if upper_lower_bdy == zmin
-    const remove_rates_flag = false 
-end
-# Add these to the logging dataframes
-push!(PARAMETERS_ALT_INFO, ("upper_lower_bdy", upper_lower_bdy, "cm", "Altitude at which water goes from being fixed to calculated"));
-push!(PARAMETERS_ALT_INFO, ("upper_lower_bdy_i", upper_lower_bdy_i, "", "Index of the line above within the alt grid"));
-
-
 #                        Initialize electron profile                            #
 #===============================================================================#
 E = electron_density(n_current; e_profile_type, non_bdy_layers, ion_species)
