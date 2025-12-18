@@ -129,7 +129,6 @@ end
 # Chemistry and transport participants
 # -------------------------------------------------------------------
 if converge_which == "neutrals"
-    println("Note: Still removing nitrogen neutrals from the converged species. May want to change this.")
     append!(no_chem_species, union(conv_ions[planet], N_neutrals)) # This is because the N chemistry is highly coupled to the ions.
     append!(no_transport_species, union(conv_ions[planet], N_neutrals, short_lived_species))
 elseif converge_which == "ions"
@@ -384,7 +383,7 @@ elseif planet=="Venus"
                                     :HCl=>Dict("n"=>[5.59e8, NaN]), # RHAPS
                                                      # 3.66e-7 * ntot_at_lowerbdy # standard value, per Simon
                                     :DCl=>Dict("n"=>[DH*5.59e8, NaN]), # RHAPS
-                                                     # DH*3.66e-7 # standard value, per Simon
+                                                     # DH*3.66e-7 *ntot_at_lower_bdy # standard value, per Simon
                                                      # 190*SMOW*3.66e-7  # Maybe from Krasnopolsky's paper? not sure if it's been run
 
                                     #Denis A. Belyaev 2012: this was 0.1 ppmv at 165–170 K to 0.5–1 ppmv at 190–192 K; It said 0.1ppm was related to the most common temperature reading so I went with that (this is either 1E-7 or 6.79E-8 depending on the calculation)
