@@ -309,13 +309,6 @@ elseif planet=="Venus"
     end
 end
 
-# Whether to install a whole new water profile or just use the initial guess with modifications (for seasonal model)
-if planet=="Venus"
-    const reinitialize_water_profile = venus_special_water==true ? true : false
-elseif planet=="Mars"
-    const reinitialize_water_profile = seasonal_cycle==true ? false : true # should be off if trying to run simulations for seasons
-end
-
 const update_water_profile = seasonal_cycle==true ? true : false # this is for modifying the profile during cycling, MAY be fixed?
 const modified_water_alts = "below fixed point"
 

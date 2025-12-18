@@ -104,6 +104,15 @@ const water_loc = "mesosphere" # Location to modify water abundance, if selectin
 
 # VENUS OPTIONS:
 const venus_special_water = false# true
+const reinitialize_water_profile = false
+# Whether to install a whole new water profile or just use the initial guess with modifications (for seasonal model)
+if planet=="Venus"
+    reinitialize_water_profile = venus_special_water==true ? true : false
+elseif planet=="Mars"
+    reinitialize_water_profile = seasonal_cycle==true ? false : true # should be off if trying to run simulations for seasons
+end
+
+
 # MARS DUST OPTIONS:
 const dust_storm_on = false  # This adds a parcel of water at some altitude, sort of like if there was a dust storm. Haven't published on this.
     # OPTIONS: True, false
