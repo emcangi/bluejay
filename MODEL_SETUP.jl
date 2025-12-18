@@ -369,7 +369,7 @@ elseif planet=="Venus"
     # Simon's notes: Belyaev 2012: this was 0.1 ppmv at 165–170 K to 0.5–1 ppmv at 190–192 K; 
     # It said 0.1ppm was related to the most common temperature reading so I went with that 
     # (this is either 1E-7 or 6.79E-8 depending on the calculation)
-    N2mr = 0.32 # RHAPS and standard 
+    N2mr = 0.032 # RHAPS and standard 
     H2SO4mr = 3e-9 # RHAPS
     O2mr = 3e-3 # RHAPS and standard 
     COmr = 4.5e-6 # RHAPS and standard

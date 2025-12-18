@@ -139,7 +139,25 @@ const converge_which = "both"
 #                       They should already have a density vector in your initial guess file. 
 #                       Typically you won't need to change these at each run, UNLESS you added new species 
 #                       on the previous run.
-const new_neutrals = [];
+
+# new_neutrals = [:CO2] # v0.1
+# new_neutrals = [:Ar, :CO,  
+#                  :Cl, :ClO, :ClCO, :HCl, :DCl,  # Chlorine species
+#                  :H, :D, :H2, :HD, :H2O, :HDO,  # H and D species
+#                  :HO2, :DO2,        
+#                  :H2O2, :HDO2, :HOCO, :DOCO, 
+#                  :N2,
+#                  :O, :O1D, :O2, :O3, :OH, :OD,
+#                  :S, :SO, :SO2, :SO3, :H2SO4, :HDSO4 # Sulfur species];
+#                 ] # v0.2
+# new_neutrals = [:N, :NO, :Nup2D, :N2O, :NO2]; # v0.4
+# new_neutrals = [:C, :HCO, :DCO]; # v0.5
+new_neutrals = [];
+
+# const new_ions = [:CO2pl, :O2pl, :Opl, :HCOpl, :DCOpl, :HCO2pl, :DCO2pl]; # v0.3
+# const new_ions = [:Arpl, :ArHpl, :ArDpl, :COpl, :Cpl, :CHpl, :Dpl, :DOCpl, :Hpl, 
+#                    :H2pl, :HDpl, :H3pl, :H2Dpl, :H2Opl, :HDOpl, :H3Opl, :H2DOpl, :HO2pl, :HOCpl, :HNOpl, 
+#                    :Npl, :NHpl, :N2pl, :N2Hpl, :N2Dpl, :NOpl, :N2Opl, :NO2pl, :OHpl, :ODpl]; # v0.4
 const new_ions = [];
 
 const conv_neutrals = Dict("Mars"=>[:Ar, :C, :CO, :CO2, # Argon and carbon species
