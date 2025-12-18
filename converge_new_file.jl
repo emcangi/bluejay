@@ -322,9 +322,9 @@ function chemJmat(n_active_longlived, n_active_shortlived, n_inactive, Jrates, t
     # When it is active, this finds all the H2O and HDO indices for the lower atmosphere. 
     # It's like above where we add (ialt-1)*length(active_species), but this way it's outside the loop.
     if remove_rates_flag == true 
-        if planet=="Venus"
-            throw("Not supposed to delete things from water rates for Venus")
-        end
+        # if planet=="Venus"
+        #     throw("Not supposed to delete things from water rates for Venus")
+        # end
         if in(:H2O, GV.active_longlived) && in(:HDO, GV.active_longlived)
             H2Opositions = GV.H2Oi .+ length(GV.active_longlived)*collect(0:GV.upper_lower_bdy_i-1)
             HDOpositions = GV.HDOi .+ length(GV.active_longlived)*collect(0:GV.upper_lower_bdy_i-1)
@@ -417,9 +417,9 @@ function ratefn(n_active_longlived, n_active_shortlived, n_inactive, Jrates, tup
     # NEW: Overwrite the entries for water in the lower atmosphere with 0s so that it will behave as fixed.
     # Only runs when water is in the active_species list. If neutrals are set to inactive, it will be taken care of already.
     if remove_rates_flag == true # This won't run for Venus
-        if planet=="Venus"
-            throw("Not supposed to run for Venus")
-        end
+        # if planet=="Venus"
+        #     throw("Not supposed to run for Venus")
+        # end
         if in(:H2O, GV.active_longlived) && in(:HDO, GV.active_longlived)
             returnrates[GV.H2Oi, 1:GV.upper_lower_bdy_i] .= 0
             returnrates[GV.HDOi, 1:GV.upper_lower_bdy_i] .= 0
@@ -1010,7 +1010,7 @@ end
 # PLOT EDDY _---___------------------------
 # SPECIAL CASE: PLot eddy diffusion to check it.
 if occursin("rhaps", solar_scenario)
-    println("Plotting eddy diffusion for making sure I'm not dumb")
+    println("Plotting eddy diffusion")
     fig, ax = subplots()
     if use_mahieux2021==true 
         Karr = Keddy(non_bdy_layers, [1]; planet, use_mahieux2021=true)
