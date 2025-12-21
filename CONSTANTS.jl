@@ -5,7 +5,7 @@
 # 
 # Eryn Cangi
 # Created November 2021
-# Currently tested for Julia: 1.11.2
+# Currently tested for Julia: 1.12.3
 ################################################################################
 
 #                              Universal constants

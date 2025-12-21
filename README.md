@@ -32,7 +32,7 @@ Things bluejay does not do at this time:
 
 ## Installation 
 
-bluejay is currently up-to-date with Julia 1.11.2. It will likely work with newer versions, but it has not yet been tested. 
+bluejay is currently up-to-date with Julia 1.12.3. It will likely work with newer versions, but it has not yet been tested. 
 
 At this time, there are no compiled binaries. The model is provided as a collection of modules (under the Photochemistry module) and related scripts. To install, simply ensure that Julia is installed in the location of your choice and added to your environment $PATH variable, and fork the repo. The root directory of the model must contain:
 
