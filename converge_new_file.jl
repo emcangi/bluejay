@@ -1236,7 +1236,7 @@ for ihoriz in 1:n_horiz
     H2Osatfrac[:, ihoriz] = H2Osat[2:end-1] ./ map(z -> n_tot(n_current, z, ihoriz; all_species, n_alt_index), alt[2:end-1]) # get SVP as fraction of total atmo
 end
 # interior altitude grid is used in multicolumn
-const upper_lower_bdy = alt[2:end-1][something(findfirst(isequal(minimum(H2Osatfrac[:, 1])), H2Osatfrac[:, 1]), 0)] # in cm
+const upper_lower_bdy = alt[2:end-1][argmin(H2Osatfrac[:, 1])] # in cm - use argmin for robustness against floating-point precision issues
 const upper_lower_bdy_i = n_alt_index[upper_lower_bdy]  # the uppermost layer at which water will be fixed, in cm
 # Control whether the removal of rates etc at "Fixed altitudes" runs. If the boundary is 
 # the bottom of the atmosphere, we shouldn't do it at all.

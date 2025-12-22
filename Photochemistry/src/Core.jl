@@ -2788,8 +2788,8 @@ function setup_water_profile!(atmdict; constfrac=1, dust_storm_on=false, make_sa
             for ihoriz in 1:GV.n_horiz
                 H2Oppm = 1e-6*map(z->GV.H2O_excess .* exp(-((z-GV.ealt)/sigma)^2), GV.non_bdy_layers/1e5) + H2Oinitfrac_all[ihoriz]
                 HDOppm = 1e-6*map(z->GV.HDO_excess .* exp(-((z-GV.ealt)/sigma)^2), GV.non_bdy_layers/1e5) + HDOinitfrac_all[ihoriz]
-                atmdict[:H2O][ihoriz, 1:GV.upper_lower_bdy_i] = (H2Oppm .* n_tot(atmdict, ihoriz; GV.n_alt_index, GV.all_species))[1:GV.upper_lower_bdy_i]
-                atmdict[:HDO][ihoriz, 1:GV.upper_lower_bdy_i] = (HDOppm .* n_tot(atmdict, ihoriz; GV.all_species))[1:GV.upper_lower_bdy_i]
+                atmdict[:H2O][ihoriz][1:GV.upper_lower_bdy_i] = (H2Oppm .* n_tot(atmdict, ihoriz; GV.n_alt_index, GV.all_species))[1:GV.upper_lower_bdy_i]
+                atmdict[:HDO][ihoriz][1:GV.upper_lower_bdy_i] = (HDOppm .* n_tot(atmdict, ihoriz; GV.all_species))[1:GV.upper_lower_bdy_i]
             end
         end
     elseif GV.planet=="Venus"
@@ -2811,8 +2811,8 @@ function setup_water_profile!(atmdict; constfrac=1, dust_storm_on=false, make_sa
 
             for ihoriz in 1:GV.n_horiz
                 ntot = ntot_all[ihoriz]
-                atmdict[:H2O][ihoriz, 1:n] = vmr_h2o .* ntot[1:n]
-                atmdict[:HDO][ihoriz, 1:n] = vmr_hdo .* ntot[1:n]
+                atmdict[:H2O][ihoriz][1:n] = vmr_h2o .* ntot[1:n]
+                atmdict[:HDO][ihoriz][1:n] = vmr_hdo .* ntot[1:n]
             end
         end
     end
