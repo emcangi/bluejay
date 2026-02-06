@@ -20,12 +20,12 @@ const planet = "Venus"
 # Input and output files, directory
 # =======================================================================================================
 const rhapscase = 2 # Change each time
-const results_dir = "/home/emc/Insync/OneDrive-CU/Research/Photochemistry/Results_$(planet)/RHAPS/Dec2025/Case$(rhapscase)/" # NewAtmDensity/"#  For making a new atmosphere: NewAtmDensity/
-const initial_atm_file = results_dir*"finishedatms/atmv0.4_mostions.h5" # "/home/emc/GITREPOS/bluejay/Venus-Inputs/INITIAL_GUESS_VENUS_oUT0ZbGN.h5" # 
+const results_dir = "/home/emc/Insync/OneDrive-CU/Research/Photochemistry/Results_$(planet)/RHAPS/Jan2026/Case$(rhapscase)/" # NewAtmDensity/"#  For making a new atmosphere: NewAtmDensity/
+const initial_atm_file = "/home/emc/GITREPOS/bluejay/$(planet)-Inputs/INITIAL_GUESS_VENUS_RHAPS_v2.h5"
     # Folder for making a new atmosphere: code_dir*"../Results_$(planet)/RHAPS/NewAtmDensity/StartingFiles/atmv0.5_allin.h5"# 
     # normal: "$(planet)-Inputs/INITIAL_GUESS_VENUS_RHAPS_v2.h5" 
     # ---- CONVERGING A NEW ATMOSPHERE FROM SCRATCH ----
-    # Recommended to use the following file names:
+    # Recommended to use the following file names and store in finishedatms/:
     # 1. atmv0.1_co2.h5: a CO2-only atmosphere converged with diffusion on and no chemistry.
     # 2. atmv0.2_neutrals.h5: Neutrals that don't include nitrogen, and N2, but no other nitrogen neutrals. Converged "neutrals" with chemistry and diffusion.
     # 3. atmv0.3_ions.h5: atmosphere with the basic ionosphere added in. converged "ions" with chemistry. 
@@ -48,8 +48,8 @@ const reaction_network_spreadsheet = code_dir*"$(planet)-Inputs/REACTION_NETWORK
 
 # Descriptive attributes of this model run
 # =======================================================================================================
-const optional_logging_note = "RHAPS Case $(rhapscase): updated spectra, updated BCs, corrected N2" # Brief summary of simulation goal
-const results_version = "v0.5"  # Helps keep track of attempts if you need to keep changing things
+const optional_logging_note = "RHAPS Case $(rhapscase): updated spectra, updated BCs (Jan2026), corrected N2" # Brief summary of simulation goal
+const results_version = "v0.1"  # Helps keep track of attempts if you need to keep changing things
 
 # Set the modifiable atmospheric parameters
 # =======================================================================================================
