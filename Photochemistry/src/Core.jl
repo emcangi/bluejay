@@ -1806,6 +1806,8 @@ function boundaryconditions_horiz(
     check_requirements(keys(GV), required)
     
     n_horiz = GV.n_horiz
+    dx_profile_bulk = get(GV, :horiz_column_width_profile_bulk, fill(GV.dx, GV.num_layers))
+    @assert length(dx_profile_bulk) == GV.num_layers "horiz_column_width_profile_bulk must have length num_layers=$(GV.num_layers)"
     horiz_wind_v = GV.horiz_wind_v
     bc_dict_horiz = Dict{Symbol, Vector{Array{ftype_ncur}}}(
         [s => [fill(0.0, 2, 2) for ialt in 1:GV.num_layers] for s in GV.all_species]
@@ -1823,8 +1825,9 @@ function boundaryconditions_horiz(
                     try
                         back_flux  = these_bcs_horiz["f"][1][ialt]
                         front_flux = these_bcs_horiz["f"][2][ialt]
-                        f_backedge  = [0, -back_flux / GV.dx]
-                        f_frontedge = [0,  front_flux / GV.dx]
+                        dx_local = dx_profile_bulk[ialt]
+                        f_backedge  = [0, -back_flux / dx_local]
+                        f_frontedge = [0,  front_flux / dx_local]
                         
                         @assert all(x->!isnan(x), f_backedge) "NaN in back edge flux for $(sp)"
                         @assert all(x->!isnan(x), f_frontedge) "NaN in front edge flux for $(sp)"
@@ -2194,7 +2197,8 @@ function fluxcoefs_horiz(
         K: Vector of eddy diffusion coefficient arrays (one per horizontal column)
         D: Dictionary of molecular diffusion coefficient arrays (one per species per column)
         cyclic: Boolean flag for cyclic boundary conditions (default: true)
-        globvars: Keyword arguments including dx, n_all_layers, enable_horiz_transport, n_horiz, horiz_wind_v
+        globvars: Keyword arguments including dx, n_all_layers, enable_horiz_transport,
+                  enable_horiz_diffusion, n_horiz, horiz_wind_v
 
     Output:
         fluxcoef_dict: Dictionary mapping species to vectors of coefficient arrays.
@@ -2210,6 +2214,9 @@ function fluxcoefs_horiz(
     check_requirements(keys(GV), required)
 
     n_horiz = GV.n_horiz
+    dx_profile = get(GV, :horiz_column_width_profile, fill(GV.dx, GV.n_all_layers))
+    @assert length(dx_profile) == GV.n_all_layers "horiz_column_width_profile must have length n_all_layers=$(GV.n_all_layers)"
+    enable_horiz_diffusion = get(GV, :enable_horiz_diffusion, false)
     # Allow separate wind profiles for neutrals and ions; fall back to the shared profile if not provided.
     horiz_wind_v_neutral = get(GV, :horiz_wind_v_neutral, GV.horiz_wind_v)
     horiz_wind_v_ion     = get(GV, :horiz_wind_v_ion, GV.horiz_wind_v)
@@ -2234,10 +2241,11 @@ function fluxcoefs_horiz(
                 infront_idx = ihoriz + 1
             end
             for ialt in 1:GV.n_all_layers
+                dx_local = dx_profile[ialt]
                 diff_back = 0.0
                 diff_front = 0.0
 
-                if GV.enable_horiz_transport
+                if GV.enable_horiz_transport && enable_horiz_diffusion
                     if behind_idx >= 1
                         # Arithmetic Mean
                         K_back = (K[ihoriz][ialt] + K[behind_idx][ialt]) / 2
@@ -2245,13 +2253,13 @@ function fluxcoefs_horiz(
                         # Harmonic Mean
                         # K_back = 2 / (1/K[ihoriz][ialt] + 1/K[behind_idx][ialt])
                         # D_back = 2 / (1/D[s][ihoriz][ialt] + 1/D[s][behind_idx][ialt])
-                        diff_back = (K_back + D_back) / GV.dx^2
+                        diff_back = (K_back + D_back) / dx_local^2
                     end
 
                     if infront_idx <= n_horiz
                         K_front = (K[ihoriz][ialt] + K[infront_idx][ialt]) / 2
                         D_front = (D[s][ihoriz][ialt] + D[s][infront_idx][ialt]) / 2
-                        diff_front = (K_front + D_front) / GV.dx^2
+                        diff_front = (K_front + D_front) / dx_local^2
                     end
                 end
 
@@ -2270,8 +2278,8 @@ function fluxcoefs_horiz(
                     # Upwind scheme: flux depends on velocity direction at the interface
                     # adv_front: flux from current column to next column (interface i+½)
                     # adv_back: flux from previous column to current column (interface i-½)
-                    adv_front = (v_interface_front > 0 ? v_interface_front : 0.0) / GV.dx
-                    adv_back  = (v_interface_back < 0 ? -v_interface_back : 0.0) / GV.dx
+                    adv_front = (v_interface_front > 0 ? v_interface_front : 0.0) / dx_local
+                    adv_back  = (v_interface_back < 0 ? -v_interface_back : 0.0) / dx_local
                 end
 
                 fluxcoef_dict[s][ihoriz][ialt, 1] = diff_back + adv_back

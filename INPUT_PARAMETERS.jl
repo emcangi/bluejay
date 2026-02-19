@@ -218,9 +218,13 @@ const n_horiz = 2
 
 # Horizontal column width in cm. This determines the physical scale of horizontal transport.
 # For day-night transport setups (n_horiz=2), use larger values for physically realistic transport rates.
-# Day-night transport (n_horiz=2): Use 19000e5 cm (19,000 km, approx. Venus semi-circumference) for Venus.
-const horiz_column_width = planet == "Venus" ? 19000e5 : 10000e5  # 19,000 km for Venus, 10,000 km for Mars
-# Altitude-dependent width? (arc length at each altitude) const horiz_column_width_profile = π .* (R_P .+ alt); Update the code to use horiz_column_width_profile[ialt] TODO
+# Constant-mode width is surface half-circumference πR using the same R values
+# as in MODEL_SETUP.jl (Mars=3396e5 cm, Venus=6050e5 cm).
+const horiz_column_width = π * Dict("Mars"=>3396e5, "Venus"=>6050e5)[planet]
+
+# If true, horizontal transport uses altitude-dependent width dx(z) = π(R + z).
+# If false, it uses constant `horiz_column_width`.
+const use_altitude_dependent_horiz_dx = true
 
 # Horizontal transport timescale in hours. This determines the wind speed via: wind_speed = horiz_column_width / (timescale * 3600)
 # For Venus: 23-44 hours corresponds to 230-120 m/s wind speeds
@@ -237,9 +241,13 @@ const horiz_wind_speed_neutral = horiz_transport_timescale_neutral > 0 ? horiz_c
 const horiz_wind_speed_ion = horiz_transport_timescale_ion > 0 ? horiz_column_width / (horiz_transport_timescale_ion * 3600) : 0.0
 
 # Whether to allow horizontal transport between columns. When set to `false`
-# the model does not compute any cross-column mixing, matching the behaviour of
-# the single-column set-up even when multiple columns are present.
+# the model does not compute horizontal advection or diffusion, matching the
+# behaviour of the single-column set-up even when multiple columns are present.
 const enable_horiz_transport = true
+
+# Optional toggle for horizontal diffusion terms only. Keep off by default so
+# horizontal exchange is advective unless explicitly enabled.
+const enable_horiz_diffusion = false
 
 # =======================================================================================================
 # Horizontal Column Scenario Configuration

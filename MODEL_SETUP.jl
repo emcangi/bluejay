@@ -207,6 +207,10 @@ const dx = horiz_column_width # Use the configurable column width from INPUT_PAR
 const zmax = 250e5  # Top altitude (cm)
 const alt = convert(Array, (zmin:dz:zmax)) # These are the layer centers.
 const n_all_layers = length(alt)
+const horiz_column_width_profile = use_altitude_dependent_horiz_dx ?
+                                   (π .* (R_P .+ alt)) :
+                                   fill(horiz_column_width, n_all_layers)
+const horiz_column_width_profile_bulk = horiz_column_width_profile[2:end-1]
 const intaltgrid = round.(Int64, alt/1e5)[2:end-1]; # the altitude grid CELLS but in integers.
 const non_bdy_layers = alt[2:end-1]  # all layers, centered on 2 km, 4...248. Excludes the boundary layers which are [-1, 1] and [249, 251].
 const num_layers = length(non_bdy_layers) # there are 124 non-boundary layers.
@@ -348,8 +352,10 @@ const horiz_wind_v = horiz_wind_v_neutral
 # v_profile[alt .>= switch_alt] .= horiz_wind_speed   # high-alt winds: day→night
 # const horiz_wind_v = [copy(v_profile) for _ in 1:n_horiz]
 
-# Toggle cross-column mixing `enable_horiz_transport`.  When disabled the horizontal transport
-# routines will return zero coefficients so that each column evolves independently.
+# Horizontal transport controls from INPUT_PARAMETERS.jl:
+# - `enable_horiz_transport` toggles all horizontal coupling (advection + diffusion).
+# - `enable_horiz_diffusion` toggles only the diffusive horizontal term.
+#   Advection remains active when transport is enabled.
 
 #                                      Water profile settings
 # =======================================================================================================
@@ -698,6 +704,9 @@ push!(PARAMETERS_GEN, ("MDIFF", mdiff));
 push!(PARAMETERS_GEN, ("DH", DH));
 push!(PARAMETERS_GEN, ("AMBIPOLAR_DIFFUSION_ON", use_ambipolar));
 push!(PARAMETERS_GEN, ("MOLEC_DIFFUSION_ON", use_molec_diff));
+push!(PARAMETERS_GEN, ("HORIZ_TRANSPORT_ON", enable_horiz_transport));
+push!(PARAMETERS_GEN, ("HORIZ_DIFFUSION_ON", enable_horiz_diffusion));
+push!(PARAMETERS_GEN, ("HORIZ_DX_ALT_DEPENDENT", use_altitude_dependent_horiz_dx));
 
 # Log altitude grid so we can avoid loading this very file when doing later analysis.
 PARAMETERS_ALTGRID = DataFrame(Alt=alt, # grid
