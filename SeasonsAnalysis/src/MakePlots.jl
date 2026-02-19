@@ -89,8 +89,8 @@ function make_seasonal_cycle_plots_inclusive(season_folders; mainalt=250, savepa
         for i in 1:length(state_files)
             nc = get_ncurrent(state_files[i])
             ntot = n_tot(nc, ihoriz; GV.all_species, GV.non_bdy_layers)
-            H2O_profile_array[:, i] = nc[:H2O] ./ ntot
-            HDO_profile_array[:, i] = nc[:HDO] ./ ntot
+            H2O_profile_array[:, i] = nc[:H2O][ihoriz] ./ ntot
+            HDO_profile_array[:, i] = nc[:HDO][ihoriz] ./ ntot
         end
         ivar_lbl2 = "Water profile"
         water_to_plot = H2O_profile_array
@@ -428,7 +428,7 @@ function make_seasonal_cycle_plots_water(season_folders; mainalt=250, savepath=n
                                          plot_pct=false, flux_colormap="plasma", plot_type="heatmap", show_all_flux=false,
                                          # Which plots to make on this call
                                          make_main_cycle_plot=true, make_frac_plot=false, make_flux_and_pct=false, make_flux_plot=false, 
-                                         make_3panel=true, make_6panel=true, make_DH_of_escaping=false, globvars...)
+                                         make_3panel=true, make_6panel=true, make_DH_of_escaping=false, ihoriz=1, globvars...)
     #=
     Does all the work to load files and make plots for water seasonal cycle. Made because we have two cases, one standard and one with 
     identical crosssections for HDO and H2O.
@@ -494,8 +494,8 @@ function make_seasonal_cycle_plots_water(season_folders; mainalt=250, savepath=n
         for i in 1:length(state_files)
             nc = get_ncurrent(state_files[i])
             ntot = n_tot(nc, ihoriz; GV.all_species, GV.non_bdy_layers)
-            H2O_profile_array[:, i] = nc[:H2O] ./ ntot
-            HDO_profile_array[:, i] = nc[:HDO] ./ ntot
+            H2O_profile_array[:, i] = nc[:H2O][ihoriz] ./ ntot
+            HDO_profile_array[:, i] = nc[:HDO][ihoriz] ./ ntot
         end
         ivar_lbl = "Water profile"
         water_to_plot = H2O_profile_array
@@ -621,7 +621,7 @@ function make_insolation_plots(case_folders, fluxfiles; savepath=nothing, extraf
                     tempcols=solcols, subplot_lbl_loc, subplot_lbl_sz, globvars...)
 end
 
-function plot_limiting_flux(atm_states, atm_keys, Tn_all; savepath=nothing, simple=false, all_carriers=true, fnextra="", globvars...)
+function plot_limiting_flux(atm_states, atm_keys, Tn_all; savepath=nothing, simple=false, all_carriers=true, fnextra="", ihoriz=1, globvars...)
     #=
     Plots the limiting flux 
 
@@ -640,23 +640,23 @@ function plot_limiting_flux(atm_states, atm_keys, Tn_all; savepath=nothing, simp
     # Limiting flux
     if all_carriers
         
-        limflux_H = [limiting_flux(:H, atm_states[atm_keys[i]], Tn_all[2:end-1, i]; ihoriz=i, globvars...) +
-                     limiting_flux(:H2, atm_states[atm_keys[i]], Tn_all[2:end-1, i]; ihoriz=i, globvars...) +
-                     2 * limiting_flux(:H2O, atm_states[atm_keys[i]], Tn_all[2:end-1, i]; ihoriz=i, globvars...) +
-                     limiting_flux(:HDO, atm_states[atm_keys[i]], Tn_all[2:end-1, i]; ihoriz=i, globvars...) +
-                     limiting_flux(:OH, atm_states[atm_keys[i]], Tn_all[2:end-1, i]; ihoriz=i, globvars...) for i in therange]
-        limflux_D = [limiting_flux(:D, atm_states[atm_keys[i]], Tn_all[2:end-1, i]; ihoriz=i, globvars...) +
-                     limiting_flux(:HD, atm_states[atm_keys[i]], Tn_all[2:end-1, i]; ihoriz=i, globvars...) +
-                     limiting_flux(:HDO, atm_states[atm_keys[i]], Tn_all[2:end-1, i]; ihoriz=i, globvars...) +
-                     limiting_flux(:OD, atm_states[atm_keys[i]], Tn_all[2:end-1, i]; ihoriz=i, globvars...) for i in therange]
+        limflux_H = [limiting_flux(:H, atm_states[atm_keys[i]], Tn_all[2:end-1, i], GV.n_horiz; ihoriz=ihoriz, globvars...) +
+                     limiting_flux(:H2, atm_states[atm_keys[i]], Tn_all[2:end-1, i], GV.n_horiz; ihoriz=ihoriz, globvars...) +
+                     2 * limiting_flux(:H2O, atm_states[atm_keys[i]], Tn_all[2:end-1, i], GV.n_horiz; ihoriz=ihoriz, globvars...) +
+                     limiting_flux(:HDO, atm_states[atm_keys[i]], Tn_all[2:end-1, i], GV.n_horiz; ihoriz=ihoriz, globvars...) +
+                     limiting_flux(:OH, atm_states[atm_keys[i]], Tn_all[2:end-1, i], GV.n_horiz; ihoriz=ihoriz, globvars...) for i in therange]
+        limflux_D = [limiting_flux(:D, atm_states[atm_keys[i]], Tn_all[2:end-1, i], GV.n_horiz; ihoriz=ihoriz, globvars...) +
+                     limiting_flux(:HD, atm_states[atm_keys[i]], Tn_all[2:end-1, i], GV.n_horiz; ihoriz=ihoriz, globvars...) +
+                     limiting_flux(:HDO, atm_states[atm_keys[i]], Tn_all[2:end-1, i], GV.n_horiz; ihoriz=ihoriz, globvars...) +
+                     limiting_flux(:OD, atm_states[atm_keys[i]], Tn_all[2:end-1, i], GV.n_horiz; ihoriz=ihoriz, globvars...) for i in therange]
     else
-        limflux_H = [limiting_flux(:H, atm_states[atm_keys[i]], Tn_all[2:end-1, i]; ihoriz=i, globvars...) for i in therange]
-        limflux_D = [limiting_flux(:D, atm_states[atm_keys[i]], Tn_all[2:end-1, i]; ihoriz=i, globvars...) for i in therange]
+        limflux_H = [limiting_flux(:H, atm_states[atm_keys[i]], Tn_all[2:end-1, i], GV.n_horiz; ihoriz=ihoriz, globvars...) for i in therange]
+        limflux_D = [limiting_flux(:D, atm_states[atm_keys[i]], Tn_all[2:end-1, i], GV.n_horiz; ihoriz=ihoriz, globvars...) for i in therange]
     end
 
     # Typical escape fluxes for these files:
     max_H_flux = 1e9#effusion_velocity(275, 1; zmax) * atm_states["highT"][:H][end]
-    min_H_flux = effusion_velocity(175, 1; GV.zmax) * atm_states["lowT"][:H][end]
+    min_H_flux = effusion_velocity(175, 1; GV.zmax) * atm_states["lowT"][:H][ihoriz][end]
     max_D_flux = 3e4#effusion_velocity(275, 2; zmax) * atm_states["highT"][:D][end]
     min_D_flux = 1e4#effusion_velocity(175, 2; zmax) * atm_states["lowT"][:D][end]
 
@@ -1600,7 +1600,7 @@ function make_temperature_panel(ax, Tn_all, Ti_all, Te_all; globvars...)
     ax.text(Ti_all[end]+10, 150, "Electrons", color=ecol)
 end
 
-function make_water_panel(ax, atms, colors, txtlbls; spclbl_x = [0.8, 0.45], line_lbl_x=0.01, globvars...)
+function make_water_panel(ax, atms, colors, txtlbls; spclbl_x = [0.8, 0.45], line_lbl_x=0.01, ihoriz=1, globvars...)
     #=
     Plots water mixing ratio vs. altitude. Includes a conversion axis for ppm.
 
@@ -1620,9 +1620,9 @@ function make_water_panel(ax, atms, colors, txtlbls; spclbl_x = [0.8, 0.45], lin
 
     plot_bg(ax)
     for w in 1:length(atms)
-        ax.plot(atms[w][:H2O][1:GV.upper_lower_bdy_i]./n_tot(atms[w], ihoriz; GV.all_species, GV.alt)[1:GV.upper_lower_bdy_i], GV.plot_grid[1:GV.upper_lower_bdy_i],
+        ax.plot(atms[w][:H2O][ihoriz][1:GV.upper_lower_bdy_i]./n_tot(atms[w], ihoriz; GV.all_species, GV.alt)[1:GV.upper_lower_bdy_i], GV.plot_grid[1:GV.upper_lower_bdy_i],
                 color=colors[w, :])
-        ax.plot(atms[w][:HDO][1:GV.upper_lower_bdy_i]./n_tot(atms[w], ihoriz; GV.all_species, GV.alt)[1:GV.upper_lower_bdy_i], GV.plot_grid[1:GV.upper_lower_bdy_i],
+        ax.plot(atms[w][:HDO][ihoriz][1:GV.upper_lower_bdy_i]./n_tot(atms[w], ihoriz; GV.all_species, GV.alt)[1:GV.upper_lower_bdy_i], GV.plot_grid[1:GV.upper_lower_bdy_i],
                 color=colors[w, :], linestyle=GV.speciesstyle[:HDO])
     end
     ax.set_xscale("log")

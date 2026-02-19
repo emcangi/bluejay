@@ -1923,10 +1923,17 @@ if problem_type == "SS"
     # Update short-lived species one more time
     println("One last update of short-lived species")
     n_short = flatten_atm(external_storage, active_shortlived; num_layers, n_horiz)
-    Jrates = deepcopy(Float64[external_storage[jr][ialt] for jr in Jratelist, ialt in 1:num_layers])
-    set_concentrations!(external_storage, atm_soln.u, n_short, inactive, 
-                        active_longlived, active_shortlived, inactive_species, Jrates, Tn_arr, Ti_arr, Te_arr)
+    Jrates = deepcopy([Float64(external_storage[jr][ihoriz][ialt]) for jr in Jratelist, ihoriz in 1:n_horiz, ialt in 1:num_layers])
+    nc_tmp = compile_ncur_all(atm_soln.u, n_short, n_inactive; active_longlived, active_shortlived, inactive_species, num_layers, n_horiz)
+    M = zeros(n_horiz, num_layers)
+    for ihoriz in 1:n_horiz
+        M[ihoriz, :] = n_tot(nc_tmp, ihoriz; all_species)
+    end
+    E = electron_density(nc_tmp; e_profile_type, non_bdy_layers, ion_species, n_horiz)
+    set_concentrations!(external_storage, atm_soln.u, n_short, n_inactive, Jrates, M, E;
+                        active_longlived, active_shortlived, inactive_species, Tn=Tn_arr, Ti=Ti_arr, Te=Te_arr, num_layers, n_horiz)
     nc_all = merge(external_storage, unflatten_atm(atm_soln.u, active_longlived; num_layers, n_horiz))
+    Jratedict = Dict{Symbol, Vector{Array{Float64}}}([j=>external_storage[j] for j in keys(external_storage) if occursin("J", string(j))])
 
     println("Plotting final atmosphere, writing out state")
     # Make final atmosphere plot
@@ -1934,7 +1941,7 @@ if problem_type == "SS"
                       speciescolor, speciesstyle, monospace_choice, sansserif_choice, zmax, abs_tol_for_plot)
 
 
-    write_final_state(nc_all, results_dir, sim_folder_name, final_atm_file; alt, num_layers, short_summary, Jratedict=Jrates, run_id, external_storage)
+    write_final_state(nc_all, results_dir, sim_folder_name, final_atm_file; alt, num_layers, short_summary, Jratedict, run_id, external_storage)
     write_to_log(logfile, "$(Dates.format(now(), "(HH:MM:SS)")) Making production/loss plots", mode="a")
     println("Making production/loss plots (this tends to take several minutes)")
     if make_P_and_L_plots
@@ -1968,17 +1975,24 @@ elseif problem_type == "ODE"
             # Update short-lived species one more time
             println("One last update of short-lived species")
             local n_short = flatten_atm(external_storage, active_shortlived; num_layers, n_horiz)
-            local Jrates = deepcopy(Float64[external_storage[jr][ialt] for jr in Jratelist, ialt in 1:num_layers])
-            set_concentrations!(external_storage, atm_state, n_short, inactive, Jrates; active_longlived, active_shortlived, 
-                               inactive_species, Tn=Tn_arr, Ti=Ti_arr, Te=Te_arr, num_layers)
+            local Jrates = deepcopy([Float64(external_storage[jr][ihoriz][ialt]) for jr in Jratelist, ihoriz in 1:n_horiz, ialt in 1:num_layers])
+            local nc_tmp = compile_ncur_all(atm_state, n_short, n_inactive; active_longlived, active_shortlived, inactive_species, num_layers, n_horiz)
+            local M = zeros(n_horiz, num_layers)
+            for ihoriz in 1:n_horiz
+                M[ihoriz, :] = n_tot(nc_tmp, ihoriz; all_species)
+            end
+            local E = electron_density(nc_tmp; e_profile_type, non_bdy_layers, ion_species, n_horiz)
+            set_concentrations!(external_storage, atm_state, n_short, n_inactive, Jrates, M, E;
+                               active_longlived, active_shortlived, inactive_species, Tn=Tn_arr, Ti=Ti_arr, Te=Te_arr, num_layers, n_horiz)
             local nc_all = merge(external_storage, unflatten_atm(atm_state, active_longlived; num_layers, n_horiz))
+            local Jratedict = Dict{Symbol, Vector{Array{Float64}}}([j=>external_storage[j] for j in keys(external_storage) if occursin("J", string(j))])
 
             # Make final atmosphere plot
             println("Plotting final atmosphere, writing out state")
             plot_atm(nc_all, results_dir*sim_folder_name*"/final_atmosphere.png", t="final converged state", abs_tol_for_plot; neutral_species, ion_species, 
                      plot_grid, speciescolor, speciesstyle, zmax, monospace_choice, sansserif_choice)
 
-            write_final_state(nc_all, results_dir, sim_folder_name, final_atm_file; alt, num_layers, short_summary, Jratedict=Jrates, run_id, external_storage)
+            write_final_state(nc_all, results_dir, sim_folder_name, final_atm_file; alt, num_layers, short_summary, Jratedict, run_id, external_storage)
             write_to_log(logfile, "$(Dates.format(now(), "(HH:MM:SS)")) Making production/loss plots", mode="a")
             println("Making production/loss plots (this tends to take several minutes)")
             if make_P_and_L_plots

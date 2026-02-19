@@ -2793,8 +2793,6 @@ function setup_water_profile!(atmdict; constfrac=1, dust_storm_on=false, make_sa
             end
         end
     elseif GV.planet=="Venus"
-        ntot = n_tot(atmdict; GV.n_alt_index, GV.all_species)
-
         ntot_all = [n_tot(atmdict, ihoriz; GV.n_alt_index, GV.all_species) for ihoriz in 1:GV.n_horiz]
 
         for ihoriz in 1:GV.n_horiz

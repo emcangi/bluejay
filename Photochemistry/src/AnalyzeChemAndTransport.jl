@@ -752,7 +752,7 @@ function limiting_flow_velocity(sp, atmdict, T_arr, n_horiz::Int64; ihoriz::Int=
     check_requirements(keys(GV), required)
     
     # Calculate some common things: mixing ratio, scale height, binary diffusion coefficient AT^s
-    Ha = scaleH(atmdict, T_arr[2:end-1], n_horiz; ignore=[sp], globvars..., alt=GV.non_bdy_layers)
+    Ha = scaleH(atmdict, T_arr[2:end-1], ihoriz; ignore=[sp], globvars..., alt=GV.non_bdy_layers)
     Hi = scaleH(GV.non_bdy_layers, sp, T_arr[2:end-1]; GV.molmass)
     bi = binary_dcoeff_inCO2(sp, T_arr[2:end-1]) # AT^s
     na = n_tot(atmdict, ihoriz; ignore=[sp], GV.all_species)
@@ -770,12 +770,12 @@ function limiting_flux_molef(sp, atmdict, T_arr, n_horiz::Int64; ihoriz::Int=1, 
 
     avogadro = 6.022e23
 
-    X = (atmdict[sp] ./ avogadro) ./ (n_tot(atmdict, ihoriz; globvars...) ./ avogadro)
+    X = (atmdict[sp][ihoriz] ./ avogadro) ./ (n_tot(atmdict, ihoriz; globvars...) ./ avogadro)
     # Calculate some common things: mixing ratio, scale height, binary diffusion coefficient AT^s
 
-    Ha = scaleH(atmdict, T_arr, n_horiz; globvars..., alt=GV.non_bdy_layers)
+    Ha = scaleH(atmdict, T_arr, ihoriz; globvars..., alt=GV.non_bdy_layers)
     bi = binary_dcoeff_inCO2(sp, T_arr)
-    Hi = scaleH(non_bdy_layers, sp, T_arr, n_horiz; globvars...)
+    Hi = scaleH(GV.non_bdy_layers, sp, T_arr; GV.molmass)
 
     return bi .* X .* (1 ./ Ha - 1 ./ Hi), X
 end
