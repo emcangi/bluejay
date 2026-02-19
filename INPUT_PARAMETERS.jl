@@ -244,8 +244,11 @@ const enable_horiz_transport = true
 # =======================================================================================================
 # Horizontal Column Scenario Configuration
 # =======================================================================================================
-# Define the characteristics of each horizontal column
-# Each entry specifies: temperature scenario, solar zenith angle, and optional boundary condition modifiers
+# Define the characteristics of each horizontal column.
+# Use a named mapping first (e.g., "day", "night"), then derive the ordered
+# per-column list used by the solver loops.
+# Each entry specifies: temperature scenario, solar zenith angle, and optional
+# boundary condition modifiers.
 # Optional keys:
 #   Texo_override (numeric K) overrides Texo_key for that column
 #   CO2_lowerbdy_vmr sets a per-column lower boundary CO2 mixing ratio
@@ -255,43 +258,56 @@ const enable_horiz_transport = true
 #
 # SZA notes: When SZA > 90°, the sun is below the horizon and solar flux will be set to zero
 
-const horiz_column_scenario = if n_horiz == 1
+const horiz_column_scenario_by_name = if n_horiz == 1
     # Single column: standard uniform setup
-    [
-        Dict("name" => "uniform",
-             "Texo_key" => planet == "Venus" ? "mean" : "mean-P2",      # Options: "min", "mean", "max", "min-P2", "mean-P2", "max-P2", etc.
-             "SZA" => SZA)              # Solar zenith angle (degrees)
-    ]
+    OrderedDict(
+        "uniform" => Dict(
+            "Texo_key" => planet == "Venus" ? "mean" : "mean-P2",  # Options: "min", "mean", "max", "min-P2", "mean-P2", "max-P2", etc.
+            "SZA" => SZA                                           # Solar zenith angle (degrees)
+        )
+    )
 elseif planet == "Venus" && n_horiz == 2
     # Venus day-night test: 2 columns
-    [
-        Dict("name" => "day",
-             "Texo_key" => "max",       # Keeps the key for reference; Texo_override below is applied when present
-             "Texo_override" => 340.0,  # Dayside Texo (K); typical VTGCM/VTS3 dayside 320–360 K
-             "CO2_lowerbdy_vmr" => 0.965,
-             "SZA" => 0.0),             # Subsolar: SZA = 0° (maximum solar flux)
-        Dict("name" => "night",
-             "Texo_key" => "min",
-             "Texo_override" => 210.0,  # Nightside Texo (K); typical nightside 180–230 K
-             "CO2_lowerbdy_vmr" => 0.960,
-             "SZA" => 180.0)            # Anti-solar: SZA = 180° (no solar flux)
-    ]
+    OrderedDict(
+        "day" => Dict(
+            "Texo_key" => "max",       # Keeps the key for reference; Texo_override below is applied when present
+            "Texo_override" => 340.0,  # Dayside Texo (K); typical VTGCM/VTS3 dayside 320-360 K
+            "CO2_lowerbdy_vmr" => 0.965,
+            "SZA" => 0.0               # Subsolar: SZA = 0° (maximum solar flux)
+        ),
+        "night" => Dict(
+            "Texo_key" => "min",
+            "Texo_override" => 210.0,  # Nightside Texo (K); typical nightside 180-230 K
+            "CO2_lowerbdy_vmr" => 0.960,
+            "SZA" => 180.0             # Anti-solar: SZA = 180° (no solar flux)
+        )
+    )
 elseif planet == "Mars" && n_horiz == 2
     # Mars day-night test: 2 columns
-    [
-        Dict("name" => "day",
-             "Texo_key" => "mean-P2",
-             "SZA" => 45.0),
-        Dict("name" => "night",
-             "Texo_key" => "min-P2",
-             "SZA" => 110.0)            # Nightside: SZA > 90° means zero solar flux
-    ]
+    OrderedDict(
+        "day" => Dict(
+            "Texo_key" => "mean-P2",
+            "SZA" => 45.0
+        ),
+        "night" => Dict(
+            "Texo_key" => "min-P2",
+            "SZA" => 110.0              # Nightside: SZA > 90° means zero solar flux
+        )
+    )
 else
     # Default: replicate uniform conditions across all columns
-    [Dict("name" => "col_$i",
-          "Texo_key" => planet == "Venus" ? "mean" : "mean-P2",
-          "SZA" => SZA) for i in 1:n_horiz]
+    OrderedDict(
+        ["col_$i" => Dict(
+             "Texo_key" => planet == "Venus" ? "mean" : "mean-P2",
+             "SZA" => SZA
+         ) for i in 1:n_horiz]
+    )
 end
 
+# Preserve an ordered list for existing solver loops, while keeping named access available.
+const horiz_column_names = collect(keys(horiz_column_scenario_by_name))
+const horiz_column_scenario = [merge(Dict("name" => col_name), horiz_column_scenario_by_name[col_name]) for col_name in horiz_column_names]
+
 # Validate that the scenario matches n_horiz
+@assert length(horiz_column_scenario_by_name) == n_horiz "horiz_column_scenario_by_name must have exactly n_horiz=$n_horiz entries, but got $(length(horiz_column_scenario_by_name))"
 @assert length(horiz_column_scenario) == n_horiz "horiz_column_scenario must have exactly n_horiz=$n_horiz entries, but got $(length(horiz_column_scenario))"

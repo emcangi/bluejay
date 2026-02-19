@@ -2211,8 +2211,8 @@ function fluxcoefs_horiz(
 
     n_horiz = GV.n_horiz
     # Allow separate wind profiles for neutrals and ions; fall back to the shared profile if not provided.
-    horiz_wind_v_neutral = :horiz_wind_v_neutral in keys(GV) ? GV.horiz_wind_v_neutral : GV.horiz_wind_v
-    horiz_wind_v_ion     = :horiz_wind_v_ion in keys(GV)     ? GV.horiz_wind_v_ion     : GV.horiz_wind_v
+    horiz_wind_v_neutral = get(GV, :horiz_wind_v_neutral, GV.horiz_wind_v)
+    horiz_wind_v_ion     = get(GV, :horiz_wind_v_ion, GV.horiz_wind_v)
     
     # the return dictionary: Each species has 2 entries for every layer of the atmosphere.
     # fluxcoef_horiz_dict = Dict{Symbol, Vector{Array{ftype_ncur}}}([s=>[fill(0., GV.n_all_layers, 2) for ihoriz in 1:n_horiz] for s in species_list])
