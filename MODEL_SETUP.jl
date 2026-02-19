@@ -12,6 +12,7 @@
 
 using DataFrames
 using DoubleFloats
+using Random
 
 # First do some error checking
 if (special_seasonal_case!=nothing) & (exp_type=="all")
@@ -591,14 +592,13 @@ if seasonal_cycle == true
         const tag = filetag[exp_type]
     end
 else # not a seasonal cycle experiment
-    const tag = "eqrun_$(exp_type)_$(results_version)"
+    const tag = "$(results_version)"
 end
 
-# Tags, shortcodes, and filenames
+# Filenames
 # -------------------------------------------------------------------
-# The shortcodes provide unique identifiers for a simulation. Necessary because you end up running the model many times...
-const hrshortcode, rshortcode = generate_code(ions_included, controltemps[1], controltemps[2], controltemps[3], water_case, solar_scenario)
-const sim_folder_name = "$(hrshortcode)_$(rshortcode)_$(tag)"
+run_id = randstring() # Generate a random string to uniquely ID the run
+const sim_folder_name = "$(short_summary)_$(run_id)_$(tag)"
 const used_rxns_spreadsheet_name = "active_rxns.xlsx"
 
 
@@ -683,8 +683,7 @@ PARAMETERS_GEN = DataFrame(Field=[], Value=[])
 push!(PARAMETERS_GEN, ("PLANET", planet));
 push!(PARAMETERS_GEN, ("M_P", M_P));
 push!(PARAMETERS_GEN, ("R_P", R_P));
-push!(PARAMETERS_GEN, ("HRSHORTCODE", hrshortcode));
-push!(PARAMETERS_GEN, ("RSHORTCODE", rshortcode));
+push!(PARAMETERS_GEN, ("RUN_ID", run_id));
 push!(PARAMETERS_GEN, ("VARIED_PARAM", exp_type))
 push!(PARAMETERS_GEN, ("INITIAL_ATM", initial_atm_file));
 push!(PARAMETERS_GEN, ("RXN_SOURCE", results_dir*sim_folder_name*"/$(used_rxns_spreadsheet_name)"));

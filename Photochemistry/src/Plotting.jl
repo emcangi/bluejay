@@ -83,7 +83,7 @@ function plot_atm(atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}}, savepath::St
     check_requirements(keys(GV), required)
 
     if print_shortcodes
-        required =  [:hrshortcode, :rshortcode]
+        required =  [:short_summary, :run_id]
         check_requirements(keys(GV), required)
     end 
 
@@ -264,8 +264,8 @@ function plot_atm(atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}}, savepath::St
 
         # Shortcodes as watermarks
         if print_shortcodes
-            text(1, 1.05, GV.hrshortcode, transform=gcf().transFigure, color="dimgrey", ha="right")
-            text(1, 1.02, GV.rshortcode, transform=gcf().transFigure, color="dimgrey", ha="right")
+            text(1, 1.05, GV.short_summary, transform=gcf().transFigure, color="dimgrey", ha="right")
+            text(1, 1.02, GV.run_id, transform=gcf().transFigure, color="dimgrey", ha="right")
         end
 
         # SAVE PLOTS FOR EACH COLUMN SEPARATELY -------------------------------------------------
@@ -553,8 +553,8 @@ function plot_production_and_loss(final_atm, results_dir, thefolder, n_horiz::In
     GV = values(globvars)
     required = [:all_species, :alt, :chem_species, :collision_xsect, :dz, :hot_D_rc_funcs, :hot_H_rc_funcs, 
                :hot_H2_rc_funcs, :hot_HD_rc_funcs, :Hs_dict, :hot_H_network, :hot_D_network, :hot_H2_network, :hot_HD_network,
-               :hrshortcode, :ion_species, :Jratedict, :molmass, :neutral_species, :non_bdy_layers, :nonthermal,
-               :num_layers, :n_all_layers, :n_alt_index, :polarizability, :plot_grid, :q, :rshortcode, :reaction_network,
+               :short_summary, :ion_species, :Jratedict, :molmass, :neutral_species, :non_bdy_layers, :nonthermal,
+               :num_layers, :n_all_layers, :n_alt_index, :polarizability, :plot_grid, :q, :run_id, :reaction_network,
                :speciesbclist_vert, :Tn, :Ti, :Te, :Tp, :Tprof_for_Hs, :Tprof_for_diffusion, 
                :transport_species, :upper_lower_bdy_i, :upper_lower_bdy, :zmax]
     check_requirements(keys(GV), required)
@@ -630,9 +630,9 @@ function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}},
     =#
 
     GV = values(globvars)
-    required =  [:all_species, :alt, :chem_species, :dz, :hrshortcode, :Hs_dict, :ion_species, 
+    required =  [:all_species, :alt, :chem_species, :dz, :short_summary, :Hs_dict, :ion_species, 
                  :molmass, :monospace_choice, :n_all_layers, :n_alt_index, :neutral_species, :num_layers, 
-                 :plot_grid, :polarizability, :q, :rshortcode, :reaction_network, :sansserif_choice, :speciesbclist_vert, 
+                 :plot_grid, :polarizability, :q, :run_id, :reaction_network, :sansserif_choice, :speciesbclist_vert, 
                  :Te, :Ti, :Tn, :Tp, :Tprof_for_Hs, :Tprof_for_diffusion, :transport_species, 
                  :upper_lower_bdy, :upper_lower_bdy_i, :zmax]
     check_requirements(keys(GV), required)
@@ -937,8 +937,8 @@ function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}},
     savepathname = join(path_folders, "/")
 
     # Shortcodes as watermarks
-    text(0.9, 0.9, GV.hrshortcode, transform=gcf().transFigure, color="dimgrey")
-    text(0.9, 0.85, GV.rshortcode, transform=gcf().transFigure, color="dimgrey")
+    text(0.9, 0.9, GV.short_summary, transform=gcf().transFigure, color="dimgrey")
+    text(0.9, 0.85, GV.run_id, transform=gcf().transFigure, color="dimgrey")
 
     if showonly
         show()

@@ -183,7 +183,7 @@ function write_atmosphere(atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}}, file
         globvars: keyword arguments including n_horiz, num_layers, alt, etc.
     =# 
     GV = values(globvars)
-    required =  [:alt, :num_layers, :hrshortcode, :rshortcode]
+    required =  [:alt, :num_layers, :short_summary, :run_id]
     check_requirements(keys(GV), required)
     
     # Determine number of horizontal columns from globvars if available,
@@ -211,7 +211,7 @@ function write_atmosphere(atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}}, file
         write(f, "n_current/n_current_mat", atm_mat)
         write(f, "n_current/alt", GV.alt)
         write(f, "n_current/species", map(string, sorted_keys))
-        write(f, "info", ["hrshortcode:" "$(GV.hrshortcode)"; "random shortcode:" "$(GV.rshortcode)"; "elapsed t:" " $(t) sec"])
+        write(f, "info", ["short_summary:" "$(GV.short_summary)"; "run_id:" "$(GV.run_id)"; "elapsed t:" " $(t) sec"])
     end
 end
 
@@ -221,7 +221,7 @@ function write_final_state(atmdict, thedir, thefolder, fname; globvars...)
     =#
 
     GV = values(globvars)
-    required = [:alt, :external_storage, :num_layers, :hrshortcode, :Jratedict, :rshortcode]
+    required = [:alt, :external_storage, :num_layers, :short_summary, :Jratedict, :run_id]
     check_requirements(keys(GV), required)
 
     # Make sure we have the updated Jrates
@@ -350,8 +350,14 @@ function load_from_paramlog(folder; quiet=true, globvars...)
     end
 
     # Codes
-    hrshortcode = get_param("RSHORTCODE", df_gen)
-    rshortcode = get_param("HRSHORTCODE", df_gen)
+    run_id = ""
+    short_summary = ""
+    try
+        run_id = get_param("RUN_ID", df_gen) # New name
+    catch BoundsError
+        run_id = get_param("RSHORTCODE", df_gen) # Old name for random string
+        short_summary = get_param("HRSHORTCODE", df_gen)
+    end
 
     # Basics - more
     rxn_spreadsheet = get_param("RXN_SOURCE", df_gen)
@@ -408,8 +414,8 @@ function load_from_paramlog(folder; quiet=true, globvars...)
     
     vardict = Dict("DH"=>DH, 
                    "ions_included"=>ions_included,
-                   "hrshortcode"=>hrshortcode,
-                   "rshortcode"=>rshortcode,
+                   "short_summary"=>short_summary,
+                   "run_id"=>run_id,
                    "neutral_species"=>neutral_species,
                    "ion_species"=>ion_species,
                    "all_species"=>all_species,

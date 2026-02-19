@@ -452,7 +452,7 @@ function record_atmospheric_state(t, n, actively_solved, E_prof; opt="", globvar
     =#
 
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:hrshortcode, :neutral_species, :ion_species, :plot_grid, :rshortcode, :speciescolor, :speciesstyle, :zmax, :alt, :num_layers])
+    @assert all(x->x in keys(GV), [:short_summary, :neutral_species, :ion_species, :plot_grid, :run_id, :speciescolor, :speciesstyle, :zmax, :alt, :num_layers])
 
     # This is just to change how many decimal places to include depending if t >= 1.
     rounding_digits = t <= 1 ? Int64(ceil(abs(log10(t)))) : 0 
@@ -1748,7 +1748,7 @@ push!(PARAMETERS_CONDITIONS, ("TOTAL_H2O", H2Oprum, "pr micrometers"))
 push!(PARAMETERS_CONDITIONS, ("TOTAL_HDO", HDOprum, "pr micrometers"))
 push!(PARAMETERS_CONDITIONS, ("TOTAL_WATER", H2Oprum+HDOprum, "pr micrometers"))
     
-write_to_log(logfile, ["Description: $(optional_logging_note)"], mode="w")
+write_to_log(logfile, ["Description: $(logged_long_description)"], mode="w")
 
 # **************************************************************************** #
 #                                                                              #
@@ -1760,7 +1760,7 @@ write_to_log(logfile, ["Description: $(optional_logging_note)"], mode="w")
 # n_current[:D] = map(x->1e5*exp(-((x-184)/20)^2), non_bdy_layers/1e5) + n_current[:D]
 
 # write initial atmospheric state ==============================================
-write_atmosphere(n_current, results_dir*sim_folder_name*"/initial_atmosphere.h5"; alt, num_layers, hrshortcode, rshortcode, n_horiz)
+write_atmosphere(n_current, results_dir*sim_folder_name*"/initial_atmosphere.h5"; alt, num_layers, short_summary, run_id, n_horiz)
 
 # Plot initial temperature and water profiles ==================================
 plot_temp_prof(Tn_arr; savepath=results_dir*sim_folder_name, Tprof_2=Ti_arr, Tprof_3=Te_arr, alt, monospace_choice, sansserif_choice)
@@ -1784,7 +1784,7 @@ end
 # Plot initial atmosphere condition  ===========================================
 println("$(Dates.format(now(), "(HH:MM:SS)")) Plotting the initial condition")
 plot_atm(n_current, results_dir*sim_folder_name*"/initial_atmosphere.png", abs_tol_for_plot, E, n_horiz; ylims=[zmin/1e5, zmax/1e5],
-         t="initial state", neutral_species, ion_species, plot_grid, speciescolor, speciesstyle, zmax, hrshortcode, rshortcode,
+         t="initial state", neutral_species, ion_species, plot_grid, speciescolor, speciesstyle, zmax, short_summary, run_id,
          monospace_choice, sansserif_choice) 
 
 # Create a list to keep track of stiffness ratio ===============================
@@ -1892,10 +1892,10 @@ try
                                  collision_xsect, crosssection, Dcoef_arr_template, dt_incr_factor, dt_decr_factor, dz, dx,
                                  e_profile_type, error_checking_scheme, timestep_type, H2Oi, HDOi, 
                                  hot_H_network, hot_H_rc_funcs, hot_D_network, hot_D_rc_funcs, hot_H2_network, hot_H2_rc_funcs, hot_HD_network, hot_HD_rc_funcs,
-                                 hrshortcode, Hs_dict,
+                                 short_summary, Hs_dict,
                                  ion_species, inactive_species, Jratelist, logfile, M_P, molmass, monospace_choice, sansserif_choice,
                                  neutral_species, n_horiz, non_bdy_layers, num_layers, n_all_layers, n_alt_index, n_inactive, n_steps,
-                                 polarizability, planet, plot_grid, q, R_P, reaction_network, rshortcode,
+                                 polarizability, planet, plot_grid, q, R_P, reaction_network, run_id,
                                  season_length_in_sec, sol_in_sec, solarflux=solarflux_per_column, speciesbclist_vert, speciesbclist_horiz, speciescolor, speciesstyle, horiz_wind_v,
                                  enable_horiz_transport, transportnet, transportnet_horiz,
                                  Tn=Tn_arr, Ti=Ti_arr, Te=Te_arr, Tp=Tplasma_arr, Tprof_for_diffusion, transport_species, opt="",
@@ -1934,7 +1934,7 @@ if problem_type == "SS"
                       speciescolor, speciesstyle, monospace_choice, sansserif_choice, zmax, abs_tol_for_plot)
 
 
-    write_final_state(nc_all, results_dir, sim_folder_name, final_atm_file; alt, num_layers, hrshortcode, Jratedict=Jrates, rshortcode, external_storage)
+    write_final_state(nc_all, results_dir, sim_folder_name, final_atm_file; alt, num_layers, short_summary, Jratedict=Jrates, run_id, external_storage)
     write_to_log(logfile, "$(Dates.format(now(), "(HH:MM:SS)")) Making production/loss plots", mode="a")
     println("Making production/loss plots (this tends to take several minutes)")
     if make_P_and_L_plots
@@ -1942,10 +1942,10 @@ if problem_type == "SS"
                                  separate_cols=true, nonthermal=nontherm, all_species, alt, chem_species,
                                  collision_xsect, dz, dx, hot_D_rc_funcs, hot_H_rc_funcs,
                                  hot_H2_rc_funcs, hot_HD_rc_funcs, Hs_dict, hot_H_network,
-                                 hot_D_network, hot_H2_network, hot_HD_network, hrshortcode,
+                                 hot_D_network, hot_H2_network, hot_HD_network, short_summary,
                                  ion_species, Jratedict, molmass, neutral_species,
                                  non_bdy_layers, num_layers, n_all_layers, n_alt_index,
-                                 polarizability, plot_grid, q, rshortcode, reaction_network,
+                                 polarizability, plot_grid, q, run_id, reaction_network,
                                  speciesbclist_vert, speciesbclist_horiz, Tn=Tn_arr, Ti=Ti_arr,
                                  Te=Te_arr, Tp=Tplasma_arr, Tprof_for_Hs, Tprof_for_diffusion,
                                  transport_species, upper_lower_bdy_i, upper_lower_bdy, zmax)
@@ -1963,7 +1963,7 @@ elseif problem_type == "ODE"
             # at any timestep except the very last. 
             # TODO: Fix this so we just don't write Jrates in these iterations...
             local nc_all = merge(external_storage, unflatten_atm(atm_state, active_longlived; num_layers, n_horiz))
-            write_atmosphere(nc_all, results_dir*sim_folder_name*"/atm_state_t_$(timestep).h5"; alt, num_layers, hrshortcode, rshortcode) 
+            write_atmosphere(nc_all, results_dir*sim_folder_name*"/atm_state_t_$(timestep).h5"; alt, num_layers, short_summary, run_id) 
         elseif i == L
             # Update short-lived species one more time
             println("One last update of short-lived species")
@@ -1978,7 +1978,7 @@ elseif problem_type == "ODE"
             plot_atm(nc_all, results_dir*sim_folder_name*"/final_atmosphere.png", t="final converged state", abs_tol_for_plot; neutral_species, ion_species, 
                      plot_grid, speciescolor, speciesstyle, zmax, monospace_choice, sansserif_choice)
 
-            write_final_state(nc_all, results_dir, sim_folder_name, final_atm_file; alt, num_layers, hrshortcode, Jratedict=Jrates, rshortcode, external_storage)
+            write_final_state(nc_all, results_dir, sim_folder_name, final_atm_file; alt, num_layers, short_summary, Jratedict=Jrates, run_id, external_storage)
             write_to_log(logfile, "$(Dates.format(now(), "(HH:MM:SS)")) Making production/loss plots", mode="a")
             println("Making production/loss plots (this tends to take several minutes)")
             if make_P_and_L_plots
@@ -1986,10 +1986,10 @@ elseif problem_type == "ODE"
                                          separate_cols=true, nonthermal=nontherm, all_species, alt, chem_species,
                                          collision_xsect, dz, dx, hot_D_rc_funcs, hot_H_rc_funcs,
                                          hot_H2_rc_funcs, hot_HD_rc_funcs, Hs_dict, hot_H_network,
-                                         hot_D_network, hot_H2_network, hot_HD_network, hrshortcode,
+                                         hot_D_network, hot_H2_network, hot_HD_network, short_summary,
                                          ion_species, Jratedict, molmass, neutral_species,
                                          non_bdy_layers, num_layers, n_all_layers, n_alt_index,
-                                         polarizability, plot_grid, q, rshortcode, reaction_network,
+                                         polarizability, plot_grid, q, run_id, reaction_network,
                                          speciesbclist_vert, speciesbclist_horiz, Tn=Tn_arr, Ti=Ti_arr,
                                          Te=Te_arr, Tp=Tplasma_arr, Tprof_for_Hs, Tprof_for_diffusion,
                                          transport_species, upper_lower_bdy_i, upper_lower_bdy, zmax)
@@ -2003,14 +2003,14 @@ elseif problem_type == "Gear"
     println("Plotting final atmosphere, writing out state")
     final_E_profile = electron_density(atm_soln; e_profile_type, non_bdy_layers, ion_species, n_horiz)
     plot_atm(atm_soln, results_dir*sim_folder_name*"/final_atmosphere.png", abs_tol_for_plot, final_E_profile, n_horiz; ylims=[zmin/1e5, zmax/1e5],
-             t="final converged state, total time = $(sim_time)", neutral_species, ion_species, plot_grid, speciescolor, speciesstyle, zmax, hrshortcode, rshortcode,
+             t="final converged state, total time = $(sim_time)", neutral_species, ion_species, plot_grid, speciescolor, speciesstyle, zmax, short_summary, run_id,
              monospace_choice, sansserif_choice)
 
     # Collect the J rates
     Jratedict = Dict{Symbol, Vector{Array{Float64}}}([j=>external_storage[j] for j in keys(external_storage) if occursin("J", string(j))])
 
     # Write out the final state to a unique file for easy finding
-    write_final_state(atm_soln, results_dir, sim_folder_name, final_atm_file; alt, num_layers, hrshortcode, Jratedict, rshortcode, external_storage, n_horiz)
+    write_final_state(atm_soln, results_dir, sim_folder_name, final_atm_file; alt, num_layers, short_summary, Jratedict, run_id, external_storage, n_horiz)
 
     @assert size(Tn_arr) == (n_horiz, num_layers+2) "Tn_arr should be (n_horiz, num_layers+2), got $(size(Tn_arr))"
     @assert size(Ti_arr) == (n_horiz, num_layers+2) "Ti_arr must be (n_horiz, num_layers+2)"
@@ -2028,10 +2028,10 @@ elseif problem_type == "Gear"
                                  separate_cols=true, nonthermal=nontherm, all_species, alt, chem_species,
                                  collision_xsect, dz, dx, hot_D_rc_funcs, hot_H_rc_funcs,
                                  hot_H2_rc_funcs, hot_HD_rc_funcs, Hs_dict, hot_H_network,
-                                 hot_D_network, hot_H2_network, hot_HD_network, hrshortcode,
+                                 hot_D_network, hot_H2_network, hot_HD_network, short_summary,
                                  ion_species, Jratedict, M_P, molmass, monospace_choice,
                                  neutral_species, non_bdy_layers, num_layers, n_all_layers, n_alt_index,
-                                 polarizability, planet, plot_grid, q, R_P, rshortcode, reaction_network,
+                                 polarizability, planet, plot_grid, q, R_P, run_id, reaction_network,
                                  sansserif_choice, speciesbclist_vert, speciesbclist_horiz,
                                  Tn=Tn_arr, Ti=Ti_arr, Te=Te_arr, Tp=Tplasma_arr,
                                  Tprof_for_Hs, Tprof_for_diffusion, transport_species,
