@@ -36,8 +36,8 @@ function make_jacobian(n, p, t)
         global external_storage[jr] = n_cur_all[jr]
     end
 
-    # Retrieve Jrates 
-    Jrates = deepcopy(ftype_ncur[external_storage[jr][ialt] for jr in GV.Jratelist, ialt in 1:GV.num_layers])
+    # Retrieve Jrates (species × column × altitude)
+    Jrates = deepcopy([ftype_ncur(external_storage[jr][ihoriz][ialt]) for jr in GV.Jratelist, ihoriz in 1:GV.n_horiz, ialt in 1:GV.num_layers])
 
     # and update the shortlived species with the new Jrates - assuming not needed to be done in this function
     # n_short_updated = set_concentrations!(external_storage, n, n_short, n_inactive, active_longlived, active_shortlived, inactive_species, Jrates, Tn, Ti, Te)
@@ -101,8 +101,8 @@ function PnL_eqn(dndt, n, p, t)
     # retrieve the shortlived species from their storage and flatten them
     n_short = flatten_atm(external_storage, GV.active_shortlived; GV.num_layers, GV.n_horiz)
 
-    # Retrieve the Jrates
-    Jrates = deepcopy(ftype_ncur[external_storage[jr][ialt] for jr in GV.Jratelist, ialt in 1:GV.num_layers])
+    # Retrieve the Jrates (species × column × altitude)
+    Jrates = deepcopy([ftype_ncur(external_storage[jr][ihoriz][ialt]) for jr in GV.Jratelist, ihoriz in 1:GV.n_horiz, ialt in 1:GV.num_layers])
 
     # set the concentrations of species assumed to be in photochemical equilibrium. 
     n_short_updated = set_concentrations!(external_storage, n, n_short, GV.n_inactive, Jrates, M, E; globvars...)
