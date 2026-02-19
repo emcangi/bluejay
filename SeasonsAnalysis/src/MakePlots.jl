@@ -66,7 +66,7 @@ function make_seasonal_cycle_plots_inclusive(season_folders; mainalt=250, savepa
 
         make_3panel_figure([atm_states["lowT"], atm_states["midT2"], atm_states["highT"]], tempcols_cycle, "temp", ["cold", "mean", "hot"]; 
                            savepath=savepath, fn="3panel_tempcycle.png", lloc=(0.02, 0.38), 
-                           subplot_lbl_loc=[0, 0.92], subplot_lbl_sz=24, Tn_all, Ti_all, Te_all, GV.alt, GV.speciesstyle)
+                           subplot_lbl_loc=[0, 0.92], subplot_lbl_sz=24, Tn_all, Ti_all, Te_all, GV.alt, GV.speciesstyle, ihoriz)
     end
 
     # 6 panel plot
@@ -74,7 +74,7 @@ function make_seasonal_cycle_plots_inclusive(season_folders; mainalt=250, savepa
         println("Making 6 panel")
         DH_6panel([atm_states["lowT"], atm_states["midT2"], atm_states["highT"]], savepath; 
                        fn="DH_profiles_vs_Texo_cycle", lines_mean = [L"\mathrm{T_{exo}=175}"*" K", L"\mathrm{T_{exo}=225}"*" K", L"\mathrm{T_{exo}=275}"*" K"], 
-                       tempcols=tempcols_3, subplot_lbl_loc=subplot_lbl_loc, subplot_lbl_sz=subplot_lbl_sz)
+                       tempcols=tempcols_3, subplot_lbl_loc=subplot_lbl_loc, subplot_lbl_sz=subplot_lbl_sz, ihoriz)
     end
     
     # Temperature, D/H, density 
@@ -117,7 +117,7 @@ function make_seasonal_cycle_plots_inclusive(season_folders; mainalt=250, savepa
         # Make the plot
         seasonal_cycling_figure_original(state_files, mainalt, DHax, ffax, nax, fax, fax2; fn="tempcycle_$(resolution)res$(extrafn)", show_all_flux=show_all_flux,
                                          savepath=savepath, plot_pct=plot_pct, subplot_lbl_loc=[-0.3, subplot_lbl_loc[2]], subplot_lbl_sz=subplot_lbl_sz, 
-                                         DH_ylims=[2.5e-4, 7e-3], ff_ylims=[0.01, 0.2], DHmult=[2, 5, 10, 20, 34],                                        
+                                         DH_ylims=[2.5e-4, 7e-3], ff_ylims=[0.01, 0.2], DHmult=[2, 5, 10, 20, 34], ihoriz,
                                          globvars...)
         
         println("$(Dates.format(now(), "(HH:MM:SS)")) Done")
@@ -476,14 +476,14 @@ function make_seasonal_cycle_plots_water(season_folders; mainalt=250, savepath=n
         make_3panel_figure([atm_states["low"], atm_states["mean2"], atm_states["high"]], watercols_dict, "water", ["low", "mean", "high"]; 
                        initial_atms=[atm_states_init["low"], atm_states_init["mean2"], atm_states_init["high"]], subplot_lbl_loc=subplot_lbl_loc,
                        panel1labels=["Dry", "Mean", "Wet"], spclbl_x=spclbl_x, spclbl_loc=spclbl_loc, lloc=(0.05, 0.38), figsz=(20, 7), 
-                       esclbl="Atomic", savepath=savepath, fn="3_panel_water_cycle$(extrafn)", globvars...)
+                       esclbl="Atomic", savepath=savepath, fn="3_panel_water_cycle$(extrafn)", ihoriz, globvars...)
     end
     
     # 6 panel plot -------------------------------------------------------------------------------- #
     if make_6panel
         DH_6panel([atm_states["low"], atm_states["mean"], atm_states["high"]], savepath; fn="DH_profiles_vs_water_cycle_mesosphere$(extrafn)", 
                        lloc=[0.35, 0.4],
-                       lines_mean=["Dry", "Mean", "Wet"], subplot_lbl_loc=subplot_lbl_loc, tempcols=watercolors, globvars...)
+                       lines_mean=["Dry", "Mean", "Wet"], subplot_lbl_loc=subplot_lbl_loc, tempcols=watercolors, ihoriz, globvars...)
     end
 
     if plot_water_profile==true
@@ -516,7 +516,7 @@ function make_seasonal_cycle_plots_water(season_folders; mainalt=250, savepath=n
 
         seasonal_cycling_figure_original(state_files, mainalt, DHax, ffax, nax, fax, fax2; thefig=bigfig, fn="watercycle_$(resolution)res$(extrafn)", show_all_flux=show_all_flux,
                                         ivar_label=ivar_lbl, savepath=savepath, flloc=flloc, alt_legend_loc=alt_legend_loc, subplot_lbl_loc=[-0.3, 0.92], 
-                                        plot_pct, pct_ylims=[8e-7, 1e-4], DH_ylims=[3e-4, 5e-3], ff_ylims=[0.01, 0.2], DHmult=[2, 5, 10, 15, 23], globvars...)
+                                        plot_pct, pct_ylims=[8e-7, 1e-4], DH_ylims=[3e-4, 5e-3], ff_ylims=[0.01, 0.2], DHmult=[2, 5, 10, 15, 23], ihoriz, globvars...)
         println("$(Dates.format(now(), "(HH:MM:SS)")) Done")
         flush(stdout)
     end
@@ -712,7 +712,7 @@ function make_3panel_figure(atms, colors, exptype, atm_state_order; fn="3panel",
                             figsz=(20, 5),  specialH2=false, panel1labels=["Low", "Mean", "High"], line_lbl_x=0.01,
                             spclbl_x=[0.8, 0.45], spclbl_loc=[0.75 0.25; 0.35 0.25], lloc=(0, 0.4),
                             fluxfiles=nothing,
-                            subplot_lbl_loc=[0.05, 0.9], subplot_lbl_sz=20, plotfmt="pdf",  globvars...)
+                            subplot_lbl_loc=[0.05, 0.9], subplot_lbl_sz=20, plotfmt="pdf", ihoriz=1, globvars...)
     #=
     This makes the 3 panel figure which shows the inputs, the D/H vs. altitude, and the densities of H and D.
     
@@ -766,7 +766,7 @@ function make_3panel_figure(atms, colors, exptype, atm_state_order; fn="3panel",
     if exptype == "temp"
         make_temperature_panel(ax[1], GV.Tn_all, GV.Ti_all, GV.Te_all; GV.alt, tempcols=colors_3)
     elseif exptype=="water"
-        make_water_panel(ax[1], initial_atms, colors_3, panel1labels; spclbl_x=spclbl_x, line_lbl_x=line_lbl_x, globvars...)
+        make_water_panel(ax[1], initial_atms, colors_3, panel1labels; spclbl_x=spclbl_x, line_lbl_x=line_lbl_x, ihoriz, globvars...)
     elseif exptype=="insolation"
         make_insolation_panel(ax[1], colors_3, panel1labels, fluxfiles; line_lbl_x, GV.speciesstyle)
     end
@@ -779,9 +779,9 @@ function make_3panel_figure(atms, colors, exptype, atm_state_order; fn="3panel",
 
     DH_alt_profile_singlepanels(ax[2], atms, colors, atm_state_order;
                             heavysp=:D, lightsp=:H, wl=[0.29, 0.9], ol=[0.6, 0.5], lloc=lloc,
-                            xlims=[1e-4, 1e-2], legendon=true, globvars...)
+                            xlims=[1e-4, 1e-2], legendon=true, ihoriz, globvars...)
     # PANEL 3
-    make_density_panel(ax[3], atms, colors, atm_state_order; specialH2, spclbl_loc=spclbl_loc, globvars...)
+    make_density_panel(ax[3], atms, colors, atm_state_order; specialH2, spclbl_loc=spclbl_loc, ihoriz, globvars...)
 
     savefig("$(savepath)$(fn).$(plotfmt)", format=plotfmt, dpi=300, bbox_inches="tight")
     show()
@@ -789,7 +789,7 @@ end
 
 function DH_6panel(atmdict_list, savepath; lines_mean=["Solar minimum", "Solar mean", "Solar maximum"],  
                         lloc=[0.3, 0.7], fn="DH_profiles", cutoff=[1 1 1; 1 1 25], 
-                        subplot_lbl_loc=[0, 0.95], subplot_lbl_sz=20, globvars...)
+                        subplot_lbl_loc=[0, 0.95], subplot_lbl_sz=20, ihoriz=1, globvars...)
     #= 
     Plots the D/H ratio in 6 different species vs. altitude for several atmospheres and saves it.
     
@@ -821,12 +821,12 @@ function DH_6panel(atmdict_list, savepath; lines_mean=["Solar minimum", "Solar m
     DH_toplot = Array{Array}(undef, 2, 3)
     
     # Fill in the stuff
-    DH_toplot[1, 1] = hcat([n[:HDO] ./ (2 .* n[:H2O]) for n in atmdict_list]...)
-    DH_toplot[1, 2] = hcat([n[:D] ./ (n[:H]) for n in atmdict_list]...)
-    DH_toplot[1, 3] = hcat([n[:HD] ./ (2 .* n[:H2]) for n in atmdict_list]...)
-    DH_toplot[2, 1] = hcat([n[:OD] ./ (n[:OH]) for n in atmdict_list]...)
-    DH_toplot[2, 2] = hcat([n[:H2DOpl] ./ (3 .* n[:H3Opl]) for n in atmdict_list]...)
-    DH_toplot[2, 3] = hcat([n[:DCOpl] ./ (n[:HCOpl]) for n in atmdict_list]...)
+    DH_toplot[1, 1] = hcat([n[:HDO][ihoriz] ./ (2 .* n[:H2O][ihoriz]) for n in atmdict_list]...)
+    DH_toplot[1, 2] = hcat([n[:D][ihoriz] ./ (n[:H][ihoriz]) for n in atmdict_list]...)
+    DH_toplot[1, 3] = hcat([n[:HD][ihoriz] ./ (2 .* n[:H2][ihoriz]) for n in atmdict_list]...)
+    DH_toplot[2, 1] = hcat([n[:OD][ihoriz] ./ (n[:OH][ihoriz]) for n in atmdict_list]...)
+    DH_toplot[2, 2] = hcat([n[:H2DOpl][ihoriz] ./ (3 .* n[:H3Opl][ihoriz]) for n in atmdict_list]...)
+    DH_toplot[2, 3] = hcat([n[:DCOpl][ihoriz] ./ (n[:HCOpl][ihoriz]) for n in atmdict_list]...)
     
     #heavysp
     heavysp = [:HDO :D :HD; :OD :H2DOpl :DCOpl]
@@ -1247,7 +1247,7 @@ function seasonal_cycling_figure_original(thefiles, A, DHax, ffax, nax, fax, fax
                                  DHmult=[2, 5, 10, 20, 25], 
                                  # Figure stuff
                                  alt_legend_loc=(0.72, 0.4), flloc="lower left", subplot_lbl_loc=[0,0.95], subplot_lbl_sz=20,
-                                 ivar_cmap="RdBu", plotfmt="pdf", globvars...)
+                                 ivar_cmap="RdBu", plotfmt="pdf", ihoriz=1, globvars...)
     #=
     
     Inputs:
@@ -1302,7 +1302,7 @@ function seasonal_cycling_figure_original(thefiles, A, DHax, ffax, nax, fax, fax
     
     # Add percent which escapes for H ------------------------------------------------------------
     if plot_pct==true
-        total_H_col = [sum(get_ncurrent(f)[:H]) .* GV.dz for f in thefiles]
+        total_H_col = [sum(get_ncurrent(f)[:H][ihoriz]) .* GV.dz for f in thefiles]
         # twin ax for ratio of total col
         fax_pct = fax.twinx()
         turn_off_borders(fax_pct)
@@ -1317,7 +1317,7 @@ function seasonal_cycling_figure_original(thefiles, A, DHax, ffax, nax, fax, fax
     
     # Add percent which escapes for H -------------------------------------------------------------
     if plot_pct==true
-        total_D_col = [sum(get_ncurrent(f)[:D]) .* GV.dz for f in thefiles]
+        total_D_col = [sum(get_ncurrent(f)[:D][ihoriz]) .* GV.dz for f in thefiles]
         # TWIN AX for ratio
         fax2_pct = fax2.twinx()
         turn_off_borders(fax2_pct)
@@ -1691,7 +1691,7 @@ end
 function DH_alt_profile_singlepanels(ax, atmdict_list, linecols, atm_state_order; lines_mean=nothing,
                         heavysp=:D, lightsp=:H, species_pair="atomics", wl=[0.1, 0.9], ol=[0.6, 0.8],
                         titl="", xlims=[1e-4, 1e-2], cutoff=nothing,fn="DH_profiles", lloc=(0.05,0.4),
-                        opttext=[], opttext_loc=[()], opttext_col=[], legendon=false, globvars...)
+                        opttext=[], opttext_loc=[()], opttext_col=[], legendon=false, ihoriz=1, globvars...)
     #=
     Also plots D/H by altitude, but does so on the ax object for part of a larger plot.
     
@@ -1703,7 +1703,7 @@ function DH_alt_profile_singlepanels(ax, atmdict_list, linecols, atm_state_order
 
     
     # get D/H in water
-    DH_water = [n[:HDO] ./ (2 .* n[:H2O]) for n in atmdict_list]
+    DH_water = [n[:HDO][ihoriz] ./ (2 .* n[:H2O][ihoriz]) for n in atmdict_list]
     
     if occursin("H2", string(lightsp))
         Hfactor_light = 2
@@ -1713,7 +1713,7 @@ function DH_alt_profile_singlepanels(ax, atmdict_list, linecols, atm_state_order
         Hfactor_light = 1
     end
     
-    DH_other = [n[heavysp] ./ (Hfactor_light * n[lightsp]) for n in atmdict_list]
+    DH_other = [n[heavysp][ihoriz] ./ (Hfactor_light * n[lightsp][ihoriz]) for n in atmdict_list]
 
     # plot setup
     plot_bg(ax)
@@ -1761,7 +1761,7 @@ function DH_alt_profile_singlepanels(ax, atmdict_list, linecols, atm_state_order
     end
 end
 
-function make_density_panel(ax, atmdict_list, colors, atm_state_order; spclbl_loc=[0.75 0.25; 0.35 0.25], specialH2=false, globvars...)
+function make_density_panel(ax, atmdict_list, colors, atm_state_order; spclbl_loc=[0.75 0.25; 0.35 0.25], specialH2=false, ihoriz=1, globvars...)
     #=
     Plots densities of H and D vs. altitude from the atmospheres in atmdict_list.
 
@@ -1782,11 +1782,11 @@ function make_density_panel(ax, atmdict_list, colors, atm_state_order; spclbl_lo
     
     for a in 1:length(atmdict_list)
         if specialH2
-            ax.plot(atmdict_list[a][:H2], GV.plot_grid, color=colors[atm_state_order[a]])
+            ax.plot(atmdict_list[a][:H2][ihoriz], GV.plot_grid, color=colors[atm_state_order[a]])
         else
-            ax.plot(atmdict_list[a][:H], GV.plot_grid, color=colors[atm_state_order[a]])
+            ax.plot(atmdict_list[a][:H][ihoriz], GV.plot_grid, color=colors[atm_state_order[a]])
         end
-        ax.plot(atmdict_list[a][:D], GV.plot_grid, color=colors[atm_state_order[a]], linestyle=GV.speciesstyle[:D])
+        ax.plot(atmdict_list[a][:D][ihoriz], GV.plot_grid, color=colors[atm_state_order[a]], linestyle=GV.speciesstyle[:D])
     end
 
     ax.set_xscale("log")

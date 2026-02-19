@@ -707,12 +707,12 @@ function limiting_flux(sp, atmdict, T_arr, n_horiz::Int64; ihoriz::Int=1, treat_
     # Calculate some common things: mixing ratio, scale height, binary diffusion coefficient AT^s
     if treat_H_as_rare==true
         if sp==:H
-            thedensity = atmdict[:D]
+            thedensity = atmdict[:D][ihoriz]
         elseif sp==:H2 
-            thedensity = atmdict[:HD]
+            thedensity = atmdict[:HD][ihoriz]
         end
     elseif treat_H_as_rare==false
-        thedensity = atmdict[sp]
+        thedensity = atmdict[sp][ihoriz]
     end
 
     if length(T_arr)==length(GV.alt)
@@ -731,8 +731,8 @@ function limiting_flux(sp, atmdict, T_arr, n_horiz::Int64; ihoriz::Int=1, treat_
 
         return @. ((bi*fi)/(1+fi)) * ( mH*(ma - GV.molmass[sp]) * (g/(kB*T_arr)) - (thermaldiff(sp)/T_arr) * dTdz[1:end-1])
     else
-        D = Dcoef_neutrals(non_bdy_layers, sp, bi, atmdict; globvars...)    
-        return (D .* atmdict[sp] ./ Ha) .* (1 .- GV.molmass[sp] ./ meanmass(atmdict, ihoriz; ignore=[sp], globvars...))
+        D = Dcoef_neutrals(GV.non_bdy_layers, sp, bi, atmdict; globvars...)    
+        return (D .* atmdict[sp][ihoriz] ./ Ha) .* (1 .- GV.molmass[sp] ./ meanmass(atmdict, ihoriz; ignore=[sp], globvars...))
     end
 end
 
