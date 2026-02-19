@@ -32,7 +32,7 @@ Things bluejay does not do at this time:
 
 ## Installation 
 
-bluejay is currently up-to-date with Julia 1.11.6 It will likely work with newer versions, but it has not yet been tested. 
+bluejay is currently up-to-date with Julia 1.12.3. It will likely work with newer versions, but it has not yet been tested. 
 
 At this time, there are no compiled binaries. The model is provided as a collection of modules (under the Photochemistry module) and related scripts. To install, simply ensure that Julia is installed in the location of your choice and added to your environment $PATH variable, and fork the repo. The root directory of the model must contain:
 
@@ -84,9 +84,9 @@ The Photochemistry module contains several submodules:
   - Photochemical equilibrium functions
 - **Crosssections.jl**: Functions which load cross section data and populate the dictionary of cross sections. Note, the J rates are hard-coded in as lists of reactants and products at this time due to the many different ways they are handled. This may be improvable/automatable in the future.
 - **FileIO.jl**: Anything that involves getting info out of or writing info into a file, including saving the model results and parameter logs.
-- **JuliaODEsolver.jl**: Optional submodule with functions to utilize the Julia ODE solvers. Not presently used in our work as the Gear solver (included in the `convege_new_file.jl` script) works better.
+- **JuliaODEsolver.jl**: Optional submodule with functions to utilize the Julia ODE solvers. Not presently used in our work as the Gear solver (included in the `converge_new_file.jl` script) works better.
 - **Plotting.jl**: Functions which make plots for showing model inputs, model evolution, and results.
-- **ReactionNetwork.jl**: Everything needed to ingest an Excel spreadsheet of reaction rate data and turn it into a symbolic chemical network for Julia to read. Also includes functions which calculate enthapies of reaction and modify a reaction rate spreadsheet. These functions are NOT called by the model directly and MUST be run by the user when establishing a new simulation, say, for a new planet, because escape energy changes with different gravities.
+- **ReactionNetwork.jl**: Everything needed to ingest an Excel spreadsheet of reaction rate data and turn it into a symbolic chemical network for Julia to read. Also includes functions which calculate enthalpies of reaction and modify a reaction rate spreadsheet. These functions are NOT called by the model directly and MUST be run by the user when establishing a new simulation, say, for a new planet, because escape energy changes with different gravities.
 - **UnitConversions.jl**: Some basic unit conversions relevant to planetary atmospheres and water budgets.
 
     
@@ -133,9 +133,14 @@ This list may be incomplete. If you discover a necessary step that isn't written
 11. Converge a new atmosphere with the new species. Once successful:
   - Save the output `final_atmosphere.h5` as the new initial guess file for that planet
   - Set the newly introduced photodissociation/photoionization reactions to "Conv" in the "Status" column of the appropriate tabs within the reaction network spreadsheet
-  - Set `adding_new_species` variable in `INPUT_PARAMETERS`.jl to false.
+  - Set `adding_new_species` variable in `INPUT_PARAMETERS.jl` to false.
   - Move the new species' symbols to the "`conv`" lists in `MODEL_SETUP.jl`.
 
+### Horizontal winds and boundary conditions
+
+- Horizontal transport is controlled by `horiz_transport_timescale` in `INPUT_PARAMETERS.jl`, specified in hours (set to zero for no horizontal transport). You can split neutral and ion transport with `horiz_transport_timescale_neutral` and `_ion` (Venus defaults: 30 h neutrals, 15 h ions). These are internally converted to horizontal wind speeds via `horiz_wind_speed[_neutral|_ion] = horiz_column_width / (timescale * 3600)` and stored as velocity profiles in `horiz_wind_v[_neutral|_ion]` in `MODEL_SETUP.jl` for each column. By default, a constant wind speed is applied at all altitudes. `update_horiz_transport_coefficients` uses these velocities to create forward and backward transport rates. 
+- Edge fluxes are set through the `speciesbclist_horiz` dictionary; specify altitude profiles for each species to impose non-zero flux at the back and front edges. Passing `cyclic=true` treats the domain as periodic so that flux leaving one edge enters from the opposite side and horizontal coefficients wrap between the first and last columns.
+- Horizontal advection employs an upwind scheme that averages the local and neighbouring wind speeds so that flux leaving one column exactly enters the next.
 
 **Running the model**:
 1. Modify `INPUT_PARAMETERS.jl` to your chosen conditions for the simulation. 

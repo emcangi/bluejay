@@ -22,14 +22,26 @@ end
 
 function create_folder(foldername::String, parentdir::String)
     #=
-    Checks to see if foldername exists within parentdir. If not, creates it.
+    Creates a folder within an enclosing directory.
+
+    Inputs:
+        foldername: folder to be created
+        parentdir: directory in which to create foldername; will be created if it doesn't already exist.
+
+    Outputs:
+        None
     =#
-    # println("Checking for existence of $(foldername) folder in $(parentdir)")
-    dircontents = readdir(parentdir)
-    if foldername in dircontents
+    # Create the parent directory path if it does not exist
+    if !isdir(parentdir)
+        mkpath(parentdir)
+    end
+
+    target = joinpath(parentdir, foldername)
+
+    if isdir(target)
         println("Folder $(foldername) already exists")
     else
-        mkdir(parentdir*foldername)
+        mkpath(target)
         println("Created folder ", foldername)
     end
 end
@@ -55,27 +67,67 @@ function get_elapsed_time(filepath)
     return parse(Float64, split(h5read(filepath, "info")[end])[1])
 end
 
-function get_ncurrent(readfile::String)
+function get_ncurrent(readfile::String; globvars...)
     #=
     Input:
         readfile: HDF5 file containing a matrix with atmospheric density profiles
+        globvars: keyword arguments including n_horiz and num_layers
     Output:
         n_current: dictionary of atmospheric density profiles by species 
     =#
 
+    GV = values(globvars)
+    
     # This accounts for the old format of some files. 
     try
-        global n_current_tag_list = map(Symbol, h5read(readfile,"n_current/species"))
+        global species_list = map(Symbol, h5read(readfile,"n_current/species"))
         global n_current_mat = h5read(readfile,"n_current/n_current_mat");
     catch
-        global n_current_tag_list = map(Symbol, h5read(readfile,"ncur/species"))
+        global species_list = map(Symbol, h5read(readfile,"ncur/species"))
         global n_current_mat = h5read(readfile,"ncur/ncur_mat");
     end
     
-    n_current = Dict{Symbol, Array{ftype_ncur, 1}}()
+    n_current = Dict{Symbol, Vector{Array{ftype_ncur}}}()
 
-    for ispecies in [1:length(n_current_tag_list);]
-        n_current[n_current_tag_list[ispecies]] = reshape(n_current_mat[:,ispecies], length(n_current_mat[:, ispecies]))
+    # Determine desired number of altitude layers from globvars if available,
+    # otherwise fall back to Main.num_layers, or finally the file dimensions.
+    if :num_layers in keys(GV)
+        target_layers = GV.num_layers
+    elseif isdefined(Main, :num_layers)
+        target_layers = Main.num_layers
+    else
+        # For 2D arrays: (layers, species). For 3D arrays: (n_horiz, layers, species)
+        target_layers = ndims(n_current_mat) == 3 ? size(n_current_mat, 2) : size(n_current_mat, 1)
+    end
+    
+    # Determine desired number of horizontal columns from globvars if available,
+    # otherwise fall back to Main.n_horiz, or finally default to 1.
+    if :n_horiz in keys(GV)
+        n_horiz = GV.n_horiz
+    elseif isdefined(Main, :n_horiz)
+        n_horiz = Main.n_horiz
+    else
+        n_horiz = 1
+    end
+
+    # Slice or pad the profiles so that their length matches the altitude grid
+    for ispecies in eachindex(species_list)
+        profile = convert(Vector{ftype_ncur}, n_current_mat[:, ispecies])
+
+        if length(profile) > target_layers
+            profile = profile[1:target_layers]
+        elseif length(profile) < target_layers
+            profile = vcat(profile, fill(last(profile), target_layers - length(profile)))
+        end
+
+        # Duplicate the profile for each column so that updates to one column do not modify the others by aliasing the same array.
+        n_current[species_list[ispecies]] = [copy(profile) for _ in 1:n_horiz]
+    end
+    if isdefined(Main, :all_species)
+        zero_prof = fill(ftype_ncur(0.0), target_layers)
+        for sp in setdiff(Main.all_species, keys(n_current))
+            n_current[sp] = fill(copy(zero_prof), n_horiz)
+        end
     end
     return n_current
 end
@@ -121,24 +173,37 @@ function search_subfolders(path::String, key; type="folders")
     end
 end
 
-function write_atmosphere(atmdict::Dict{Symbol, Vector{ftype_ncur}}, filename::String; t=0, globvars...) 
+function write_atmosphere(atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}}, filename::String; t=0, globvars...) 
     #=
     Writes out the current atmospheric state to an .h5 file
 
     Input: 
         atmdict: atmospheric density profile dictionary
         filename: filename to write to
+        globvars: keyword arguments including n_horiz, num_layers, alt, etc.
     =# 
     GV = values(globvars)
     required =  [:alt, :num_layers, :short_summary, :run_id]
     check_requirements(keys(GV), required)
     
+    # Determine number of horizontal columns from globvars if available,
+    # otherwise fall back to Main.n_horiz, or default to 1.
+    if :n_horiz in keys(GV)
+        n_horiz = GV.n_horiz
+    elseif isdefined(Main, :n_horiz)
+        n_horiz = Main.n_horiz
+    else
+        n_horiz = 1
+    end
+    
     sorted_keys = sort(collect(keys(atmdict)))
-    atm_mat = Array{Float64}(undef, GV.num_layers, length(sorted_keys));
+    atm_mat = Array{Float64}(undef, n_horiz, GV.num_layers, length(sorted_keys));
 
-    for ispecies in [1:length(sorted_keys);]
-        for ialt in [1:GV.num_layers;]
-            atm_mat[ialt, ispecies] = convert(Float64, atmdict[sorted_keys[ispecies]][ialt])
+    for ihoriz in 1:n_horiz
+    	for ispecies in [1:length(sorted_keys);]
+            for ialt in [1:GV.num_layers;]
+            	atm_mat[ihoriz, ialt, ispecies] = convert(Float64, atmdict[sorted_keys[ispecies]][ihoriz][ialt])
+	    end
         end
     end
     delete_old_h5file(filename)
@@ -190,7 +255,7 @@ function load_bcdict_from_paramdf(df)
     Assumes that the column names are 'Species', 'Type', 'Lower' and 'Upper.'
 
     Output:
-        speciesbclist_reconstructed: full speciesbclist dictionary object
+        speciesbclist_reconstructed: full speciesbclist_vert dictionary object
     =#
 
     # Some of the older runs might have just "flux" in the log, which really means thermal flux alone
@@ -245,7 +310,7 @@ function load_from_paramlog(folder; quiet=true, globvars...)
             println()
         end
     end
-    
+
     if ~(:alt in keys(GV))
         try 
             global df_alt = DataFrame(XLSX.readtable("$(folder)PARAMETERS.xlsx", "AltGrid"));
@@ -310,12 +375,12 @@ function load_from_paramlog(folder; quiet=true, globvars...)
     chem_species = setdiff(all_species, no_chem_species);
     Jratelist = [Symbol(x) for x in filter(x->typeof(x)==String, df_splists.Jratelist)]
 
-    # Temperatures
+    ## Temperatures
     if "TemperatureArrays" in XLSX.sheetnames(paramlog_wb)
         df_temps = DataFrame(XLSX.readtable("$(folder)PARAMETERS.xlsx", "TemperatureArrays"));
-        Tn_arr = df_temps.Neutrals
-        Ti_arr = df_temps.Ions
-        Te_arr = df_temps.Electrons
+        Tn_arr = reshape(df_temps.Neutrals, GV.n_horiz, GV.num_layers+2)
+        Ti_arr = reshape(df_temps.Ions, GV.n_horiz, GV.num_layers+2)
+        Te_arr = reshape(df_temps.Electrons, GV.n_horiz, GV.num_layers+2)
     else 
         if quiet==false
             println("WARNING: Reconstructing temperature profiles with default options based on logged control temperatures. It is POSSIBLE the reconstruction could be wrong if the temp function changed.")
@@ -343,9 +408,9 @@ function load_from_paramlog(folder; quiet=true, globvars...)
         # hope the user has passed it in
         global Hs_dict = Dict{Symbol, Vector{Float64}}([sp=>scaleH(GV.alt, sp, Tprof_for_Hs[charge_type(sp)]; GV.M_P, GV.R_P, globvars...) for sp in all_species]); 
     end
-    
+   
     # Boundary conditions
-    speciesbclist = load_bcdict_from_paramdf(df_bcs);
+    speciesbclist_vert = load_bcdict_from_paramdf(df_bcs);
     
     vardict = Dict("DH"=>DH, 
                    "ions_included"=>ions_included,
@@ -363,9 +428,8 @@ function load_from_paramlog(folder; quiet=true, globvars...)
                    "Tprof_for_Hs"=>Tprof_for_Hs,
                    "Tprof_for_diffusion"=>Tprof_for_diffusion,
                    "Hs_dict"=>Hs_dict,
-                   "speciesbclist"=>speciesbclist,
+                   "speciesbclist_vert"=>speciesbclist_vert,
                    "rxn_spreadsheet"=>rxn_spreadsheet,
-                   "upper_lower_bdy"=>upper_lower_bdy,
                    "Jratelist"=>Jratelist,
                    "non_bdy_layers"=>non_bdy_layers,
                    "zmin"=>zmin,
@@ -376,7 +440,6 @@ function load_from_paramlog(folder; quiet=true, globvars...)
                    "upper_lower_bdy"=>upper_lower_bdy,
                    "upper_lower_bdy_i"=>upper_lower_bdy_i
                    )
-    
     try
         vardict["alt"] = alt
         vardict["M_P"] = M_P
