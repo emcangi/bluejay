@@ -249,6 +249,10 @@ const enable_horiz_transport = true
 # horizontal exchange is advective unless explicitly enabled.
 const enable_horiz_diffusion = false
 
+# If true, horizontal neighbors wrap periodically (column 1 is behind column n_horiz).
+# If false, the model uses explicit back/front edge boundary conditions.
+const horiz_transport_cyclic = true
+
 # =======================================================================================================
 # Horizontal Column Scenario Configuration
 # =======================================================================================================

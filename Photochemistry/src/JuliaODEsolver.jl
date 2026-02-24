@@ -51,7 +51,9 @@ function make_jacobian(n, p, t)
     tbackedge, tforwards, tbackwards, tfrontedge =
         update_horiz_transport_coefficients(
             GV.transport_species, n_cur_all, D_arr, M;
-            calc_nonthermal=nontherm, globvars...
+            calc_nonthermal=nontherm,
+            cyclic=get(GV, :horiz_transport_cyclic, true),
+            globvars...
         )
     
     return chemJmat(n, n_short, GV.n_inactive, Jrates, tup, tdown, tlower, tupper, tforwards, tbackwards, tfrontedge, tbackedge, M, E; globvars...)
@@ -119,7 +121,9 @@ function PnL_eqn(dndt, n, p, t)
     tbackedge, tforwards, tbackwards, tfrontedge =
         update_horiz_transport_coefficients(
             GV.transport_species, updated_ncur_all, D_arr, M;
-            calc_nonthermal=nontherm, globvars...
+            calc_nonthermal=nontherm,
+            cyclic=get(GV, :horiz_transport_cyclic, true),
+            globvars...
         )
 
     dndt .= ratefn(n, n_short_updated, GV.n_inactive, Jrates, tup, tdown, tlower, tupper, tforwards, tbackwards, tfrontedge, tbackedge, M, E; globvars...)

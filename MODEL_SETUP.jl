@@ -356,6 +356,7 @@ const horiz_wind_v = horiz_wind_v_neutral
 # - `enable_horiz_transport` toggles all horizontal coupling (advection + diffusion).
 # - `enable_horiz_diffusion` toggles only the diffusive horizontal term.
 #   Advection remains active when transport is enabled.
+# - `horiz_transport_cyclic` controls periodic wrapping in the horizontal direction.
 
 #                                      Water profile settings
 # =======================================================================================================
@@ -543,7 +544,8 @@ end
 # to impose an influx or outflux for any species.  Each entry contains two
 # vectors of length `num_layers` giving the flux [#/cm²/s] at the back and front
 # edges respectively. Edit `speciesbclist_horiz[sp]["f"][edge]` to override the
-# profile on either edge.
+# profile on either edge. These edge fluxes are only used when
+# `horiz_transport_cyclic == false`.
 
 # add in zero flux edge boundary conditions on both edges for all species
 auto_speciesbclist_horiz = Dict()
@@ -707,6 +709,7 @@ push!(PARAMETERS_GEN, ("MOLEC_DIFFUSION_ON", use_molec_diff));
 push!(PARAMETERS_GEN, ("HORIZ_TRANSPORT_ON", enable_horiz_transport));
 push!(PARAMETERS_GEN, ("HORIZ_DIFFUSION_ON", enable_horiz_diffusion));
 push!(PARAMETERS_GEN, ("HORIZ_DX_ALT_DEPENDENT", use_altitude_dependent_horiz_dx));
+push!(PARAMETERS_GEN, ("HORIZ_CYCLIC", horiz_transport_cyclic));
 
 # Log altitude grid so we can avoid loading this very file when doing later analysis.
 PARAMETERS_ALTGRID = DataFrame(Alt=alt, # grid

@@ -226,7 +226,12 @@ function chemJmat(n_active_longlived, n_active_shortlived, n_inactive, Jrates, t
     =#              
 
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:active_longlived, :active_shortlived, :H2Oi, :HDOi, :inactive_species, :num_layers, :Tn, :Ti, :Te, :upper_lower_bdy_i])
+    @assert all(x->x in keys(GV), [:active_longlived, :active_shortlived, :H2Oi, :HDOi, :inactive_species, :num_layers, :n_horiz, :Tn, :Ti, :Te, :upper_lower_bdy_i])
+
+    n_horiz = GV.n_horiz
+    cyclic_horiz = get(GV, :horiz_transport_cyclic, true)
+    one_ll = fill(1.0, length(GV.active_longlived))
+    col_block = GV.num_layers * length(GV.active_longlived)
 
     nmat_llsp = reshape(n_active_longlived, (length(GV.active_longlived), GV.num_layers, n_horiz))
     nmat_slsp = reshape(n_active_shortlived, (length(GV.active_shortlived), GV.num_layers, n_horiz))
@@ -240,12 +245,21 @@ function chemJmat(n_active_longlived, n_active_shortlived, n_inactive, Jrates, t
     # Loop over horizontal columns
     for ihoriz in 1:n_horiz
         for ialt in 1:GV.num_layers
+            behind_idx = cyclic_horiz ? (ihoriz == 1 ? n_horiz : ihoriz - 1) : ihoriz - 1
+            infront_idx = cyclic_horiz ? (ihoriz == n_horiz ? 1 : ihoriz + 1) : ihoriz + 1
+            n_behind = (behind_idx >= 1 && behind_idx <= n_horiz) ? nmat_llsp[:, ialt, behind_idx] : one_ll
+            n_infront = (infront_idx >= 1 && infront_idx <= n_horiz) ? nmat_llsp[:, ialt, infront_idx] : one_ll
+            t_forwards = (cyclic_horiz || ihoriz != n_horiz) ? tforwards[ihoriz, ialt, :] : tfrontedge[ialt][:,1]
+            t_backwards = (cyclic_horiz || ihoriz != 1) ? tbackwards[ihoriz, ialt, :] : tbackedge[ialt][:,1]
+            t_infront_backwards = (cyclic_horiz || ihoriz != n_horiz) ? tbackwards[infront_idx, ialt, :] : tfrontedge[ialt][:,2]
+            t_behind_forwards = (cyclic_horiz || ihoriz != 1) ? tforwards[behind_idx, ialt, :] : tbackedge[ialt][:,2]
+
             if ialt == 1
                 argvec = [nmat_llsp[:, ialt, ihoriz];
                           nmat_llsp[:, ialt+1, ihoriz];
-                          fill(1.0, length(GV.active_longlived));
-                          ihoriz == 1 ? fill(1.0, length(GV.active_longlived)) : nmat_llsp[:, ialt, ihoriz-1];
-                          ihoriz == n_horiz ? fill(1.0, length(GV.active_longlived)) : nmat_llsp[:, ialt, ihoriz+1];
+                          one_ll;
+                          n_behind;
+                          n_infront;
                           nmat_slsp[:, ialt, ihoriz];
                           nmat_inactive[:, ialt, ihoriz];                   
                           Jrates[:, ihoriz, ialt];                         # COLUMN-SPECIFIC Jrates
@@ -253,16 +267,16 @@ function chemJmat(n_active_longlived, n_active_shortlived, n_inactive, Jrates, t
                           M[ihoriz, ialt]; E[ihoriz, ialt];
                           tup[ihoriz, ialt, :]; tlower[ihoriz][:,ialt];     
                           tdown[ihoriz, ialt+1, :]; tlower[ihoriz][:,ialt+1];
-                          ihoriz == n_horiz ? tfrontedge[ialt][:,1] : tforwards[ihoriz, ialt, :];
-                          ihoriz == 1 ? tbackedge[ialt][:,1] : tbackwards[ihoriz, ialt, :];
-                          ihoriz == n_horiz ? tfrontedge[ialt][:,2] : tbackwards[ihoriz+1, ialt, :];
-                          ihoriz == 1 ? tbackedge[ialt][:,2] : tforwards[ihoriz-1, ialt, :]]
+                          t_forwards;
+                          t_backwards;
+                          t_infront_backwards;
+                          t_behind_forwards]
             elseif ialt == GV.num_layers
                 argvec = [nmat_llsp[:, ialt, ihoriz];
-                          fill(1.0, length(GV.active_longlived));
+                          one_ll;
                           nmat_llsp[:, ialt-1, ihoriz];
-                          ihoriz == 1 ? fill(1.0, length(GV.active_longlived)) : nmat_llsp[:, ialt, ihoriz-1];
-                          ihoriz == n_horiz ? fill(1.0, length(GV.active_longlived)) : nmat_llsp[:, ialt, ihoriz+1];
+                          n_behind;
+                          n_infront;
                           nmat_slsp[:, ialt, ihoriz];
                           nmat_inactive[:, ialt, ihoriz];
                           Jrates[:, ihoriz, ialt];                         # COLUMN-SPECIFIC Jrates
@@ -270,16 +284,16 @@ function chemJmat(n_active_longlived, n_active_shortlived, n_inactive, Jrates, t
                           M[ihoriz, ialt]; E[ihoriz, ialt];
                           tupper[ihoriz][:,1]; tdown[ihoriz, ialt, :];
                           tupper[ihoriz][:,2]; tup[ihoriz, ialt-1, :];
-                          ihoriz == n_horiz ? tfrontedge[ialt][:,1] : tforwards[ihoriz, ialt, :];
-                          ihoriz == 1 ? tbackedge[ialt][:,1] : tbackwards[ihoriz, ialt, :];
-                          ihoriz == n_horiz ? tfrontedge[ialt][:,2] : tbackwards[ihoriz+1, ialt, :];
-                          ihoriz == 1 ? tbackedge[ialt][:,2] : tforwards[ihoriz-1, ialt, :]]
+                          t_forwards;
+                          t_backwards;
+                          t_infront_backwards;
+                          t_behind_forwards]
             else
                 argvec = [nmat_llsp[:, ialt, ihoriz];
                           nmat_llsp[:, ialt+1, ihoriz];
                           nmat_llsp[:, ialt-1, ihoriz];
-                          ihoriz == 1 ? fill(1.0, length(GV.active_longlived)) : nmat_llsp[:, ialt, ihoriz-1];
-                          ihoriz == n_horiz ? fill(1.0, length(GV.active_longlived)) : nmat_llsp[:, ialt, ihoriz+1];
+                          n_behind;
+                          n_infront;
                           nmat_slsp[:, ialt, ihoriz];
                           nmat_inactive[:, ialt, ihoriz];
                           Jrates[:, ihoriz, ialt];                         # COLUMN-SPECIFIC Jrates
@@ -289,10 +303,10 @@ function chemJmat(n_active_longlived, n_active_shortlived, n_inactive, Jrates, t
                           tdown[ihoriz, ialt, :];
                           tdown[ihoriz, ialt+1, :];
                           tup[ihoriz, ialt-1, :];
-                          ihoriz == n_horiz ? tfrontedge[ialt][:,1] : tforwards[ihoriz, ialt, :];
-                          ihoriz == 1 ? tbackedge[ialt][:,1] : tbackwards[ihoriz, ialt, :];
-                          ihoriz == n_horiz ? tfrontedge[ialt][:,2] : tbackwards[ihoriz+1, ialt, :];
-                          ihoriz == 1 ? tbackedge[ialt][:,2] : tforwards[ihoriz-1, ialt, :]]
+                          t_forwards;
+                          t_backwards;
+                          t_infront_backwards;
+                          t_behind_forwards]
             end
             
             argvec = convert(Array{ftype_chem}, argvec)
@@ -316,15 +330,17 @@ function chemJmat(n_active_longlived, n_active_shortlived, n_inactive, Jrates, t
                 append!(chemJval, tclower[3])
             end
 
-            if ihoriz != 1
+            if behind_idx >= 1 && behind_idx <= n_horiz
+                behind_shift = (behind_idx - ihoriz) * col_block
                 append!(chemJi, base_idx .+ tcbehind[1])
-                append!(chemJj, base_idx .+ tcbehind[2] .- GV.num_layers*length(GV.active_longlived))
+                append!(chemJj, base_idx .+ tcbehind[2] .+ behind_shift)
                 append!(chemJval, tcbehind[3])
             end
 
-            if ihoriz != n_horiz
+            if infront_idx >= 1 && infront_idx <= n_horiz
+                infront_shift = (infront_idx - ihoriz) * col_block
                 append!(chemJi, base_idx .+ tcinfront[1])
-                append!(chemJj, base_idx .+ tcinfront[2] .+ GV.num_layers*length(GV.active_longlived))
+                append!(chemJj, base_idx .+ tcinfront[2] .+ infront_shift)
                 append!(chemJval, tcinfront[3])
             end
         end
@@ -342,7 +358,11 @@ function ratefn(n_active_longlived, n_active_shortlived, n_inactive, Jrates, tup
     =#
 
     GV = values(globvars)
-    @assert all(x->x in keys(GV), [:active_longlived, :active_shortlived, :H2Oi, :HDOi, :inactive_species, :num_layers, :Tn, :Ti, :Te, :upper_lower_bdy_i])
+    @assert all(x->x in keys(GV), [:active_longlived, :active_shortlived, :H2Oi, :HDOi, :inactive_species, :num_layers, :n_horiz, :Tn, :Ti, :Te, :upper_lower_bdy_i])
+
+    n_horiz = GV.n_horiz
+    cyclic_horiz = get(GV, :horiz_transport_cyclic, true)
+    one_ll = fill(1.0, length(GV.active_longlived))
 
     # Reshape vectors into matrices with species, altitudes, and columns (horizontals)
     nmat_llsp = reshape(n_active_longlived, (length(GV.active_longlived), GV.num_layers, n_horiz))
@@ -356,32 +376,50 @@ function ratefn(n_active_longlived, n_active_shortlived, n_inactive, Jrates, tup
     for ihoriz in 1:n_horiz
         # fill the first altitude entry with information for all species 
         ialt = 1
+        behind_idx = cyclic_horiz ? (ihoriz == 1 ? n_horiz : ihoriz - 1) : ihoriz - 1
+        infront_idx = cyclic_horiz ? (ihoriz == n_horiz ? 1 : ihoriz + 1) : ihoriz + 1
+        n_behind = (behind_idx >= 1 && behind_idx <= n_horiz) ? nmat_llsp[:, ialt, behind_idx] : one_ll
+        n_infront = (infront_idx >= 1 && infront_idx <= n_horiz) ? nmat_llsp[:, ialt, infront_idx] : one_ll
+        t_forwards = (cyclic_horiz || ihoriz != n_horiz) ? tforwards[ihoriz, ialt, :] : tfrontedge[ialt][:,1]
+        t_backwards = (cyclic_horiz || ihoriz != 1) ? tbackwards[ihoriz, ialt, :] : tbackedge[ialt][:,1]
+        t_infront_backwards = (cyclic_horiz || ihoriz != n_horiz) ? tbackwards[infront_idx, ialt, :] : tfrontedge[ialt][:,2]
+        t_behind_forwards = (cyclic_horiz || ihoriz != 1) ? tforwards[behind_idx, ialt, :] : tbackedge[ialt][:,2]
+
         argvec = [nmat_llsp[:, ialt, ihoriz];                      # densities for active_longlived;
                   nmat_llsp[:, ialt+1, ihoriz];                    # active_longlived_above;
-                  fill(1.0, length(GV.active_longlived));          # active_longlived_below;
-                  ihoriz == 1 ? fill(1.0, length(GV.active_longlived)) : nmat_llsp[:, ialt, ihoriz-1];
-                  ihoriz == n_horiz ? fill(1.0, length(GV.active_longlived)) : nmat_llsp[:, ialt, ihoriz+1];
+                  one_ll;                                           # active_longlived_below;
+                  n_behind;
+                  n_infront;
                   nmat_slsp[:, ialt, ihoriz];                      # active_shortlived;
                   nmat_inactive[:, ialt, ihoriz];                  # inactive_species;
                   Jrates[:, ihoriz, ialt];                         # Jratelist (column-specific);
                   GV.Tn[ihoriz, ialt]; GV.Ti[ihoriz, ialt]; GV.Te[ihoriz, ialt];   # :Tn; :Ti; :Te;
                   M[ihoriz, ialt]; E[ihoriz, ialt];                # total density and electrons
                   tup[ihoriz, ialt, :]; tlower[ihoriz][:, ialt]; tdown[ihoriz, ialt+1, :]; tlower[ihoriz][:, ialt+1]; # local transport coefficients
-                  ihoriz == n_horiz ? tfrontedge[ialt][:,1] : tforwards[ihoriz, ialt, :];
-                  (ihoriz == 1 ? tbackedge[ialt][:,1] : tbackwards[ihoriz, ialt, :]);
-                  (ihoriz == n_horiz ? tfrontedge[ialt][:,2] : tbackwards[ihoriz+1, ialt, :]);
-                  (ihoriz == 1 ? tbackedge[ialt][:,2] : tforwards[ihoriz-1, ialt, :])]
+                  t_forwards;
+                  t_backwards;
+                  t_infront_backwards;
+                  t_behind_forwards]
 
         argvec = convert(Array{ftype_chem}, argvec)
         returnrates[:, ialt, ihoriz] .= ratefn_local(argvec...)
 
         # iterate through other altitudes in the lower atmosphere
         for ialt in 2:(GV.num_layers-1)
+            behind_idx = cyclic_horiz ? (ihoriz == 1 ? n_horiz : ihoriz - 1) : ihoriz - 1
+            infront_idx = cyclic_horiz ? (ihoriz == n_horiz ? 1 : ihoriz + 1) : ihoriz + 1
+            n_behind = (behind_idx >= 1 && behind_idx <= n_horiz) ? nmat_llsp[:, ialt, behind_idx] : one_ll
+            n_infront = (infront_idx >= 1 && infront_idx <= n_horiz) ? nmat_llsp[:, ialt, infront_idx] : one_ll
+            t_forwards = (cyclic_horiz || ihoriz != n_horiz) ? tforwards[ihoriz, ialt, :] : tfrontedge[ialt][:,1]
+            t_backwards = (cyclic_horiz || ihoriz != 1) ? tbackwards[ihoriz, ialt, :] : tbackedge[ialt][:,1]
+            t_infront_backwards = (cyclic_horiz || ihoriz != n_horiz) ? tbackwards[infront_idx, ialt, :] : tfrontedge[ialt][:,2]
+            t_behind_forwards = (cyclic_horiz || ihoriz != 1) ? tforwards[behind_idx, ialt, :] : tbackedge[ialt][:,2]
+
             argvec = [nmat_llsp[:, ialt, ihoriz];
                       nmat_llsp[:, ialt+1, ihoriz];
                       nmat_llsp[:, ialt-1, ihoriz];
-                      ihoriz == 1 ? fill(1.0, length(GV.active_longlived)) : nmat_llsp[:, ialt, ihoriz-1];
-                      ihoriz == n_horiz ? fill(1.0, length(GV.active_longlived)) : nmat_llsp[:, ialt, ihoriz+1];
+                      n_behind;
+                      n_infront;
                       nmat_slsp[:, ialt, ihoriz];
                       nmat_inactive[:, ialt, ihoriz];
                       Jrates[:, ihoriz, ialt];                     # Jratelist (column-specific);
@@ -391,10 +429,10 @@ function ratefn(n_active_longlived, n_active_shortlived, n_inactive, Jrates, tup
                       tdown[ihoriz, ialt, :];
                       tdown[ihoriz, ialt+1, :];
                       tup[ihoriz, ialt-1, :];
-                      ihoriz == n_horiz ? tfrontedge[ialt][:,1] : tforwards[ihoriz, ialt, :];
-                      (ihoriz == 1 ? tbackedge[ialt][:,1] : tbackwards[ihoriz, ialt, :]);
-                      (ihoriz == n_horiz ? tfrontedge[ialt][:,2] : tbackwards[ihoriz+1, ialt, :]);
-                      (ihoriz == 1 ? tbackedge[ialt][:,2] : tforwards[ihoriz-1, ialt, :])]
+                      t_forwards;
+                      t_backwards;
+                      t_infront_backwards;
+                      t_behind_forwards]
 
             argvec = convert(Array{ftype_chem}, argvec)
             returnrates[:, ialt, ihoriz] .= ratefn_local(argvec...)
@@ -402,11 +440,20 @@ function ratefn(n_active_longlived, n_active_shortlived, n_inactive, Jrates, tup
 
         # fill in the last level of altitude
         ialt = GV.num_layers
+        behind_idx = cyclic_horiz ? (ihoriz == 1 ? n_horiz : ihoriz - 1) : ihoriz - 1
+        infront_idx = cyclic_horiz ? (ihoriz == n_horiz ? 1 : ihoriz + 1) : ihoriz + 1
+        n_behind = (behind_idx >= 1 && behind_idx <= n_horiz) ? nmat_llsp[:, ialt, behind_idx] : one_ll
+        n_infront = (infront_idx >= 1 && infront_idx <= n_horiz) ? nmat_llsp[:, ialt, infront_idx] : one_ll
+        t_forwards = (cyclic_horiz || ihoriz != n_horiz) ? tforwards[ihoriz, ialt, :] : tfrontedge[ialt][:,1]
+        t_backwards = (cyclic_horiz || ihoriz != 1) ? tbackwards[ihoriz, ialt, :] : tbackedge[ialt][:,1]
+        t_infront_backwards = (cyclic_horiz || ihoriz != n_horiz) ? tbackwards[infront_idx, ialt, :] : tfrontedge[ialt][:,2]
+        t_behind_forwards = (cyclic_horiz || ihoriz != 1) ? tforwards[behind_idx, ialt, :] : tbackedge[ialt][:,2]
+
         argvec = [nmat_llsp[:, ialt, ihoriz];
-                  fill(1.0, length(GV.active_longlived));
+                  one_ll;
                   nmat_llsp[:, ialt-1, ihoriz];
-                  ihoriz == 1 ? fill(1.0, length(GV.active_longlived)) : nmat_llsp[:, ialt, ihoriz-1];
-                  ihoriz == n_horiz ? fill(1.0, length(GV.active_longlived)) : nmat_llsp[:, ialt, ihoriz+1];
+                  n_behind;
+                  n_infront;
                   nmat_slsp[:, ialt, ihoriz];
                   nmat_inactive[:, ialt, ihoriz];
                   Jrates[:, ihoriz, ialt];                           # Jratelist (column-specific);
@@ -416,10 +463,10 @@ function ratefn(n_active_longlived, n_active_shortlived, n_inactive, Jrates, tup
                   tdown[ihoriz, ialt, :];
                   tupper[ihoriz][:,2];
                   tup[ihoriz, ialt-1, :];
-                  ihoriz == n_horiz ? tfrontedge[ialt][:,1] : tforwards[ihoriz, ialt, :];
-                  (ihoriz == 1 ? tbackedge[ialt][:,1] : tbackwards[ihoriz, ialt, :]);
-                  (ihoriz == n_horiz ? tfrontedge[ialt][:,2] : tbackwards[ihoriz+1, ialt, :]);
-                  (ihoriz == 1 ? tbackedge[ialt][:,2] : tforwards[ihoriz-1, ialt, :])]
+                  t_forwards;
+                  t_backwards;
+                  t_infront_backwards;
+                  t_behind_forwards]
 
         argvec = convert(Array{ftype_chem}, argvec)
         returnrates[:, ialt, ihoriz] .= ratefn_local(argvec...)
@@ -707,6 +754,7 @@ function get_rates_and_jacobian(n, p, t; globvars...)
     tbackedge, tforwards, tbackwards, tfrontedge = update_horiz_transport_coefficients(GV.transport_species, updated_ncur_all, D_arr, M; 
                                                                calc_nonthermal=nontherm, results_dir, sim_folder_name, 
                                                                Jratedict=Dict([j=>n_cur_all[j] for j in GV.Jratelist]), # Needed for nonthermal BCs
+                                                               cyclic=get(GV, :horiz_transport_cyclic, true),
                                                                globvars...)
 
     return (ratefn(n, n_short_updated, GV.n_inactive, Jrates, tup, tdown, tlower, tupper, tforwards, tbackwards, tfrontedge, tbackedge, M, E; globvars...),
@@ -1899,7 +1947,7 @@ try
                                  polarizability, planet, plot_grid, q, R_P, reaction_network, run_id,
                                  season_length_in_sec, sol_in_sec, solarflux=solarflux_per_column, speciesbclist_vert, speciesbclist_horiz, speciescolor, speciesstyle,
                                  horiz_wind_v, horiz_wind_v_neutral, horiz_wind_v_ion,
-                                 enable_horiz_transport, enable_horiz_diffusion, transportnet, transportnet_horiz,
+                                 enable_horiz_transport, enable_horiz_diffusion, horiz_transport_cyclic, transportnet, transportnet_horiz,
                                  Tn=Tn_arr, Ti=Ti_arr, Te=Te_arr, Tp=Tplasma_arr, Tprof_for_diffusion, transport_species, opt="",
                                  upper_lower_bdy_i, use_ambipolar, use_molec_diff, zmax)
 catch y

@@ -1826,7 +1826,7 @@ function boundaryconditions_horiz(
                         back_flux  = these_bcs_horiz["f"][1][ialt]
                         front_flux = these_bcs_horiz["f"][2][ialt]
                         dx_local = dx_profile_bulk[ialt]
-                        f_backedge  = [0, -back_flux / dx_local]
+                        f_backedge  = [0,  back_flux / dx_local]
                         f_frontedge = [0,  front_flux / dx_local]
                         
                         @assert all(x->!isnan(x), f_backedge) "NaN in back edge flux for $(sp)"
@@ -2277,7 +2277,7 @@ function fluxcoefs_horiz(
                 if GV.enable_horiz_transport
                     # Upwind scheme: flux depends on velocity direction at the interface
                     # adv_front: flux from current column to next column (interface i+½)
-                    # adv_back: flux from previous column to current column (interface i-½)
+                    # adv_back: flux from current column to previous column (interface i-½)
                     adv_front = (v_interface_front > 0 ? v_interface_front : 0.0) / dx_local
                     adv_back  = (v_interface_back < 0 ? -v_interface_back : 0.0) / dx_local
                 end
