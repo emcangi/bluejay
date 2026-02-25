@@ -6,8 +6,8 @@
 # 
 # Eryn Cangi
 # Created April 2024
-# Last edited: August 2024
-# Currently tested for Julia: 1.8.5
+# Last edited: December 2025
+# Currently tested for Julia: 1.12.3
 ################################################################################
 
 using DataFrames
@@ -203,9 +203,14 @@ const e_profile_type = ions_included==true ? "quasineutral" : "none"
 # =======================================================================================================
 const zmin = Dict("Venus"=>90e5, "Mars"=>0.)[planet]
 const dz = 2e5  # Discretized layer thickness
+const dx = horiz_column_width # Use the configurable column width from INPUT_PARAMETERS.jl
 const zmax = 250e5  # Top altitude (cm)
 const alt = convert(Array, (zmin:dz:zmax)) # These are the layer centers.
 const n_all_layers = length(alt)
+const horiz_column_width_profile = use_altitude_dependent_horiz_dx ?
+                                   (π .* (R_P .+ alt)) :
+                                   fill(horiz_column_width, n_all_layers)
+const horiz_column_width_profile_bulk = horiz_column_width_profile[2:end-1]
 const intaltgrid = round.(Int64, alt/1e5)[2:end-1]; # the altitude grid CELLS but in integers.
 const non_bdy_layers = alt[2:end-1]  # all layers, centered on 2 km, 4...248. Excludes the boundary layers which are [-1, 1] and [249, 251].
 const num_layers = length(non_bdy_layers) # there are 124 non-boundary layers.
@@ -240,29 +245,79 @@ end
 
 # Modify the settings if doing a special isothermal atmosphere.
 if temp_scenario=="isothermal"
-    const controltemps = [225., 225., 225.]
-    const meantemps = [225., 225., 225.] # Used for saturation vapor pressure. DON'T CHANGE!
+    controltemps .= [225., 225., 225.]
+    meantemps .= [225., 225., 225.] # Used for saturation vapor pressure. DON'T CHANGE!
 else # Set the exobase temp according to the temp scenario.
-    const controltemps[3] =  Texo_opts[planet][temp_scenario]
+    controltemps[3] =  Texo_opts[planet][temp_scenario]
 end
 
 # Modify the array for the special case where multiple parameters are changed for the seasonal model
-if special_seasonal_case!=nothing 
-    const controltemps = [Tsurf[planet], Tmeso[planet], Texo_inclusive_opts[special_seasonal_case]]
+if special_seasonal_case!=nothing
+    controltemps .= [Tsurf[planet], Tmeso[planet], Texo_inclusive_opts[special_seasonal_case]]
 end
+
+# Initialize the mean temperature profile for SVP, remains 1-D
+local Tn_meanSVP_temp
+if planet == "Mars"
+    Tn_meanSVP_temp = T_Mars(meantemps...; alt)["neutrals"] # Needed for boundary conditions.
+elseif planet=="Venus"
+    Tn_meanSVP_temp = T_Venus(meantemps..., "Venus-Inputs/FoxandSung2001_temps_mike.txt"; alt)["neutrals"] # Needed for boundary conditions.
+end
+const Tn_meanSVP = Tn_meanSVP_temp  # This stays as 1-D
 
 # Now create the actual temperature profiles
-if planet=="Mars"
-    const T_array_dict = T_Mars(controltemps[1], controltemps[2], controltemps[3]; alt)
-    const Tn_meanSVP = T_Mars(meantemps...; alt)["neutrals"]; # Needed for boundary conditions.
-elseif planet=="Venus"
-    const T_array_dict = T_Venus(controltemps[1], controltemps[2], controltemps[3], "Venus-Inputs/FoxandSung2001_temps_mike.txt"; alt);
-    const Tn_meanSVP = T_Venus(meantemps..., "Venus-Inputs/FoxandSung2001_temps_mike.txt"; alt)["neutrals"]; # Needed for boundary conditions.
+local T_array_dict
+if planet == "Mars"
+    T_array_dict = T_Mars(controltemps[1], controltemps[2], controltemps[3]; alt=alt)
+elseif planet == "Venus"
+    T_array_dict = T_Venus(controltemps[1], controltemps[2], controltemps[3],
+                           "Venus-Inputs/FoxandSung2001_temps_mike.txt"; alt=alt)
 end
 
-const Tn_arr = T_array_dict["neutrals"]
-const Ti_arr = T_array_dict["ions"]
-const Te_arr = T_array_dict["electrons"]
+# Build 2-D temperature arrays based on column scenario configuration
+if n_horiz == 1
+    # Single column: use the standard approach
+    const Tn_arr = repeat(T_array_dict["neutrals"]', n_horiz, 1)
+    const Ti_arr = repeat(T_array_dict["ions"]', n_horiz, 1)
+    const Te_arr = repeat(T_array_dict["electrons"]', n_horiz, 1)
+else
+    # Multi-column: construct temperature profiles for each column based on scenario
+    Tn_arr_temp = zeros(n_horiz, num_layers+2)
+    Ti_arr_temp = similar(Tn_arr_temp)
+    Te_arr_temp = similar(Tn_arr_temp)
+
+    for ihoriz in 1:n_horiz
+        scenario = horiz_column_scenario[ihoriz]
+        Texo_col = haskey(scenario, "Texo_override") ? scenario["Texo_override"] : Texo_opts[planet][scenario["Texo_key"]]
+
+        if planet == "Venus"
+            T_col_dict = T_Venus(Tsurf[planet], Tmeso[planet], Texo_col,
+                                 "Venus-Inputs/FoxandSung2001_temps_mike.txt"; alt=alt)
+        elseif planet == "Mars"
+            T_col_dict = T_Mars(Tsurf[planet], Tmeso[planet], Texo_col; alt=alt)
+        end
+
+        Tn_arr_temp[ihoriz, :] .= T_col_dict["neutrals"]
+        Ti_arr_temp[ihoriz, :] .= T_col_dict["ions"]
+        Te_arr_temp[ihoriz, :] .= T_col_dict["electrons"]
+
+        # Nightside scaling: keep dayside as-is (use file profile), scale down nightside upper-atmosphere
+        if planet == "Venus" && scenario["SZA"] > 90
+            # Scale temperatures above 90 km so the exobase matches the requested Texo_col
+            upper_idxs = findall(z -> z >= 90e5, alt)
+            if !isempty(upper_idxs)
+                scale_factor = Texo_col / Tn_arr_temp[ihoriz, upper_idxs[end]]
+                Tn_arr_temp[ihoriz, upper_idxs] .*= scale_factor
+                Ti_arr_temp[ihoriz, upper_idxs] .*= scale_factor
+                Te_arr_temp[ihoriz, upper_idxs] .*= scale_factor
+            end
+        end
+    end
+
+    const Tn_arr = Tn_arr_temp
+    const Ti_arr = Ti_arr_temp
+    const Te_arr = Te_arr_temp
+end
 
 const Tplasma_arr = Ti_arr .+ Te_arr;
 # A comment on the plasma temperature: It's more rightly defined as (Te + Ti)/2, and comes into play in the diffusion
@@ -279,6 +334,29 @@ const Tplasma_arr = Ti_arr .+ Te_arr;
 const Tprof_for_diffusion = Dict("neutral"=>Tn_arr, "ion"=>Tplasma_arr)
 const Tprof_for_Hs = Dict("neutral"=>Tn_arr, "ion"=>Ti_arr)
 
+#                              Horizontal winds construction                      
+# =======================================================================================================
+# Construct horizontal wind profiles for each column.  Each profile is an
+# array over altitude with values in cm/s.  The wind speed is taken from the
+# user-configurable parameters in `INPUT_PARAMETERS.jl`.
+# Setting that value to zero disables horizontal advection.
+
+const horiz_wind_v_neutral = [fill(horiz_wind_speed_neutral, length(alt)) for ihoriz in 1:n_horiz]
+const horiz_wind_v_ion     = [fill(horiz_wind_speed_ion, length(alt)) for ihoriz in 1:n_horiz]
+# Legacy alias for code paths that have not yet been split; defaults to neutral profile.
+const horiz_wind_v = horiz_wind_v_neutral
+
+# Construct horizontal wind profiles by setting negative below the switch altitude and positive above
+# switch_alt = 140e5               # altitude in cm where winds reverse (~140 km)
+# v_profile = fill(-horiz_wind_speed, length(alt))    # low-alt winds: night→day
+# v_profile[alt .>= switch_alt] .= horiz_wind_speed   # high-alt winds: day→night
+# const horiz_wind_v = [copy(v_profile) for _ in 1:n_horiz]
+
+# Horizontal transport controls from INPUT_PARAMETERS.jl:
+# - `enable_horiz_transport` toggles all horizontal coupling (advection + diffusion).
+# - `enable_horiz_diffusion` toggles only the diffusive horizontal term.
+#   Advection remains active when transport is enabled.
+# - `horiz_transport_cyclic` controls periodic wrapping in the horizontal direction.
 
 #                                      Water profile settings
 # =======================================================================================================
@@ -335,93 +413,98 @@ const HDOi = findfirst(x->x==:HDO, active_longlived)
 
 #                              Species-specific scale heights
 # =======================================================================================================
-const Hs_dict = Dict{Symbol, Vector{Float64}}([sp=>scaleH(alt, sp, Tprof_for_Hs[charge_type(sp)]; molmass, M_P, R_P) for sp in all_species])
+const Hs_dict = Dict{Symbol, Vector{Vector{Float64}}}([sp => [scaleH(alt, sp, Tprof_for_Hs[charge_type(sp)][ihoriz, :]; molmass, M_P, R_P) for ihoriz in 1:n_horiz] for sp in all_species])
 
-
-#                                     Boundary conditions
+#                                     Boundary conditions (lower and upper)
 # =======================================================================================================
-# "n": density boundary condition; "f": flux bc; "v": velocity bc; 
+# "n": density boundary condition; "f": flux bc; "v": velocity bc;
 # "see boundaryconditions()" -- nonthermal escape depends on the dynamic density of the
 # atmosphere, so it can't be imposed as a constant here and is calculated on the fly.
+# The default lists below give every column the same lower/upper values. Modify
+# `speciesbclist_vert[sp][bc][ihoriz]` if a particular column should use different
+# boundary values.
 if planet=="Mars"
-    const speciesbclist=Dict(:CO2=>Dict("n"=>[2.1e17, NaN], "f"=>[NaN, 0.]),
-                        :Ar=>Dict("n"=>[2.0e-2*2.1e17, NaN], "f"=>[NaN, 0.]),
-                        :N2=>Dict("n"=>[1.9e-2*2.1e17, NaN], "f"=>[NaN, 0.]),
+    const speciesbclist_vert = Dict(
+                        :CO2=>Dict("n"=>[[2.1e17, NaN] for _ in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
+                        :Ar=>Dict("n"=>[[2.0e-2*2.1e17, NaN] for _ in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
+                        :N2=>Dict("n"=>[[1.9e-2*2.1e17, NaN] for _ in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
                         #:C=>Dict("f"=>[NaN, 4e5]), # NEW: Based on Lo 2021
-                        :H2O=>Dict("n"=>[H2Osat[1], NaN], "f"=>[NaN, 0.]), # bc doesnt matter if H2O fixed
-                        :HDO=>Dict("n"=>[HDOsat[1], NaN], "f"=>[NaN, 0.]),
-                        :O=> Dict("f"=>[0., 1.2e8]),
-                        :H2=>Dict("f"=>[0., NaN], "v"=>[NaN, effusion_velocity(Tn_arr[end], 2.0; M_P, R_P, zmax)], "ntf"=>[NaN, "see boundaryconditions()"]),  # velocities are in cm/s
-                        :HD=>Dict("f"=>[0., NaN], "v"=>[NaN, effusion_velocity(Tn_arr[end], 3.0; M_P, R_P, zmax)], "ntf"=>[NaN, "see boundaryconditions()"]),
-                        :H=> Dict("f"=>[0., NaN], "v"=>[NaN, effusion_velocity(Tn_arr[end], 1.0; M_P, R_P, zmax)], "ntf"=>[NaN, "see boundaryconditions()"]),
-                        :D=> Dict("f"=>[0., NaN], "v"=>[NaN, effusion_velocity(Tn_arr[end], 2.0; M_P, R_P, zmax)], "ntf"=>[NaN, "see boundaryconditions()"]),
+                        :H2O=>Dict("n"=>[[H2Osat[1], NaN] for _ in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
+                        :HDO=>Dict("n"=>[[HDOsat[1], NaN] for _ in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
+                        :O=> Dict("f"=>[[0., 1.2e8] for _ in 1:n_horiz]),
+                        :H2=>Dict("f"=>[[0., NaN] for _ in 1:n_horiz], "v"=>[[NaN, effusion_velocity(Tn_arr[ihoriz, end], 2.0; M_P, R_P, zmax)] for ihoriz in 1:n_horiz], "ntf"=>[[NaN, "see boundaryconditions()"] for ihoriz in 1:n_horiz]),
+                        :HD=>Dict("f"=>[[0., NaN] for _ in 1:n_horiz], "v"=>[[NaN, effusion_velocity(Tn_arr[ihoriz, end], 3.0; M_P, R_P, zmax)] for ihoriz in 1:n_horiz], "ntf"=>[[NaN, "see boundaryconditions()"] for ihoriz in 1:n_horiz]),
+                        :H=> Dict("f"=>[[0., NaN] for _ in 1:n_horiz], "v"=>[[NaN, effusion_velocity(Tn_arr[ihoriz, end], 1.0; M_P, R_P, zmax)] for ihoriz in 1:n_horiz], "ntf"=>[[NaN, "see boundaryconditions()"] for ihoriz in 1:n_horiz]),
+                        :D=> Dict("f"=>[[0., NaN] for _ in 1:n_horiz], "v"=>[[NaN, effusion_velocity(Tn_arr[ihoriz, end], 2.0; M_P, R_P, zmax)] for ihoriz in 1:n_horiz], "ntf"=>[[NaN, "see boundaryconditions()"] for ihoriz in 1:n_horiz]),
                        );
 elseif planet=="Venus"
-    const ntot_at_lowerbdy = 9.5e15 # Based on Fox & Sung 2001
+    const ntot_at_lowerbdy = fill(9.5e15, n_horiz) # Based on Fox & Sung 2001
 
-    H2O_lowerbdy = h2o_vmr_low * ntot_at_lowerbdy
-    HDO_lowerbdy = hdo_vmr_low * ntot_at_lowerbdy
+    H2O_lowerbdy = [h2o_vmr_low * ntot_at_lowerbdy[ihoriz] for ihoriz in 1:n_horiz]
+    HDO_lowerbdy = [hdo_vmr_low * ntot_at_lowerbdy[ihoriz] for ihoriz in 1:n_horiz]
     
     # END SPECIAL
-    # MRs
+    
+    # Define mixing ratios for boundary conditions
+    # Belyaev 2012: 0.1 ppmv at 165–170 K to 0.5–1 ppmv at 190–192 K; 
+    # 0.1ppm was related to the most common temperature reading 
     SO2mr = 1e-7
-    # Simon's notes: Belyaev 2012: this was 0.1 ppmv at 165–170 K to 0.5–1 ppmv at 190–192 K; 
-    # It said 0.1ppm was related to the most common temperature reading so I went with that 
-    # (this is either 1E-7 or 6.79E-8 depending on the calculation)
     N2mr = 0.032
     H2SO4mr = 3e-9
     O2mr = 3e-3
     COmr = 4.5e-6
     CO2mr = 0.965
+    CO2mr_per_column = [get(horiz_column_scenario[ihoriz], "CO2_lowerbdy_vmr", CO2mr) for ihoriz in 1:n_horiz]
+    # Krasnopolsky, 2010a: 400ppb at 74km in altitude, actual number likely lower 
+    # (either 4.0E-7 or 4.8E-7); Zhang 2012: 3.66e-7
     HClmr = 3.66e-7
-    # Simon's notes: Krasnopolsky, 2010a: this was 400ppb at 74km in altitude, and the actual number is likely lower 
-    # (is either 4.0E-7, or 4.8E-7 depending on the calculation); and according to Zhang 2012 it is 3.66e-7
     SOmr = 1e-7
 
-    
-    const KoverH_lowerbdy = Keddy([zmin], [ntot_at_lowerbdy]; planet)[1]/scaleH_lowerboundary(zmin, Tn_arr[1]; molmass, M_P, R_P, zmin)
-    const manual_speciesbclist=Dict(# major species neutrals at lower boundary (estimated from Fox&Sung 2001, Hedin+1985, agrees pretty well with VIRA)
-                                    :CO2=>Dict("n"=>[CO2mr*ntot_at_lowerbdy, NaN], "f"=>[NaN, 0.]),
-                                    :Ar=>Dict("n"=>[5e11, NaN], "f"=>[NaN, 0.]),
-                                    :CO=>Dict("n"=>[COmr*ntot_at_lowerbdy, NaN], "f"=>[NaN, 0.]),
-                                    :O2=>Dict("n"=>[O2mr*ntot_at_lowerbdy, NaN], "f"=>[NaN, 0.]),
-                                    :N2=>Dict("n"=>[N2mr*ntot_at_lowerbdy, NaN]),
+    # Create 2D matrix for ntot at lower boundary (n_horiz × 1)
+    ntot_at_lowerbdy_2d = reshape(ntot_at_lowerbdy, n_horiz, 1)
+    const KoverH_lowerbdy = [Keddy([zmin], ntot_at_lowerbdy_2d, ihoriz; planet)[1]/scaleH_lowerboundary(zmin, Tn_arr[ihoriz, 1]; molmass, M_P, R_P, zmin) for ihoriz in 1:n_horiz]
+    # Distinguish lower boundary CO2 densities per column via CO2mr_per_column and ntot_at_lowerbdy
 
-                                    
-                                    :HCl=>Dict("n"=>[HClmr * ntot_at_lowerbdy, NaN]),
-                                    :DCl=>Dict("n"=>[HClmr * DH * ntot_at_lowerbdy, NaN]),
+    const manual_speciesbclist_vert=Dict(# major species neutrals at lower boundary (estimated from Fox&Sung 2001, Hedin+1985, agrees pretty well with VIRA)
+                                    :CO2=>Dict("n"=>[[CO2mr_per_column[ihoriz]*ntot_at_lowerbdy[ihoriz], NaN] for ihoriz in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
+                                    :Ar=>Dict("n"=>[[5e11, NaN] for _ in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
+                                    :CO=>Dict("n"=>[[COmr*ntot_at_lowerbdy[ihoriz], NaN] for ihoriz in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
+                                    :O2=>Dict("n"=>[[O2mr*ntot_at_lowerbdy[ihoriz], NaN] for ihoriz in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
+                                    :N2=>Dict("n"=>[[N2mr*ntot_at_lowerbdy[ihoriz], NaN] for ihoriz in 1:n_horiz]),
 
+                                    :HCl=>Dict("n"=>[[HClmr * ntot_at_lowerbdy[ihoriz], NaN] for ihoriz in 1:n_horiz]),
+                                    :DCl=>Dict("n"=>[[HClmr * DH * ntot_at_lowerbdy[ihoriz], NaN] for ihoriz in 1:n_horiz]),
 
-                                    :H2SO4=>Dict("n"=>[H2SO4mr * ntot_at_lowerbdy, NaN]), 
+                                    :H2SO4=>Dict("n"=>[[H2SO4mr * ntot_at_lowerbdy[ihoriz], NaN] for ihoriz in 1:n_horiz]), 
 
-                                    :SO2=>Dict("n"=>[SO2mr * ntot_at_lowerbdy, NaN]),
-                                    :SO=>Dict("n"=>[SOmr * ntot_at_lowerbdy, NaN]),
+                                    :SO2=>Dict("n"=>[[SO2mr * ntot_at_lowerbdy[ihoriz], NaN] for ihoriz in 1:n_horiz]),
+                                    :SO=>Dict("n"=>[[SOmr * ntot_at_lowerbdy[ihoriz], NaN] for ihoriz in 1:n_horiz]),
 
                                     # water mixing ratio is fixed at lower boundary
-                                    :H2O=>Dict("n"=>[H2O_lowerbdy, NaN], "f"=>[NaN, 0.]),
+                                    :H2O=>Dict("n"=>[[H2O_lowerbdy[ihoriz], NaN] for ihoriz in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
                                     # we assume HDO has the bulk atmosphere ratio with H2O at the lower boundary, ~consistent with Bertaux+2007 observations
-                                    :HDO=>Dict("n"=>[HDO_lowerbdy, NaN], "f"=>[NaN, 0.]),
+                                    :HDO=>Dict("n"=>[[HDO_lowerbdy[ihoriz], NaN] for ihoriz in 1:n_horiz], "f"=>[[NaN, 0.] for _ in 1:n_horiz]),
 
                                     # atomic H and D escape solely by photochemical loss to space, can also be mixed downward
-                                    :H=> Dict("v"=>[-KoverH_lowerbdy, effusion_velocity(Tn_arr[end], 1.0; zmax, M_P, R_P)],
+                                    :H=> Dict("v"=>[[-KoverH_lowerbdy[ihoriz], effusion_velocity(Tn_arr[ihoriz, end], 1.0; zmax, M_P, R_P)] for ihoriz in 1:n_horiz],
                                                     #                 ^^^ other options here:
-                                                    #                 effusion_velocity(Tn_arr[end], 1.0; zmax) # thermal escape, negligible
+                                                    #                 effusion_velocity(Tn_arr[ihoriz, end], 1.0; zmax) # thermal escape, negligible
                                                     #                 100 # representing D transport to nightside, NOT escape
                                                     #                 NaN # No thermal escape to space, appropriate for global average model
-                                              "ntf"=>[NaN, "see boundaryconditions()"]),
-                                    :D=> Dict("v"=>[-KoverH_lowerbdy, effusion_velocity(Tn_arr[end], 2.0; zmax, M_P, R_P)], # 
+                                              "ntf"=>[[NaN, "see boundaryconditions()"] for ihoriz in 1:n_horiz]),
+                                    :D=> Dict("v"=>[[-KoverH_lowerbdy[ihoriz], effusion_velocity(Tn_arr[ihoriz, end], 2.0; zmax, M_P, R_P)] for ihoriz in 1:n_horiz],
                                                     #                 ^^^ other options here:
-                                                    #                  effusion_velocity(Tn_arr[end], 2.0; zmax) # thermal escape, negligible
+                                                    #                  effusion_velocity(Tn_arr[ihoriz, end], 2.0; zmax) # thermal escape, negligible
                                                     #                 100 # representing D transport to nightside, NOT escape
                                                     #                 NaN # No thermal escape to space, appropriate for global average model
-                                              "ntf"=>[NaN, "see boundaryconditions()"]),
+                                              "ntf"=>[[NaN, "see boundaryconditions()"] for ihoriz in 1:n_horiz]),
 
                                     # # H2 mixing ratio at lower boundary adopted from Yung&DeMore1982 as in Fox&Sung2001
                                     # :H2=>Dict("n"=>[1e-7*ntot_at_lowerbdy, NaN],
-                                    #           "v"=>[NaN, effusion_velocity(Tn_arr[end], 2.0; zmax)],
+                                    #           "v"=>[NaN, effusion_velocity(Tn_arr[ihoriz, end], 2.0; zmax)],
                                     #           "ntf"=>[NaN, "see boundaryconditions()"]),
                                     # :HD=>Dict("n"=>[DH*1e-7*ntot_at_lowerbdy, NaN],
-                                    #           "v"=>[NaN, effusion_velocity(Tn_arr[end], 3.0; zmax)],
+                                    #           "v"=>[NaN, effusion_velocity(Tn_arr[ihoriz, end], 3.0; zmax)],
                                     #           "ntf"=>[NaN, "see boundaryconditions()"]),
 
                                     # unusued neutral boundary conditions
@@ -430,23 +513,55 @@ elseif planet=="Venus"
                                     #:NO=>Dict("v"=>[-KoverH_lowerbdy, NaN], #="n"=>[3e8, NaN],=# #="n"=>[5.5e-9*ntot_at_lowerbdy, NaN], =# "f"=>[NaN, 0.]),
 
                                     # assume no ion loss, appropriate for global average and small observed rates
-                                    #:Hpl=>Dict("v"=>[-KoverH_lowerbdy, 0.0 #=effusion_velocity(Ti_arr[end], 1.0; zmax)=#]),#, "f"=>[NaN, 1.6e7]),
-                                    #:H2pl=>Dict("v"=>[-KoverH_lowerbdy, 0.0 #=effusion_velocity(Ti_arr[end], 2.0; zmax)=#]),#, "f"=>[NaN, 2e5]),
+                                    #:Hpl=>Dict("v"=>[-KoverH_lowerbdy, 0.0 #=effusion_velocity(Ti_arr[ihoriz, end], 1.0; zmax)=#]),#, "f"=>[NaN, 1.6e7]),
+                                    #:H2pl=>Dict("v"=>[-KoverH_lowerbdy, 0.0 #=effusion_velocity(Ti_arr[ihoriz, end], 2.0; zmax)=#]),#, "f"=>[NaN, 2e5]),
                                     #:Opl=>Dict("v"=>[-KoverH_lowerbdy, 2e5], ), # "f"=>[NaN, 2.1e8] # tends to cause hollowing out of atmosphere
                                     );
 
     # add in downward mixing velocity boundary condition for all other species
-    auto_speciesbclist = Dict()
+    auto_speciesbclist_vert = Dict()
     for sp in all_species
-        if sp in keys(manual_speciesbclist)
-            auto_speciesbclist[sp] = manual_speciesbclist[sp]
-        else
-            auto_speciesbclist[sp] = Dict("v"=>[-KoverH_lowerbdy, 0.0])
+        if sp in keys(manual_speciesbclist_vert)
+            auto_speciesbclist_vert[sp] = manual_speciesbclist_vert[sp]
+        else 
+            auto_speciesbclist_vert[sp] = Dict("v"=>[[-KoverH_lowerbdy[ihoriz], 0.0] for ihoriz in 1:n_horiz])
         end
     end
 
-    const speciesbclist = deepcopy(auto_speciesbclist)
+    const speciesbclist_vert = deepcopy(auto_speciesbclist_vert)
 end
+
+#                                     Boundary conditions (back edge and front edge)
+# =======================================================================================================
+# "n": density boundary condition; "f": flux bc; "v": velocity bc; 
+# The default boundary conditions are zero flux boundary conditions at the back edge and the front edge. If different boundary conditions are required, they will need to be implemented here and in the boundaryconditions_horiz function.
+# The zero flux boundary conditions will be input as vectors with altitude.
+# For each species, there are two vectors of length num_layers. The first directs the BC values at the first vertical column and the second directs the BC values at the last vertical column
+
+# The dictionary `speciesbclist_horiz` sets horizontal fluxes at the back and
+# front edges.  By default both profiles are zero, representing closed
+# boundaries, but you can modify the values below (or in a separate script)
+# to impose an influx or outflux for any species.  Each entry contains two
+# vectors of length `num_layers` giving the flux [#/cm²/s] at the back and front
+# edges respectively. Edit `speciesbclist_horiz[sp]["f"][edge]` to override the
+# profile on either edge. These edge fluxes are only used when
+# `horiz_transport_cyclic == false`.
+
+# add in zero flux edge boundary conditions on both edges for all species
+auto_speciesbclist_horiz = Dict()
+for sp in all_species
+    auto_speciesbclist_horiz[sp] = Dict("f"=>[[0.0 for ialt in 1:num_layers] for c in 1:2])
+end
+
+const speciesbclist_horiz = deepcopy(auto_speciesbclist_horiz)
+
+# Example modification: Set non-zero flux boundary conditions for O
+# speciesbclist_horiz[:O] = Dict(
+#     "f" => [
+#         fill(1e7, num_layers),   # Influx at the back edge (cm⁻² s⁻¹)
+#         fill(-1e7, num_layers)   # Outflux at the front edge (cm⁻² s⁻¹)
+#     ]
+# )
 
 # ***************************************************************************************************** #
 #                                                                                                       #
@@ -591,6 +706,10 @@ push!(PARAMETERS_GEN, ("MDIFF", mdiff));
 push!(PARAMETERS_GEN, ("DH", DH));
 push!(PARAMETERS_GEN, ("AMBIPOLAR_DIFFUSION_ON", use_ambipolar));
 push!(PARAMETERS_GEN, ("MOLEC_DIFFUSION_ON", use_molec_diff));
+push!(PARAMETERS_GEN, ("HORIZ_TRANSPORT_ON", enable_horiz_transport));
+push!(PARAMETERS_GEN, ("HORIZ_DIFFUSION_ON", enable_horiz_diffusion));
+push!(PARAMETERS_GEN, ("HORIZ_DX_ALT_DEPENDENT", use_altitude_dependent_horiz_dx));
+push!(PARAMETERS_GEN, ("HORIZ_CYCLIC", horiz_transport_cyclic));
 
 # Log altitude grid so we can avoid loading this very file when doing later analysis.
 PARAMETERS_ALTGRID = DataFrame(Alt=alt, # grid
@@ -612,7 +731,17 @@ push!(PARAMETERS_ALT_INFO, ("num_layers", num_layers, "", "Number of discretized
 
 # Atmospheric conditions.
 PARAMETERS_CONDITIONS = DataFrame(Field=[], Value=[], Unit=[]);
-push!(PARAMETERS_CONDITIONS, ("SZA", SZA, "deg"));
+# Log SZA: single value for single column, per-column values for multi-column
+if n_horiz == 1
+    push!(PARAMETERS_CONDITIONS, ("SZA", SZA, "deg"));
+else
+    # Log per-column SZA values
+    for ihoriz in 1:n_horiz
+        scenario = horiz_column_scenario[ihoriz]
+        col_name = haskey(scenario, "name") ? scenario["name"] : "col_$ihoriz"
+        push!(PARAMETERS_CONDITIONS, ("SZA_$col_name", scenario["SZA"], "deg"));
+    end
+end
 push!(PARAMETERS_CONDITIONS, ("TSURF", controltemps[1], "K"));
 push!(PARAMETERS_CONDITIONS, ("TMESO", controltemps[2], "K"));
 push!(PARAMETERS_CONDITIONS, ("TEXO", controltemps[3], "K"));
@@ -629,7 +758,11 @@ PARAMETERS_SPLISTS = DataFrame(AllSpecies=[[string(a) for a in all_species]..., 
                                Jratelist=[[string(j) for j in Jratelist]..., ["" for i in 1:L-length(Jratelist)]...]);
 PARAMETERS_SOLVER = DataFrame(Field=[], Value=[]);
 PARAMETERS_XSECTS = DataFrame(Species=[], Description=[], Filename=[]);
-PARAMETERS_BCS = DataFrame(Species=[], Type=[], Lower=[], Upper=[]);
+# Track vertical boundary conditions for each column
+PARAMETERS_BCS = DataFrame(Species=[], Type=[], Column=[], Lower=[], Upper=[]);
+# Track horizontal boundary conditions at the back and front edges
+PARAMETERS_BCS_HORIZ = DataFrame(Species=[], Type=[], AltIndex=[], Back=[], Front=[]);
 
 # LOG THE TEMPERATURES
-PARAMETERS_TEMPERATURE_ARRAYS = DataFrame(Neutrals=Tn_arr, Ions=Ti_arr, Electrons=Te_arr); 
+# Create separate dataframes for each temperature array to preserve 2D structure
+PARAMETERS_TEMPERATURE_ARRAYS = [DataFrame(Tn_arr, :auto), DataFrame(Ti_arr, :auto), DataFrame(Te_arr, :auto)]

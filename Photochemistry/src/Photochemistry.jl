@@ -77,13 +77,16 @@ export
     ## Transport and boundary conditions
     binary_dcoeff_inCO2, 
     boundaryconditions, 
+    boundaryconditions_horiz,
     Dcoef_neutrals, 
     Dcoef!, 
     diffparams, 
     fluxcoefs, 
+    fluxcoefs_horiz,
     Keddy, 
     update_diffusion_and_scaleH, 
-    update_transport_coefficients,  
+    update_transport_coefficients,
+    update_horiz_transport_coefficients,
 
     ## Water
     precip_microns, 
@@ -118,10 +121,11 @@ export
     get_counts,
     getpos, 
     input, 
-    logrange, 
-    nans_present, 
-    next_in_loop, 
-    searchsortednearest, 
+    logrange,
+    nans_present,
+    arrays_equal_with_nan,
+    next_in_loop,
+    searchsortednearest,
 
     ## String Manipulation
     decompose_chemistry_string, 
