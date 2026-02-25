@@ -112,7 +112,7 @@ function evolve_atmosphere(atm_init::Dict{Symbol, Vector{Array{ftype_ncur}}}, lo
     GV = values(globvars)
     @assert all(x->x in keys(GV), [:absorber, :active_species, :active_longlived, :active_shortlived, :all_species, :alt, 
                                    :collision_xsect, :crosssection, :Dcoef_arr_template, :dt_decr_factor, :dt_incr_factor, :dz, :dx,
-                                   :e_profile_type, :error_checking_scheme, :timestep_type, :H2Oi, :HDOi, 
+                                   :e_profile_type, :timestep_type, :H2Oi, :HDOi,
                                    :hot_H_network, :hot_H_rc_funcs, :hot_D_network, :hot_D_rc_funcs, 
                                    :hot_H2_network, :hot_H2_rc_funcs, :hot_HD_network, :hot_HD_rc_funcs, :Hs_dict, 
                                    :inactive_species, :ion_species, :Jratelist, :logfile, :M_P, :molmass, :n_all_layers, :n_alt_index, :n_inactive, :n_steps, 
@@ -191,7 +191,6 @@ function evolve_atmosphere(atm_init::Dict{Symbol, Vector{Array{ftype_ncur}}}, lo
         push!(PARAMETERS_SOLVER, ("N_STEPS", n_steps))
         push!(PARAMETERS_SOLVER, ("DT_INCR", dt_incr_factor))
         push!(PARAMETERS_SOLVER, ("DT_DECR", dt_decr_factor))
-        push!(PARAMETERS_SOLVER, ("ERROR_SCHEME", error_checking_scheme))
         push!(PARAMETERS_SOLVER, ("ABSTOL", abstol))
         push!(PARAMETERS_SOLVER, ("RELTOL", reltol))
         write_to_log(GV.logfile, write_time_stuff, mode="a")
@@ -539,7 +538,7 @@ function converge(n_current::Dict{Symbol, Vector{Array{ftype_ncur}}}, log_t_star
 
     GV = values(globvars)
     @assert all(x->x in keys(GV), [:absorber, :active_species, :active_longlived, :active_shortlived, :all_species, :alt, :crosssection, 
-                                   :Dcoef_arr_template, :dt_decr_factor, :dt_incr_factor, :dz, :dx, :e_profile_type, :error_checking_scheme, 
+                                   :Dcoef_arr_template, :dt_decr_factor, :dt_incr_factor, :dz, :dx, :e_profile_type,
                                    :H2Oi, :HDOi, :Hs_dict, :inactive_species, :ion_species, :Jratelist, :logfile, :molmass, 
                                    :n_all_layers, :n_alt_index, :n_inactive, :n_steps, :neutral_species, :non_bdy_layers, :num_layers, 
                                    :plot_grid, :polarizability, :q, :reaction_network, :season_length_in_sec, :sol_in_sec, :solarflux, :speciesbclist_vert, :speciesbclist_horiz,
@@ -778,7 +777,7 @@ function next_timestep(nstart, params, t, dt; reltol=1e-2, abstol=1e-12, verbose
 
     GV = values(globvars)
     @assert all(x->x in keys(GV), [:absorber, :active_species, :active_longlived, :active_shortlived, :all_species, :alt, 
-                                   :collision_xsect, :crosssection, :dz, :dx, :e_profile_type, :error_checking_scheme, 
+                                   :collision_xsect, :crosssection, :dz, :dx, :e_profile_type,
                                    :H2Oi, :HDOi, :hot_H_network, :hot_H_rc_funcs, :hot_D_network, :hot_D_rc_funcs, 
                                    :hot_H2_network, :hot_H2_rc_funcs, :hot_HD_network, :hot_HD_rc_funcs, :Hs_dict, 
                                    :inactive_species, :ion_species,  :Jratelist, :logfile, :molmass, 
@@ -805,113 +804,58 @@ function next_timestep(nstart, params, t, dt; reltol=1e-2, abstol=1e-12, verbose
             throw(TooManyIterationsException)
         end
         
+        # The densities at the previous timestep, against which we'll compare nthis once it changes.
         nold = deepcopy(nthis)
         
-        # we perform an update using newton's method on
-        #     f = nthis - nstart - dt*dndt
-        
-        # to do this we need the rates, dndt, and the jacobian of fval,
-        #     d(fval)/d(nthis) = I - dt*chemJ
         dndt, chemJ = get_rates_and_jacobian(nthis, params, t; globvars...)
 
-        # println("dndt: $(dndt)")
+        # FVAL: see chemical_jacobian.pdf eqn 3.21 
+        # fval = f_i(n) = n_i(t + dt) - n_i(t) - (P_i(n(t+dt)) - L_i(n(t+dt)))dt = 0
+        # (here, I believe i represents different species). 
+        # we want fval = 0 or close to it; this occurs when (updated densities - old densities) - (change in densities) = 0 
+        # which is a tautology in the real world, so, the closer we get to 0 in the model for fval, the better our update is.
+        # values > the chosen tolerance mean that the change in density is too inaccurate.
+        # Here we have divided out dt divided to keep things stable at long timescales.
+        fval = (nthis - nstart)/dt - dndt
+        identity = sparse(I, length(nthis), length(nthis))
 
-        if GV.error_checking_scheme == "old" # ==========================================================
-            # we want fval = 0, corresponding to a good update. chemical_jacobian.pdf eqn 3.21 
-            # if it isn't 0, then there's a big discrepancy between the present value and the past value + rate of change, which is bad
-            fval = nthis - nstart - dt*dndt  # 
+        # "Update matrix": I=identity matrix, dt is the timestep, chemJ (or J) is the chemical jacobian,
+        # again with dt divided out for stability. chemical_jacobian.pdf equation 3.23.
+        # ∂f/∂n = I - dt*J  = f'(n_i),  fval = f_i(n)
+        updatemat = identity/dt - chemJ  
 
-            # construct the update matrix according to Jacobson Equation 12.77. h=dt, β=1
-            identity = sparse(I, length(nthis), length(nthis))
-            updatemat = identity - dt*chemJ  
+        # NEWTON UPDATE - chemical_jacobian.pdf equation 3.25: 
+        # Equation: n_i+1 = n_i - f(n_i)/f'(n_i). Notation below is weird because this is code.
+        # \ operator = inverse divide; done this way because we're doing marix math.
+        nthis = nthis - updatemat \ fval 
+        nthis[nthis .< 0.] .= 0.
 
-            # now we can update using newton's method, chemical_jacobian.pdf equation 3.25
-            # n_i+1 = n_i - f(n_i)/f'(n_i)
-            # Here, updatemat = ∂f/∂n = I - dt*J  = f'(n_i),  fval = f(n^i)
-            nthis = nthis - solve_sparse(updatemat, fval)
+        # ABSOLUTE ERROR COMPARISON TO TOLERANCE:
+        # The first two criteria are: If the new density or old density 
+        # are < absolute tolerance, we consider the update good because the dn/dt must, by definition,
+        # have been smaller than the abstol. The third criterion: If the densities are larger (i.e. for
+        # a major species) but the dn/dt is less than absolute tolerance. 
+        # Why not just check if updatemat \ fval < abstol? because some values caught may be larger than it
+        # because updatemat \ fval can yield dn/dt if the new density is super negative. Negative density is
+        # non physical, so we have to check nthis-nold AFTER we force neg densities to zero on line above.
+        check_n_abserr = (nthis .<= abstol) .|| (nold .<= abstol) .|| (abs.(nthis - nold) .<= abstol)
 
-            # restrict values to be positive definite
-            nthis[nthis .< 0.] .= 0.
-
-            # density absoluite error
-            check_n_abserr = (nthis .<= abstol) .|| (nold .<= abstol) .|| (abs.(nthis - nold) .<= abstol)
-
-            # density relative error
-            n_relerr = abs.(nthis-nold)./nold
-            # println("max(n_relerr) = $(max(n_relerr[.!check_n_abserr]...))")
-            check_n_relerr = n_relerr .< reltol
-
-            # # fval absolute error
-            # check_f_abserr = (abs.(fval) .<= f_abstol)
-            # println("max(fval) = $(max(fval...))\n")
-            # f_relerr = abs.(fval./(dt*dndt)) # maybe should measure relative to nstart
-            # if length(f_relerr[.!check_f_abserr]) > 0
-            #     println("max(f_relerr) = $(max(f_relerr[.!check_f_abserr]...))\n")
-            # else
-            #     println("max(f_relerr) = 0.0\n")
-            # end
-            # # fval relative error
-            # check_f_relerr = f_relerr .< f_reltol
-            
-            # Suggest: && all(check_f_relerr .|| check_f_abserr). put [.!check_n_abserr] back if this breaks it
-            # Final convergence check
-            converged = all(check_n_relerr .|| check_n_abserr) #&& all(check_f_abserr#=[.!check_n_abserr]=# .|| check_f_relerr) # **
-        elseif GV.error_checking_scheme == "new" # =======================================================
-            # fval - now with dt divided out to keep things stable at long timescales
-            fval = (nthis - nstart)/dt - dndt
-            # println("newton update (nthis-nstart)/dt: $((nthis-nstart)/dt)")
-            identity = sparse(I, length(nthis), length(nthis))
-            updatemat = identity/dt - chemJ  
-            nthis = nthis - updatemat \ fval # solve_sparse(updatemat, fval)
-            nthis[nthis .< 0.] .= 0.
-
-            # density absolute error
-            check_n_abserr = (nthis .<= abstol) .|| (nold .<= abstol) .|| (abs.(nthis - nold) .<= abstol)
-
-            # density relative error
-            n_relerr = abs.(nthis-nold)./nold
-            if verbose==true
-                println("max(n_relerr) = $(max(n_relerr[.!check_n_abserr]...))")
-            end
-            
-            check_n_relerr = n_relerr .< reltol
-
-            # absolute fval error 
-            check_f_abserr = (abs.(fval) .<= f_abstol)
-            if verbose==true
-                if length(fval[.!check_n_abserr]) > 0
-                    println("max(fval) = $(max((abs.(fval[.!check_n_abserr]))...))")
-                else
-                    println("max(fval) = 0.0")
-                end
-            end
-
-            # relative fval error
-            # The following: fval / (nstart+ dt*dndt) = nthis/(nstart+ dt*dndt) - 1, and the division term should be ~=1, so you can check whether this val < rel tol. 
-            f_relerr = abs.(fval./(nthis)) #abs.(fval ./ dndt) # NEW when dt is divided out # 
-            if verbose==true
-                if length(f_relerr[.!check_n_abserr .&& .!check_f_abserr]) > 0
-                    println("max(f_relerr) = $(max(f_relerr[.!check_n_abserr .&& .!check_f_abserr]...))")
-                else
-                    println("max(f_relerr) = 0.0")
-                end     
-            end
-            check_f_relerr = f_relerr .< f_reltol
-            
-            # Debugging:
-            # println("density error: $(all(check_n_relerr .|| check_n_abserr))")
-            # println("fval error: $(all(check_f_abserr[.!check_n_abserr] .|| check_f_relerr[.!check_n_abserr]))")
-            # println()
-
-            # Final convergence check
-            # Turning on the f error check seems to cause it to fail very very early in the run --6 April 
-            converged = (all(check_n_relerr .|| check_n_abserr)) #&& all(check_f_abserr[.!check_n_abserr] .|| check_f_relerr[.!check_n_abserr]))
-        end # new =====================================================================================
+        # RELATIVE ERROR COMPARISON TO TOLERANCE:
+        # If the relative error is less than the tolerance, we consider it good. Easy compared to absolute.
+        n_relerr = abs.(nthis-nold)./nold
+        if verbose==true
+            println("max(n_relerr) = $(max(n_relerr[.!check_n_abserr]...))")
+        end
         
+        check_n_relerr = n_relerr .< reltol
+
+        # Final convergence check
+        converged = (all(check_n_relerr .|| check_n_abserr))
+
         if verbose == true
             norm_dndt_val = norm(dndt)
             max_update_val = maximum(abs.(nthis - nold))
-            msg = "norm(dndt) = $(norm_dndt_val), max \u0394n = $(max_update_val)"
+            msg = "norm(dndt) = $(norm_dndt_val), max Δn = $(max_update_val)"
             println(msg)
             write_to_log(GV.logfile, msg, mode="a")
         end
@@ -1014,7 +958,7 @@ function update!(n_current::Dict{Symbol, Vector{Array{ftype_ncur}}}, t, dt; abst
 
     GV = values(globvars)
     @assert all(x->x in keys(GV), [:absorber, :active_species, :active_longlived, :active_shortlived, :all_species, :alt, :crosssection, 
-                                   :Dcoef_arr_template, :dz, :dx, :e_profile_type, :error_checking_scheme, :H2Oi, :HDOi, :Hs_dict, 
+                                   :Dcoef_arr_template, :dz, :dx, :e_profile_type, :H2Oi, :HDOi, :Hs_dict,
                                    :inactive_species, :ion_species, :Jratelist, :logfile, :molmass, 
                                    :n_all_layers, :n_alt_index, :n_inactive, :neutral_species, :non_bdy_layers, :num_layers, 
                                    :plot_grid, :polarizability, :q, :reaction_network, :solarflux, :speciesbclist_vert, :speciesbclist_horiz, :speciescolor, :speciesstyle,
@@ -1815,7 +1759,7 @@ plot_temp_prof(Tn_arr; savepath=results_dir*sim_folder_name, Tprof_2=Ti_arr, Tpr
 
 # Absolute tolerance
 if problem_type == "Gear"
-    # const atol = 1e-12 # absolute tolerance in ppm, used by Gear solver # NOTE: I think this is actually #/cm³ not ppm, because n_i+1 - n_i is compared against it.--Eryn
+    # absolute tolerance in #/cm³ (configurable via `abs_tol`)
     const atol = abs_tol
     const abs_tol_for_plot = [fill(atol, length(n_tot(n_current, ihoriz; all_species)))
                               for ihoriz in 1:n_horiz]
@@ -1939,7 +1883,7 @@ try
                                  absorber, active_species, active_longlived, active_shortlived, all_species, alt, 
                                  collision_xsect, crosssection, Dcoef_arr_template, dt_incr_factor, dt_decr_factor, dz, dx,
                                  horiz_column_width_profile, horiz_column_width_profile_bulk,
-                                 e_profile_type, error_checking_scheme, timestep_type, H2Oi, HDOi, 
+                                 e_profile_type, timestep_type, H2Oi, HDOi,
                                  hot_H_network, hot_H_rc_funcs, hot_D_network, hot_D_rc_funcs, hot_H2_network, hot_H2_rc_funcs, hot_HD_network, hot_HD_rc_funcs,
                                  short_summary, Hs_dict,
                                  ion_species, inactive_species, Jratelist, logfile, M_P, molmass, monospace_choice, sansserif_choice,
