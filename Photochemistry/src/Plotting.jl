@@ -1498,7 +1498,7 @@ function top_mechanisms(x, sp, atmdict, p_or_r; savepath=nothing, filename_extra
         L = x
     end
 
-    println("Top $(L) $(rxntype) reactions above $(non_bdy_layers[count_above] / 1e5) km sorted by highest column value: $(sorted_column_val[1:L, :])")
+    println("Top $(L) $(rxntype) reactions above $(GV.non_bdy_layers[count_above] / 1e5) km sorted by highest column value: $(sorted_column_val[1:L, :])")
 
     set_rc_params(; fs=18, axlab=20, xtls=18, ytls=18, sansserif=GV.sansserif_choice, monospace=GV.monospace_choice)
     
