@@ -243,7 +243,7 @@ if temp_scenario=="isothermal"
     const controltemps = [225., 225., 225.]
     const meantemps = [225., 225., 225.] # Used for saturation vapor pressure. DON'T CHANGE!
 else # Set the exobase temp according to the temp scenario.
-    const controltemps[3] =  Texo_opts[planet][temp_scenario]
+    controltemps[3] =  Texo_opts[planet][temp_scenario]
 end
 
 # Modify the array for the special case where multiple parameters are changed for the seasonal model
