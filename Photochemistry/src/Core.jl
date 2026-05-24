@@ -1667,6 +1667,14 @@ function Dcoef!(D_arr, T_arr, sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncu
         bcdict: Boundary conditions dictionary specified in parameters file
     Outputs:
         D_arr: An array of the diffusion coefficients by altitude for species
+
+    COULOMB INTERACTION:
+        T_st = plasma temperature = ((m_s*T_t)+(m_t*T_s))/(m_s+m_t)
+        T_I = electron temperature
+        n = total number density of the atmosphere
+        n_e = electron density in ionosphere
+        mu_st = reduced mass = (m_s*m_t)/(m_s+m_t)
+        Z_s and Z_t = charge number of the particle
     =#
 
     GV = values(globvars)
