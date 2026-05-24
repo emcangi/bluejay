@@ -1,1 +1,3 @@
 this is my awesome test commit file!
+
+this line should change between switching branches
