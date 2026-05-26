@@ -24,7 +24,8 @@ const initial_atm_file = "$(planet)-Inputs/INITIAL_GUESS_MARS_bxz4YnHk.h5"  # Fi
     # OPTIONS: 
     # INITIAL_GUESS_MARS.h5 --> Basic Mars starting file.
     # INITIAL_GUESS_MARS_bxz4YnHk.h5 --> A Mars atmosphere that includes N2O, NO2, and their ions;
-    #                                    not particularly motivated by any present-day data.                                         
+    #                                    not particularly motivated by any present-day data.
+    # INITIAL_GUESS_MARS_400KM.h5 --> Starting atmosphere for 0-400km models.                          
     # INITIAL_GUESS_VENUS_vGFd5b0a.h5 --> Best Venus initial atmosphere  without sulfur/chlorine
     # INITIAL_GUESS_VENUS_oUT0ZbGN.h5 --> Venus initial atmosphere with basic chlorine and sulfur species included.
 const final_atm_file = "final_atmosphere.h5"
