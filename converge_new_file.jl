@@ -939,23 +939,25 @@ if make_new_alt_grid==true
 
     # New zmin
     if which_boundary_has_changed == "zmin"
+        throw("Not currently implemented")
         # Get old zmin
-        old_zmin = h5read(initial_atm_file, "n_current/alt")[1] # first element is the zmin
-        extra_entries = Int64( (old_zmin - zmin) / dz)
+        # old_zmin = h5read(initial_atm_file, "n_current/alt")[1] # first element is the zmin
+        # extra_entries = Int64( (old_zmin - zmin) / dz)
 
-        # Extend the grid
-        for (k,v) in zip(keys(n_current), values(n_current))
-            if fillval=="zeros"
-                fillme = 0
-            elseif fillval=="nearest"
-                fillme = v[1]
-            end
-            prepend!(v, fill(fillme, extra_entries))  # repeats the last value in the array for the upper atmo as an initial value.
-        end
+        # # Extend the grid
+        # for (k,v) in zip(keys(n_current), values(n_current))
+        #     if fillval=="zeros"
+        #         fillme = 0
+        #     elseif fillval=="nearest"
+        #         fillme = v[1]
+        #     end
+        #     prepend!(v, fill(fillme, extra_entries))  # repeats the last value in the array for the upper atmo as an initial value.
+        # end
     elseif which_boundary_has_changed == "zmax"
-        # Get old zmin
-        old_zmax = h5read(initial_atm_file, "n_current/alt")[end] # first element is the zmin
-        extra_entries = Int64( ((old_zmax - zmax) / dz) / 1e5 )
+        # Get old zmax
+        old_zmax = h5read(initial_atm_file, "n_current/alt")[end] # last element is the zmax
+        extra_entries = Int64( ((zmax - old_zmax) / dz) )
+        println("Will do $(extra_entries) extra entries")
 
         # Extend the grid
         for (k,v) in zip(keys(n_current), values(n_current))
