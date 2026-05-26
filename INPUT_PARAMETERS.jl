@@ -19,8 +19,8 @@ const planet = "Mars"
 
 # Input and output files, directory
 # =======================================================================================================
-const results_dir = code_dir*"../Results_$(planet)/"
-const initial_atm_file = "$(planet)-Inputs/INITIAL_GUESS_VENUS_oUT0ZbGN.h5"  # File to use to initialize the atmosphere.
+const results_dir = "/home/emc/Insync/OneDrive-CU/Research/Photochemistry/Results_$(planet)/"
+const initial_atm_file = "$(planet)-Inputs/INITIAL_GUESS_MARS_bxz4YnHk.h5"  # File to use to initialize the atmosphere.
     # OPTIONS: 
     # INITIAL_GUESS_MARS.h5 --> Basic Mars starting file.
     # INITIAL_GUESS_MARS_bxz4YnHk.h5 --> A Mars atmosphere that includes N2O, NO2, and their ions;
@@ -33,10 +33,10 @@ const reaction_network_spreadsheet = code_dir*"$(planet)-Inputs/REACTION_NETWORK
 
 # Descriptive attributes of this model run
 # =======================================================================================================
-const short_summary = "co+od_ratecoeff_eq_co+oh" 
+const short_summary = "extend_to_400" 
       # a short string that will be added to the results folder, to jog your memory of what you did.
       # Recommended not to include spaces. May be blank.
-const logged_long_description = "Test extending alt grid" 
+const logged_long_description = "Test extending alt grid to 400 km for MDAP" 
       # Brief summary of simulation goal, will be in the log file but not the results folder name.
 const results_version = "v0"  
       # Helps keep track of attempts if you need to keep changing things. Will be appended to results
@@ -177,11 +177,11 @@ const dont_compute_chemistry = []
 const dont_compute_transport = []
 const dont_compute_either_chem_or_transport = []  
     # OPTIONS: Any species included in the model. 
-if planet=="Mars" # To avoid convergence problems
-    append!(dont_compute_either_chem_or_transport,[:Ar])
-elseif planet=="Venus"
-    append!(dont_compute_chemistry,[:Ar])
-end
+# if planet=="Mars" # To avoid convergence problems
+#     append!(dont_compute_either_chem_or_transport,[:Ar])
+# elseif planet=="Venus"
+append!(dont_compute_chemistry,[:Ar])
+# end
     
 const assume_photochem_eq = false # whether to turn on photochemical equilibrium for short-lived species
 
@@ -199,18 +199,23 @@ const abs_tol = 1e-12
 
 # Helpful options for adding new things to the model 
 # =======================================================================================================
-const do_chem = true   # Turning this or next one of will toggle chemistry or transport.
-const do_trans = true  # Often useful for troubleshooting or converging new atmospheres.
+const do_chem = true   # If false, NO CHANGES due to chemistry will be computed
+const do_trans = true  # If false, NO CHANGES due to transport will be computed
+const use_ambipolar = true # Toggle ambipolar diffusion for ions. If False, ions will use molecular diffusion.
+const use_molec_diff = true # Toggle molecular diffusion. If turned off, eddy diffusion remains active.
+
+# New species stuff
 const adding_new_species = false
-const make_new_alt_grid = false# true  # Set to true if extending the altitude grid. TODO: Need to re-write that code.
-const which_boundary_has_changed = "zmin"
-const fillval = "nearest"
-    # What to fill the new altitude entries with; OPTIONS:
-    # "zeros": 0 everywhere
-    # "nearest" : nearest value in the density array
 const use_nonzero_initial_profiles = true
     # OPTIONS: 
     # true -- uses initial guess densities for species based on previous model output.
     # false -- sets species to zero density and lets the chemistry and transport build them up.
-const use_ambipolar = true # Toggle ambipolar diffusion for ions.
-const use_molec_diff = true # Toggle molecular diffusion. If turned off, eddy diffusion remains active.
+
+# New altitude ranges
+const make_new_alt_grid = true # Set to true if extending the altitude grid.
+const which_boundary_has_changed = "zmax" # Currently, lowering the altitude is being developed on another branch so 'zmin' is not supported
+const fillval = "nearest"
+    # What to fill the new altitude entries with; OPTIONS:
+    # "zeros": 0 everywhere
+    # "nearest" : nearest value in the density array
+
