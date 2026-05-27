@@ -203,7 +203,7 @@ const e_profile_type = ions_included==true ? "quasineutral" : "none"
 # =======================================================================================================
 const zmin = Dict("Venus"=>46e5, "Mars"=>0.)[planet]
 const dz = 2e5  # Discretized layer thickness
-const zmax = 400e5  # Top altitude (cm)
+const zmax = Dict("Venus"=>250e5, "Mars"=>400e5)[planet]  # Top altitude (cm)
 const alt = convert(Array, (zmin:dz:zmax)) # These are the layer centers.
 const n_all_layers = length(alt)
 const intaltgrid = round.(Int64, alt/1e5)[2:end-1]; # the altitude grid CELLS but in integers.
