@@ -2234,8 +2234,8 @@ function inject_water!(n_current, data_water, data_alt; simfolder=nothing, upper
 
     Inputs:
         n_current: atmospheric state dictionary
-        maven_water: values for injected water vapor (in #/cm^3)
-        maven_alt: altitudes for injected water vapor
+        data_water: values for injected water vapor (in #/cm^3)
+        data_alt: altitudes for injected water vapor
         simfolder: folder where results are stored. Used to save a figure of the new water profile.
         upper_atmo_ff: Adds a fudge factor in the upper atmosphere to smooth out the profile. 
                        May require direct attention to make sure it makes sense.
@@ -2263,7 +2263,6 @@ function inject_water!(n_current, data_water, data_alt; simfolder=nothing, upper
 
     temp_ncur[:H2O][inds] .= new_wn
     temp_ncur[:HDO][inds] .= new_wn * 2 * GV.DH
-    # temp_ncur[:H2O][GV.n_alt_index[154e5]] = maven_water[end];
 
     fig, ax = subplots()
     plot_bg(ax)
