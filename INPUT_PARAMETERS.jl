@@ -33,12 +33,12 @@ const reaction_network_spreadsheet = code_dir*"$(planet)-Inputs/REACTION_NETWORK
 
 # Descriptive attributes of this model run
 # =======================================================================================================
-const short_summary = "test_uncert" 
+const short_summary = "redo_average_perihelion" 
       # a short string that will be added to the results folder, to jog your memory of what you did.
       # Recommended not to include spaces. May be blank.
-const logged_long_description = "It works, now add HDO"
+const logged_long_description = "Average perihelion scenario for IUVS water "
       # Brief summary of simulation goal, will be in the log file but not the results folder name.
-const results_version = "v0"  
+const results_version = "v2"  
       # Helps keep track of attempts if you need to keep changing things. Will be appended to results
       # folder name.
 
@@ -49,7 +49,11 @@ const results_version = "v0"
 # Available options: temperatures, water vapor abundance, and altitudes at which to make the change.
 # The model will force-overwrite these values into the arrays, no matter what the typical setup does.
 const ingest_data = true # false
-const ingest_scenario = "orbit12807_MD" # nothing
+const ingest_scenario = "perihelion_MD"
+                        # "orbit12807_MD" # a particularly high water case at perihelion
+                        # "perihelion-baseline-MD" # baseline perihelion without water noted 
+                        # "perihelion_MD" # average perihelion enhanced water
+                        # nothing # if we don't want to ingest any data
 const data_loc = "/home/emc/GITREPOS/bluejay/Mars-Inputs/maven_data/"
 
 
@@ -93,7 +97,7 @@ const temp_scenario = ingest_scenario != "" ? ingest_scenario : "mean"  # Temper
 
 # Solar case
 # -------------------------------------------------------------------
-const SZA_opts = Dict("orbit12807"=>20.80, "perihelion"=>45, "aphelion"=>45, nothing=>60)
+const SZA_opts = Dict("orbit12807_MD"=>20.80, "perihelion_MD"=>45, "aphelion_MD"=>45, nothing=>60)
 const SZA = get(SZA_opts, ingest_scenario, 60) # degrees please
 const solar_scenario = "solarmean" 
     # Solar scenario definition. You can choose from different Mars-sun distances or parts of the solar cycle.
