@@ -33,7 +33,7 @@ const reaction_network_spreadsheet = code_dir*"$(planet)-Inputs/REACTION_NETWORK
 
 # Descriptive attributes of this model run
 # =======================================================================================================
-const short_summary = "co+od_ratecoeff_eq_co+oh" 
+const short_summary = "transport_sensitivity_30h15h" 
       # a short string that will be added to the results folder, to jog your memory of what you did.
       # Recommended not to include spaces. May be blank.
 const logged_long_description = "Test a rate coefficient of +0% (*1) of H equivalent for CO + OD -> CO2 + D" 
@@ -284,6 +284,17 @@ elseif planet == "Venus" && n_horiz == 2
             "SZA" => 180.0             # Anti-solar: SZA = 180° (no solar flux)
         )
     )
+    # Milder config for no-transport baseline (converges without horizontal coupling):
+    # OrderedDict(
+    #     "day" => Dict(
+    #         "Texo_key" => "mean",      # 290 K
+    #         "SZA" => 60.0              # Dayside solar zenith angle
+    #     ),
+    #     "night" => Dict(
+    #         "Texo_key" => "min",       # 260 K
+    #         "SZA" => 120.0             # Nightside: SZA > 90° means zero solar flux
+    #     )
+    # )
 elseif planet == "Mars" && n_horiz == 2
     # Mars day-night test: 2 columns
     OrderedDict(
