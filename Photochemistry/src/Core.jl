@@ -1668,13 +1668,11 @@ function Dcoef!(D_arr, T_arr, sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncu
     Outputs:
         D_arr: An array of the diffusion coefficients by altitude for species
 
-    COULOMB INTERACTION:
-        T_st = plasma temperature = ((m_s*T_t)+(m_t*T_s))/(m_s+m_t)
-        T_I = electron temperature
-        n = total number density of the atmosphere
-        n_e = electron density in ionosphere
-        mu_st = reduced mass = (m_s*m_t)/(m_s+m_t)
-        Z_s and Z_t = charge number of the particle
+    COULOMB INTERACTION depends on following values:
+        T_ion = temperature of the ion
+        n_tot_ion = total number density of ions
+        mu_st = reduced mass = (m_t+m_s)/(m_s*m_t)
+        Lambda = a constant dependent on T_ion and n_e (number density of electrons)
     =#
 
     GV = values(globvars)
@@ -1719,7 +1717,40 @@ function Dcoef!(D_arr, T_arr, sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncu
 
             end
             
-            D_arr .= (kB .* T_arr) ./ (GV.molmass[sp] .* mH .* sum_nu_in)
+            D_arr .= (kB .* T_arr) ./ (GV.molmass[sp] .* mH .* sum_nu_in) # original coefficients without Coulomb interaction
+
+            # Coulomb interaction found below this line
+
+            n_e = sum([atmdict[sp] for sp in GV.ion_species]) # copied from electron density function, this just gives us the electron density neatly
+            n_e = max.(n_e, 1e-10) # if n_e drops below 1e-10, replace with 1e-10. helps to prevent dividing by zero.
+            D_S_array = zeros(size(T_arr)) # initialize a blank array that will hold our D_S coefficients
+
+            # this loop will run through all the ions we care about in the current simulation test
+            for i in GV.ion_species
+                if i == sp # make sure we only compute for the species we care about
+                    continue # only continues when i==sp. otherwise, the code in this for loop is ran
+                end
+
+                # need the mass of the i-th background species
+                mB = GV.molmass[i]
+
+                # compute the reduced mass for this background species and the dominant species.
+                # CURRENTLY HARDCODED FOR MARS!! VENUS HAS A DIFFERENT DOMINANT BACKGROUND SPECIES!!
+                mu_ion = reduced_mass(GV.molmass[sp], mB) / mH #divide by mH to convert back to AMU
+
+                # get the lambda constant in Munoz's 2006 paper (eqn 30). it changes as the temperature changes
+                Lambda = (1.26e4) .* ((T_arr .^3 ./ n_e) .^ 0.5)
+                Lambda = max.(Lambda, 1.0001)
+
+                #compute the D_S coefficient
+                n_tot_ion = n_tot(atmdict; GV.all_species, GV.n_alt_index) # this is the total number of ions
+                D_S = (1.29*10^(-3)) .* T_arr .^ (5/2) ./ (log.(Lambda) .* n_tot_ion) ./ sqrt(mu_ion)
+
+                #append to the blank array our value for D_S in the current species sp
+                D_S_array .+= D_S
+            end
+            
+            D_arr .+= D_S_array #combine the diffusion coefficients to get our new diffusion coefficient
 
         end
     end
