@@ -337,7 +337,12 @@ function load_from_paramlog(folder; quiet=true, globvars...)
         global n_all_layers = length(alt)
         global num_layers = length(non_bdy_layers)
         # In older versions of the parameter logging, this variable was named "WATER_BDY".
-        global upper_lower_bdy = get_param("WATER_BDY", df_atmcond) * 1e5
+        global upper_lower_bdy = 0.
+        try
+            global upper_lower_bdy = get_param("WATER_BDY", df_atmcond) * 1e5
+        catch BoundsError
+            global upper_lower_bdy = get_param("upper_lower_bdy", df_altinfo)
+        end
         # Ideally we would not repeat the code for n_alt_index here, but oh well.
         global upper_lower_bdy_i = Dict([z=>clamp((i-1),1, num_layers) for (i, z) in enumerate(alt)])[upper_lower_bdy]
 
