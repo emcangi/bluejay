@@ -2030,9 +2030,9 @@ elseif problem_type == "Gear"
     # Write out the final state to a unique file for easy finding
     write_final_state(atm_soln, results_dir, sim_folder_name, final_atm_file; alt, num_layers, short_summary, Jratedict, run_id, external_storage, n_horiz)
 
-    @assert size(Tn_arr) == (n_horiz, num_layers+2) "Tn_arr should be (n_horiz, num_layers+2), got $(size(Tn_arr))"
-    @assert size(Ti_arr) == (n_horiz, num_layers+2) "Ti_arr must be (n_horiz, num_layers+2)"
-    @assert size(Te_arr) == (n_horiz, num_layers+2) "Te_arr must be (n_horiz, num_layers+2)"
+    @assert size(Tn_arr) == (n_horiz, n_all_layers) "Tn_arr should be (n_horiz, n_all_layers), got $(size(Tn_arr))"
+    @assert size(Ti_arr) == (n_horiz, n_all_layers) "Ti_arr must be (n_horiz, n_all_layers)"
+    @assert size(Te_arr) == (n_horiz, n_all_layers) "Te_arr must be (n_horiz, n_all_layers)"
 
     # Write out the final column rates to the reaction log
     calculate_and_write_column_rates(used_rxns_spreadsheet_name, atm_soln; all_species, dz, ion_species, num_layers, reaction_network, results_dir, sim_folder_name, 

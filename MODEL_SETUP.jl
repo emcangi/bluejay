@@ -283,7 +283,7 @@ if n_horiz == 1
     const Te_arr = repeat(T_array_dict["electrons"]', n_horiz, 1)
 else
     # Multi-column: construct temperature profiles for each column based on scenario
-    Tn_arr_temp = zeros(n_horiz, num_layers+2)
+    Tn_arr_temp = zeros(n_horiz, n_all_layers)
     Ti_arr_temp = similar(Tn_arr_temp)
     Te_arr_temp = similar(Tn_arr_temp)
 
