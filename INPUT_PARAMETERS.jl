@@ -9,7 +9,7 @@
 # Eryn Cangi
 # Created April 2024
 # Last edited: December 2025
-# Currently tested for Julia: 1.12.3
+# Currently tested for Julia: 1.12.6
 ################################################################################
 
 # Set the planet 
