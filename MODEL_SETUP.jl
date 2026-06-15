@@ -15,7 +15,7 @@ using DoubleFloats
 using Random
 
 # First do some error checking
-if (special_seasonal_case!=nothing) & (exp_type=="all")
+if (special_seasonal_case==nothing) & (exp_type=="all")
     throw("Only use exp_type='all' when special_seasonal_case != nothing")
 end
 
