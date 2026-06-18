@@ -241,7 +241,7 @@ const Tsurf = Dict("Mars"=>Dict("mean"=>230.,
                   )
 
 const Tmeso = Dict("Mars"=>Dict("mean"=>130., 
-                                "orbit12807_MD"=>169.6, "perihelion_MD"=>169.6, "baseline_perihelion_MD"=>169.6, "aphelion_MD"=>221.4, "baseline_MD"=>130.,
+                                "orbit12807_MD"=>111, "perihelion_MD"=>118, "baseline_perihelion_MD"=>118, "aphelion_MD"=>108, "baseline_MD"=>118.,
                                 # Special case where we do a seasonal model but vary 3 thigns at once.
                                "inclusive-ap"=>130., "inclusive-mean"=>130., "inclusive-peri"=>130.), 
                    "Venus"=>Dict("mean"=>170.)
