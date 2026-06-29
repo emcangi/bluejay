@@ -5,7 +5,10 @@
 # This file forms the logical core of the photochemical model. Some things     #
 # not included in this file are:                                               #
 # 1. Anything related to file input/output/writing is in FileIO.jl.            #
-# 2. Everything related to photochemical cross sections is in Crosssections.jl.#
+# 2. Everythig related to photochemical cross sections is in Crosssections.jl.#
+# 3. Everything related to building the chemical network object from the       #
+#    provided spreadsheet is in ReactionNetwork.jl.                            #
+# 4. Really small funcng related to photochemical cross sections is in Crosssections.jl.#
 # 3. Everything related to building the chemical network object from the       #
 #    provided spreadsheet is in ReactionNetwork.jl.                            #
 # 4. Really small functions necessary to the model but that are not as         #
@@ -1667,12 +1670,6 @@ function Dcoef!(D_arr, T_arr, sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncu
         bcdict: Boundary conditions dictionary specified in parameters file
     Outputs:
         D_arr: An array of the diffusion coefficients by altitude for species
-
-    COULOMB INTERACTION depends on following values:
-        T_ion = temperature of the ion
-        n_tot_ion = total number density of ions
-        mu_st = reduced mass = (m_t+m_s)/(m_s*m_t)
-        Lambda = a constant dependent on T_ion and n_e (number density of electrons)
     =#
 
     GV = values(globvars)
@@ -1721,36 +1718,31 @@ function Dcoef!(D_arr, T_arr, sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncu
 
             # Coulomb interaction found below this line
 
-            n_e = sum([atmdict[sp] for sp in GV.ion_species]) # copied from electron density function, this just gives us the electron density neatly
-            n_e = max.(n_e, 1e-10) # if n_e drops below 1e-10, replace with 1e-10. helps to prevent dividing by zero.
-            D_S_array = zeros(size(T_arr)) # initialize a blank array that will hold our D_S coefficients
+            # sum_nu_ii = zeros(size(T_arr)) # initialize a blank array that will hold the collision frequencies
+            # M_i = GV.molmass[sp] # mass of the dominant species in the atmosphere
 
-            # this loop will run through all the ions we care about in the current simulation test
-            for i in GV.ion_species
-                if i == sp # make sure we only compute for the species we care about
-                    continue # only continues when i==sp. otherwise, the code in this for loop is ran
-                end
+            # # this loop will run through all the ions we care about in the current simulation test
+            # for j in GV.ion_species
+            #     if j == sp # make sure we only compute for the species we care about
+            #         continue # only skips the code below when j==sp. otherwise, the code in this loop is ran
+            #     end
 
-                # need the mass of the i-th background species
-                mB = GV.molmass[i]
+            #     # need the mass of the j-th background species
+            #     M_j = GV.molmass[j]
 
-                # compute the reduced mass for this background species and the dominant species.
-                # CURRENTLY HARDCODED FOR MARS!! VENUS HAS A DIFFERENT DOMINANT BACKGROUND SPECIES!!
-                mu_ion = reduced_mass(GV.molmass[sp], mB) / mH #divide by mH to convert back to AMU
+            #     # compute the reduced mass for this background species and the dominant species.
+            #     M_ij = (M_i * M_j) / (M_i + M_j)
 
-                # get the lambda constant in Munoz's 2006 paper (eqn 30). it changes as the temperature changes
-                Lambda = (1.26e4) .* ((T_arr .^3 ./ n_e) .^ 0.5)
-                Lambda = max.(Lambda, 1.0001)
-
-                #compute the D_S coefficient
-                n_tot_ion = n_tot(atmdict; GV.all_species, GV.n_alt_index) # this is the total number of ions
-                D_S = (1.29*10^(-3)) .* T_arr .^ (5/2) ./ (log.(Lambda) .* n_tot_ion) ./ sqrt(mu_ion)
-
-                #append to the blank array our value for D_S in the current species sp
-                D_S_array .+= D_S
-            end
+            #     # compute the ion collision frequency
+            #     N_j = atmdict[j] # pull the density of the ion in question
+            #     nu_ij = 1.27 .* (sqrt(M_ij) / M_i) .* (N_j ./ (T_arr) .^ (1.5))
+            #     sum_nu_ii .+= nu_ij
+                
+            # end
             
-            D_arr .+= D_S_array #combine the diffusion coefficients to get our new diffusion coefficient
+            # # plug the nu sums into the diffusion coefficient formula
+            # nu_i = sum_nu_ii .+ sum_nu_in
+            # D_arr .= (kB .* T_arr) ./ (GV.molmass[sp] .* mH .* nu_i)
 
         end
     end
