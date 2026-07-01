@@ -246,6 +246,10 @@ function load_from_paramlog(folder; quiet=true, globvars...)
         end
     end
 
+    # TODO: This needs to be reworked. Sometimes these global variables may be passed in but for a newer simulation, e.g.
+    # when calling final_escape. What should really be done is the code should get them all out of the data frame and 
+    # load any not in there from the global variables, and throw an error if it still can't find them.
+
     if ~(:alt in keys(GV))
         try 
             global df_alt = DataFrame(XLSX.readtable("$(folder)PARAMETERS.xlsx", "AltGrid"));
@@ -255,10 +259,8 @@ function load_from_paramlog(folder; quiet=true, globvars...)
             global zmin = get_param("zmin", df_altinfo)
             global dz = get_param("dz", df_altinfo)
             global zmax = get_param("zmax", df_altinfo)
-            global n_all_layers = get_param("n_all_layers", df_altinfo)
-            global num_layers = get_param("num_layers", df_altinfo)
-            global upper_lower_bdy = get_param("upper_lower_bdy", df_altinfo)
-            global upper_lower_bdy_i = get_param("upper_lower_bdy_i", df_altinfo)
+            global n_all_layers = Int(get_param("n_all_layers", df_altinfo))
+            global num_layers = Int(get_param("num_layers", df_altinfo))
         catch y
             println("WARNING: Exception: $(y) - you tried to load the altitude grid but it's not logged. File probably made before module updates. Please pass in alt manually")
             println()
@@ -271,16 +273,18 @@ function load_from_paramlog(folder; quiet=true, globvars...)
         global zmax = alt[end]
         global n_all_layers = length(alt)
         global num_layers = length(non_bdy_layers)
-        # In older versions of the parameter logging, this variable was named "WATER_BDY".
-        global upper_lower_bdy = 0.
-        try
-            global upper_lower_bdy = get_param("WATER_BDY", df_atmcond) * 1e5
-        catch BoundsError
-            global upper_lower_bdy = get_param("upper_lower_bdy", df_altinfo)
-        end
-        # Ideally we would not repeat the code for n_alt_index here, but oh well.
-        global upper_lower_bdy_i = Dict([z=>clamp((i-1),1, num_layers) for (i, z) in enumerate(alt)])[upper_lower_bdy]
+    end
 
+    # WATER_BDY vs upper_lower_bdy
+    upper_lower_bdy = ""
+    upper_lower_bdy_i = ""
+    try
+        upper_lower_bdy = get_param("upper_lower_bdy", df_altinfo)
+        upper_lower_bdy_i = get_param("upper_lower_bdy_i", df_altinfo)
+    catch BoundsError
+        upper_lower_bdy = get_param("WATER_BDY", df_atmcond) * 1e5
+        # Ideally we would not repeat the code for n_alt_index here, but oh well.
+        upper_lower_bdy_i = Dict([z=>clamp((i-1),1, num_layers) for (i, z) in enumerate(alt)])[upper_lower_bdy]
     end
 
     # Codes
