@@ -32,7 +32,7 @@ Things bluejay does not do at this time:
 
 ## Installation 
 
-bluejay is currently up-to-date with Julia 1.8.5. It will likely work with newer versions, but it has not yet been tested. 
+bluejay is currently up-to-date with Julia 1.11.6 It will likely work with newer versions, but it has not yet been tested. 
 
 At this time, there are no compiled binaries. The model is provided as a collection of modules (under the Photochemistry module) and related scripts. To install, simply ensure that Julia is installed in the location of your choice and added to your environment $PATH variable, and fork the repo. The root directory of the model must contain:
 
@@ -117,19 +117,20 @@ The Photochemistry module contains several submodules:
 
 **If adding new chemical species**:
 This list may be incomplete. If you discover a necessary step that isn't written here, please open a Github issue.
-1. Add the species' mass in amu to the `molmass` dictionary in `CONSTANTS.jl`.
+1. Add the species' mass in amu to the `molmass` and its polarizability (if neutral) to the `polarizability` dictionary in `CONSTANTS.jl`.
 2. Add entries for the new species to `speciescolor` variable in `PLOT_STYLES.jl`
 3. Add the species to the `species_groups` variable in PLOTTING / `plot_atm()`
 4. Add the species to either `new_neutrals` or `new_ions` variables in `INPUT_PARAMETERS.jl`.
 5. Set `adding_new_species` variable in `INPUT_PARAMETERS`.jl to true
-6. If you want to provide a non-zero initial guess profile for the species, set `use_nonzero_initial_profiles` to true in `INPUT_PARAMETERS`.jl, and enter the initial guess in a file with path (relative to the code directory) equal to `../Resources/initial_profiles/{speciesname}_initial_profile.txt`. 
-7. Add related bimolecular/termolecular chemical reactions to the appropriate spreadsheet (e.g. `REACTION_NETWORK_{PlanetName}.jl`).
-8. For any new photodissociation/photoionization reactions including the new species:
+6. Add a boundary condition for the species if necessary 
+7. If you want to provide a non-zero initial guess profile for the species, set `use_nonzero_initial_profiles` to true in `INPUT_PARAMETERS`.jl, and enter the initial guess in a file with path (relative to the code directory) equal to `../Resources/initial_profiles/{speciesname}_initial_profile.txt`. 
+8. Add related bimolecular/termolecular chemical reactions to the appropriate spreadsheet (e.g. `REACTION_NETWORK_{PlanetName}.jl`).
+9. For any new photodissociation/photoionization reactions including the new species:
   - Add the reactions under the Photodissociation and Photoionization tabs in the reaction network spreadsheet, setting their status to 'New' for the first run.
   - Obtain the cross sections for each reaction as a function of wavelength, binned in half-integer steps (0.5, 1.5, 2.5 etc nm), and save as a .csv or .dat file in the `uvxsect` folder with the symbolic representation of the reaction as the filename (e.g. JH2OtoH2pO1D; where p means a regular plus sign and pl means a superscript plus for ions).
   - Add the reactant and product lists to the `reactant_product_sets` in `Crosssections.jl` under the `populate_xsect_dict()` function.
-9. Add the enthalpies of formation of the species to the spreadsheet `Enthalpies_of_Formation.xlsx`, using one of the existing sources in the spreadsheet or any reputable database.
-10. Converge a new atmosphere with the new species. Once successful:
+10. Add the enthalpies of formation of the species to the spreadsheet `Enthalpies_of_Formation.xlsx`, using one of the existing sources in the spreadsheet or any reputable database.
+11. Converge a new atmosphere with the new species. Once successful:
   - Save the output `final_atmosphere.h5` as the new initial guess file for that planet
   - Set the newly introduced photodissociation/photoionization reactions to "Conv" in the "Status" column of the appropriate tabs within the reaction network spreadsheet
   - Set `adding_new_species` variable in `INPUT_PARAMETERS`.jl to false.

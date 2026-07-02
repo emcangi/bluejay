@@ -33,8 +33,14 @@ const reaction_network_spreadsheet = code_dir*"$(planet)-Inputs/REACTION_NETWORK
 
 # Descriptive attributes of this model run
 # =======================================================================================================
-const optional_logging_note = "Enter a logging note here" # Brief summary of simulation goal
-const results_version = "v0"  # Helps keep track of attempts if you need to keep changing things
+const short_summary = "co+od_ratecoeff_eq_co+oh" 
+      # a short string that will be added to the results folder, to jog your memory of what you did.
+      # Recommended not to include spaces. May be blank.
+const logged_long_description = "Test a rate coefficient of +0% (*1) of H equivalent for CO + OD -> CO2 + D" 
+      # Brief summary of simulation goal, will be in the log file but not the results folder name.
+const results_version = "v0"  
+      # Helps keep track of attempts if you need to keep changing things. Will be appended to results
+      # folder name.
 
 # Set the modifiable atmospheric parameters
 # =======================================================================================================
@@ -53,7 +59,9 @@ const special_seasonal_case = nothing
     # At the request of a reviewer for Cangi+ 2024. Note: You still have to change the individual parameters below.
     # OPTIONS: 
     # nothing - if not doing a seasonal run (note, this is not a string, it's the Julia nothing, similar to Python None)
-    # Vary water, insolation, and temperature at same time: "inclusive-peri" # "inclusive-mean" #"inclusive-ap" 
+    # "inclusive-peri" - Perihelion conditions, modifying all of exobase temperature, water in mesosphere, insolation.
+    # "inclusive-mean" - Same as above but for the time halfway between perihelion and aphelion, either side.
+    # "inclusive-ap" - Same as above, but for aphelion.
     
 # Temperature
 # -------------------------------------------------------------------
@@ -102,8 +110,8 @@ const HDO_excess = 0.350 # excess HDO in ppm (divide by 1000 to get ppb)
 # =======================================================================================================
 
 const ions_included = true
-const converge_which = "both"
-    # OPTIONS: "ions", "neutrals", "both"
+const converge_which =  "both" 
+    # OPTIONS: "ions", "neutrals", "both", "ions+nitrogen"
 
 # Species lists
 # -------------------------------------------------------------------
@@ -205,9 +213,9 @@ const dont_compute_transport = []
 const dont_compute_either_chem_or_transport = []  
     # OPTIONS: Any species included in the model. 
 if planet=="Mars" # To avoid convergence problems
-    append!(:Ar, dont_compute_either_chem_or_transport)
+    append!(dont_compute_either_chem_or_transport,[:Ar])
 elseif planet=="Venus"
-    append!(:Ar, dont_compute_chemistry)
+    append!(dont_compute_chemistry,[:Ar])
 end
     
 const assume_photochem_eq = false # whether to turn on photochemical equilibrium for short-lived species

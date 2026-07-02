@@ -62,12 +62,10 @@ function calculate_and_write_column_rates(rxn_filename, atm_state; globvars...)
                 # Find the relevant reaction within the vector of functions;
                 rxn_i = findfirst(s->(s[1]==these_reactants && s[2]==these_products), GV.reaction_network)
                 this_rxn = GV.reaction_network[rxn_i]
-
                 this_rxn_func = mk_function(:((Tn, Ti, Te, M) -> $(this_rxn[3])))
 
                 # Call get_volume_rates(sp, source_rxn, source_rxn_rc_func, Mtot)
-                vol_rate_by_alt = get_volume_rates(these_reactants[1], this_rxn, this_rxn_func, atm_state, Mtot; Jratedict, globvars...)  #all_species, ion_species, 
-                                                                                                                 #num_layers, Tn=Tn_arr[2:end-1], Ti=Ti_arr[2:end-1], Te=Te_arr[2:end-1])
+                vol_rate_by_alt = get_volume_rates(these_reactants[1], this_rxn, this_rxn_func, atm_state, Mtot; Jratedict, globvars...)
 
                 # sum over the result and multiply by dz to get the column rate
                 col_rate = sum(vol_rate_by_alt .* GV.dz)
@@ -491,6 +489,11 @@ function format_neutral_network(reactions_spreadsheet, used_species; saveloc=not
                                sheet names: Neutral reactions, Ion reactions.
         used_species: List of species in use, really just used once to find unneeded
                       reactions
+        saveloc: path at which to save a copy of the file, used for logging what was used in a run
+        write_rxns: boolean
+                    whether to copy the used reactions to a file at saveloc
+        verbose : boolean
+                  whether to print feedback to the terminal
     Outputs:
         lists of several reaction types, all neutrals, in form [[R1, R2], [P1, P2], :(k)].
         3 reactants or products are also possible.

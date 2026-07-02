@@ -130,7 +130,7 @@ function write_atmosphere(atmdict::Dict{Symbol, Vector{ftype_ncur}}, filename::S
         filename: filename to write to
     =# 
     GV = values(globvars)
-    required =  [:alt, :num_layers, :hrshortcode, :rshortcode]
+    required =  [:alt, :num_layers, :short_summary, :run_id]
     check_requirements(keys(GV), required)
     
     sorted_keys = sort(collect(keys(atmdict)))
@@ -146,7 +146,7 @@ function write_atmosphere(atmdict::Dict{Symbol, Vector{ftype_ncur}}, filename::S
         write(f, "n_current/n_current_mat", atm_mat)
         write(f, "n_current/alt", GV.alt)
         write(f, "n_current/species", map(string, sorted_keys))
-        write(f, "info", ["hrshortcode:" "$(GV.hrshortcode)"; "random shortcode:" "$(GV.rshortcode)"; "elapsed t:" " $(t) sec"])
+        write(f, "info", ["short_summary:" "$(GV.short_summary)"; "run_id:" "$(GV.run_id)"; "elapsed t:" " $(t) sec"])
     end
 end
 
@@ -156,7 +156,7 @@ function write_final_state(atmdict, thedir, thefolder, fname; globvars...)
     =#
 
     GV = values(globvars)
-    required = [:alt, :external_storage, :num_layers, :hrshortcode, :Jratedict, :rshortcode]
+    required = [:alt, :external_storage, :num_layers, :short_summary, :Jratedict, :run_id]
     check_requirements(keys(GV), required)
 
     # Make sure we have the updated Jrates
@@ -234,7 +234,7 @@ function load_from_paramlog(folder; quiet=true, globvars...)
     df_bcs = DataFrame(XLSX.readtable("$(folder)PARAMETERS.xlsx", "BoundaryConditions"));
 
     # Planet, M_P, R_P, and altitude, which were not logged in older runs.
-    if ~(:M_P in keys(GV)) | ~(:R_P in keys(GV))
+    if ~(:M_P in keys(GV)) || ~(:R_P in keys(GV))
         try
             global planet = get_param("PLANET", df_gen)
             global M_P = get_param("M_P", df_gen)
@@ -245,48 +245,57 @@ function load_from_paramlog(folder; quiet=true, globvars...)
             println()
         end
     end
-    
+
+    # TODO: This needs to be reworked. Sometimes these global variables may be passed in but for a newer simulation, e.g.
+    # when calling final_escape. What should really be done is the code should get them all out of the data frame and 
+    # load any not in there from the global variables, and throw an error if it still can't find them.
+
     if ~(:alt in keys(GV))
         try 
             global df_alt = DataFrame(XLSX.readtable("$(folder)PARAMETERS.xlsx", "AltGrid"));
             global df_altinfo = DataFrame(XLSX.readtable("$(folder)PARAMETERS.xlsx", "AltInfo"));
+            global alt = df_alt.Alt
+            global non_bdy_layers = [parse(Float64, f) for f in collect(skipmissing(df_alt.non_bdy_layers))]
+            global zmin = get_param("zmin", df_altinfo)
+            global dz = get_param("dz", df_altinfo)
+            global zmax = get_param("zmax", df_altinfo)
+            global n_all_layers = Int(get_param("n_all_layers", df_altinfo))
+            global num_layers = Int(get_param("num_layers", df_altinfo))
         catch y
             println("WARNING: Exception: $(y) - you tried to load the altitude grid but it's not logged. File probably made before module updates. Please pass in alt manually")
             println()
         end
     else
         global alt = GV.alt # This seems stupid but has to be done because apparently the if/else blocks can't access the keyword arg alt??
-    end
-
-    # AltInfo
-    if (@isdefined df_altinfo) & (@isdefined df_alt)
-        global alt = df_alt.Alt
-        global non_bdy_layers = [parse(Float64, f) for f in collect(skipmissing(df_alt.non_bdy_layers))]
-        global zmin = get_param("zmin", df_altinfo)
-        global dz = get_param("dz", df_altinfo)
-        global zmax = get_param("zmax", df_altinfo)
-        global n_all_layers = get_param("n_all_layers", df_altinfo)
-        global num_layers = get_param("num_layers", df_altinfo)
-        global upper_lower_bdy = get_param("upper_lower_bdy", df_altinfo)
-        global upper_lower_bdy_i = get_param("upper_lower_bdy_i", df_altinfo)
-    else 
-        # In this case, alt should have been passed in manually.
         global non_bdy_layers = alt[2:end-1]
         global zmin = alt[1]
         global dz = alt[2] - alt[1]
         global zmax = alt[end]
         global n_all_layers = length(alt)
         global num_layers = length(non_bdy_layers)
-        # In older versions of the parameter logging, this variable was named "WATER_BDY".
-        global upper_lower_bdy = get_param("WATER_BDY", df_atmcond) * 1e5
-        # Ideally we would not repeat the code for n_alt_index here, but oh well.
-        global upper_lower_bdy_i = Dict([z=>clamp((i-1),1, num_layers) for (i, z) in enumerate(alt)])[upper_lower_bdy]
+    end
 
+    # WATER_BDY vs upper_lower_bdy
+    upper_lower_bdy = ""
+    upper_lower_bdy_i = ""
+    try
+        upper_lower_bdy = get_param("upper_lower_bdy", df_altinfo)
+        upper_lower_bdy_i = get_param("upper_lower_bdy_i", df_altinfo)
+    catch BoundsError
+        upper_lower_bdy = get_param("WATER_BDY", df_atmcond) * 1e5
+        # Ideally we would not repeat the code for n_alt_index here, but oh well.
+        upper_lower_bdy_i = Dict([z=>clamp((i-1),1, num_layers) for (i, z) in enumerate(alt)])[upper_lower_bdy]
     end
 
     # Codes
-    hrshortcode = get_param("RSHORTCODE", df_gen)
-    rshortcode = get_param("HRSHORTCODE", df_gen)
+    run_id = ""
+    short_summary = ""
+    try
+        run_id = get_param("RUN_ID", df_gen) # New name
+    catch BoundsError
+        run_id = get_param("RSHORTCODE", df_gen) # Old name for random string
+        short_summary = get_param("HRSHORTCODE", df_gen)
+    end
 
     # Basics - more
     rxn_spreadsheet = get_param("RXN_SOURCE", df_gen)
@@ -331,6 +340,7 @@ function load_from_paramlog(folder; quiet=true, globvars...)
     Tplasma_arr = Ti_arr .+ Te_arr;
     Tprof_for_Hs = Dict("neutral"=>Tn_arr, "ion"=>Ti_arr);
     Tprof_for_diffusion = Dict("neutral"=>Tn_arr, "ion"=>Tplasma_arr)
+    Hs_dict = Dict{Symbol, Vector{Float64}}([sp=>scaleH(alt, sp, Tprof_for_Hs[charge_type(sp)]; M_P, R_P, globvars...) for sp in all_species]); 
     try
         global Hs_dict = Dict{Symbol, Vector{Float64}}([sp=>scaleH(alt, sp, Tprof_for_Hs[charge_type(sp)]; M_P, R_P, globvars...) for sp in all_species]); 
     catch UndefVarError
@@ -343,8 +353,8 @@ function load_from_paramlog(folder; quiet=true, globvars...)
     
     vardict = Dict("DH"=>DH, 
                    "ions_included"=>ions_included,
-                   "hrshortcode"=>hrshortcode,
-                   "rshortcode"=>rshortcode,
+                   "short_summary"=>short_summary,
+                   "run_id"=>run_id,
                    "neutral_species"=>neutral_species,
                    "ion_species"=>ion_species,
                    "all_species"=>all_species,
