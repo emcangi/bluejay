@@ -2227,7 +2227,7 @@ end
 #                    Water profile setup and SVP functions                      #   
 #===============================================================================#
 
-function inject_water!(n_current, data_water, data_alt; simfolder=nothing, upper_atmo_ff=true, lower_atmo_ff=true, globvars...)
+function inject_water!(n_current, data_water, data_alt; simfolder=nothing, upper_atmo_ff=true, lower_atmo_ff=true, DH_modifier=1, globvars...)
     #=
     Allows "manual" modification of water vapor densities in the initial atmosphere. Modifies n_current.
     Effectively, this injects some extra water which can then evolve chemically.
@@ -2241,6 +2241,8 @@ function inject_water!(n_current, data_water, data_alt; simfolder=nothing, upper
                        May require direct attention to make sure it makes sense.
         lower_atmo_ff: Adds a fudge factor in the lower atmosphere to smooth out the profile. 
                        May require direct attention to make sure it makes sense.
+        DH_modifier: factor by which to multiply the value that sets the amount of HDO. 
+                     default is 1, which means D/H will be assumed to be the same as surface D/H.
     =#
     GV = values(globvars)
     required = [:n_alt_index, :dz, :non_bdy_layers, :plot_grid, :DH]
@@ -2262,7 +2264,7 @@ function inject_water!(n_current, data_water, data_alt; simfolder=nothing, upper
     temp_ncur = deepcopy(n_current)
 
     temp_ncur[:H2O][inds] .= new_wn
-    temp_ncur[:HDO][inds] .= new_wn * 2 * GV.DH
+    temp_ncur[:HDO][inds] .= new_wn * 2 * GV.DH * DH_modifier
 
     fig, ax = subplots()
     plot_bg(ax)

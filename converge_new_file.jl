@@ -1196,7 +1196,7 @@ end
 
 # Allow optional injection from data 
 if (ingest_scenario!="baseline") && (ingest_scenario!="baseline_perihelion")
-    inject_water!(n_current, data_water, data_alt; upper_atmo_ff=false, lower_atmo_ff=false, simfolder=results_dir*sim_folder_name, 
+    inject_water!(n_current, data_water, data_alt; upper_atmo_ff=false, lower_atmo_ff=false, simfolder=results_dir*sim_folder_name, DH_modifier=DH_mod,
                   plot_grid, non_bdy_layers, dz, n_alt_index, DH)
 end
 

@@ -33,12 +33,12 @@ const reaction_network_spreadsheet = code_dir*"$(planet)-Inputs/REACTION_NETWORK
 
 # Descriptive attributes of this model run
 # =======================================================================================================
-const short_summary = "redo_average_perihelion" 
+const short_summary = "redo_average_perihelion_lowDH" 
       # a short string that will be added to the results folder, to jog your memory of what you did.
       # Recommended not to include spaces. May be blank.
-const logged_long_description = "Average perihelion scenario for IUVS water "
+const logged_long_description = "Average perihelion scenario for IUVS water - but inject water with D/H = 0.5x SMOW, similar to ~11x lower D/H as mentioned in Kras 1998 and Bertaux 2001"
       # Brief summary of simulation goal, will be in the log file but not the results folder name.
-const results_version = "v2"  
+const results_version = "v3"  
       # Helps keep track of attempts if you need to keep changing things. Will be appended to results
       # folder name.
 
@@ -111,6 +111,7 @@ const solarfile = "$(planet)-Inputs/$(lowercase(planet))solarphotonflux_$(solar_
 
 # Water
 # -------------------------------------------------------------------
+const DH_mod = 0.1 # 1 # Factor by which to modify the injected HDO in the thermosphere. if 1, D/H ratio of injected water = DH. 
 const water_case = "standard" # Amount of water in the atmosphere
     # OPTIONS: low, standard, high
     # for Venus: standard
