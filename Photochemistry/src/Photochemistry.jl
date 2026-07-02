@@ -76,9 +76,8 @@ export
 
     ## Transport and boundary conditions
     binary_dcoeff_inCO2, 
-    boundaryconditions, 
-    boundaryconditions_horiz,
-    Dcoef_neutrals, 
+    boundaryconditions,
+    Dcoef_neutrals,
     Dcoef!, 
     diffparams, 
     fluxcoefs, 

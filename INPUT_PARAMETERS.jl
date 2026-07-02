@@ -212,36 +212,30 @@ const use_molec_diff = true # Toggle molecular diffusion. If turned off, eddy di
 # Number of vertical columns in the simulation. Set this to 1 for a single-column run or >1 for a multicolumn model.
 const n_horiz = 2
 
-# Cross-terminator (day-to-night) thermospheric transport timescales at Venus are around 23 to 44 hours,
-# corresponding to wind speeds of 230 to 120 m/s (2.3e4 to 1.2e4 cm/s), with 30 hours being typical.
-# This assumes semi-circumference of Venus ~19,000 km as the characteristic width for day-to-night transport.
-
-# If true, horizontal transport uses altitude-dependent width dx(z) = π(R + z).
-# If false, it uses constant `horiz_column_width` (defined in MODEL_SETUP.jl).
-const use_altitude_dependent_horiz_dx = false
-
-# Horizontal transport timescale in hours. This determines the wind speed via: wind_speed = horiz_column_width / (timescale * 3600)
-# For Venus: 23-44 hours corresponds to 230-120 m/s wind speeds
-# For Mars: Set to 0 for no horizontal transport
-const horiz_transport_timescale = planet == "Venus" ? 30.0 : 0.0  # Baseline shared value (hours)
+# Signed horizontal transport timescale in HOURS (the unit is carried in the variable
+# name until it is converted to a rate in MODEL_SETUP.jl).
+# The magnitude sets the column-to-column transport rate: rate = 1 / (|timescale| * 3600) [1/s].
+# The sign sets the direction: positive transports forward (increasing ihoriz, day-to-night
+# for the default column ordering); negative transports backward (night-to-day).
+# Set to 0 for no horizontal transport.
+# Cross-terminator (day-to-night) thermospheric transport timescales at Venus are around
+# 23 to 44 hours, with 30 hours being typical.
+const horiz_transport_timescale_hours = planet == "Venus" ? 30.0 : 0.0  # Baseline shared value (hours)
 # Split neutral/ion timescales to reflect faster ion coupling on Venus (literature: ~10–20 h ions, ~20–40 h neutrals)
-const horiz_transport_timescale_neutral = planet == "Venus" ? 30.0 : horiz_transport_timescale
-const horiz_transport_timescale_ion = planet == "Venus" ? 15.0 : horiz_transport_timescale
+const horiz_transport_timescale_hours_neutral = planet == "Venus" ? 30.0 : horiz_transport_timescale_hours
+const horiz_transport_timescale_hours_ion = planet == "Venus" ? 15.0 : horiz_transport_timescale_hours
 
-# Horizontal wind speeds are derived from timescales and horiz_column_width in MODEL_SETUP.jl
+# Signed transport rates (1/s) are derived from these timescales in MODEL_SETUP.jl
 
 # Whether to allow horizontal transport between columns. When set to `false`
-# the model does not compute horizontal advection or diffusion, matching the
-# behaviour of the single-column set-up even when multiple columns are present.
+# the model does not compute horizontal advection, matching the behaviour of
+# the single-column set-up even when multiple columns are present.
 const enable_horiz_transport = true
 
-# Optional toggle for horizontal diffusion terms only. Keep off by default so
-# horizontal exchange is advective unless explicitly enabled.
-const enable_horiz_diffusion = false
-
-# If true, horizontal neighbors wrap periodically (column 1 is behind column n_horiz).
-# If false, the model uses explicit back/front edge boundary conditions.
-const horiz_transport_cyclic = true
+# If true, horizontal neighbors wrap periodically (column 1 is behind column n_horiz)
+# so material leaving one edge re-enters from the opposite side.
+# If false (default), the domain edges are closed: zero flux in or out.
+const horiz_transport_cyclic = false
 
 # =======================================================================================================
 # Horizontal Column Scenario Configuration
@@ -259,6 +253,10 @@ const horiz_transport_cyclic = true
 #   Venus: "min", "mean", "max"
 #
 # SZA notes: When SZA > 90°, the sun is below the horizon and solar flux will be set to zero
+# Column order matters: horiz_column_scenario[1] maps to n_current[sp][1],
+# horiz_column_scenario[2] maps to n_current[sp][2], etc. For the default
+# two-column day/night cases below, the first column is the dayward/smaller-SZA
+# column and increasing ihoriz moves toward the nightward/larger-SZA column.
 
 const horiz_column_scenario_by_name = if n_horiz == 1
     # Single column: standard uniform setup

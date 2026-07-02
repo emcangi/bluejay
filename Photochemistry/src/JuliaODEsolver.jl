@@ -48,15 +48,14 @@ function make_jacobian(n, p, t)
                                                                # all_species, neutral_species, transport_species, molmass, n_alt_index,
                                                                # polarizability, alt, num_layers, n_all_layers, dz, T_for_diff=Tprof_for_diffusion, q)
 
-    tbackedge, tforwards, tbackwards, tfrontedge =
+    tforwards, tbackwards =
         update_horiz_transport_coefficients(
-            GV.transport_species, n_cur_all, D_arr, M;
-            calc_nonthermal=nontherm,
-            cyclic=get(GV, :horiz_transport_cyclic, true),
+            GV.transport_species;
+            cyclic=get(GV, :horiz_transport_cyclic, false),
             globvars...
         )
-    
-    return chemJmat(n, n_short, GV.n_inactive, Jrates, tup, tdown, tlower, tupper, tforwards, tbackwards, tfrontedge, tbackedge, M, E; globvars...)
+
+    return chemJmat(n, n_short, GV.n_inactive, Jrates, tup, tdown, tlower, tupper, tforwards, tbackwards, M, E; globvars...)
                     # active_longlived, active_shortlived, inactive_species, Tn, Ti, Te, num_layers, H2Oi, HDOi, upper_lower_bdy_i)
 end
 
@@ -118,13 +117,12 @@ function PnL_eqn(dndt, n, p, t)
     tlower, tup, tdown, tupper = update_vertical_transport_coefficients(GV.transport_species, updated_ncur_all, D_arr, M;
                                                                calc_nonthermal=nontherm, globvars...)
 
-    tbackedge, tforwards, tbackwards, tfrontedge =
+    tforwards, tbackwards =
         update_horiz_transport_coefficients(
-            GV.transport_species, updated_ncur_all, D_arr, M;
-            calc_nonthermal=nontherm,
-            cyclic=get(GV, :horiz_transport_cyclic, true),
+            GV.transport_species;
+            cyclic=get(GV, :horiz_transport_cyclic, false),
             globvars...
         )
 
-    dndt .= ratefn(n, n_short_updated, GV.n_inactive, Jrates, tup, tdown, tlower, tupper, tforwards, tbackwards, tfrontedge, tbackedge, M, E; globvars...)
+    dndt .= ratefn(n, n_short_updated, GV.n_inactive, Jrates, tup, tdown, tlower, tupper, tforwards, tbackwards, M, E; globvars...)
 end

@@ -111,15 +111,15 @@ function evolve_atmosphere(atm_init::Dict{Symbol, Vector{Array{ftype_ncur}}}, lo
     =#
     GV = values(globvars)
     @assert all(x->x in keys(GV), [:absorber, :active_species, :active_longlived, :active_shortlived, :all_species, :alt, 
-                                   :collision_xsect, :crosssection, :Dcoef_arr_template, :dt_decr_factor, :dt_incr_factor, :dz, :dx,
+                                   :collision_xsect, :crosssection, :Dcoef_arr_template, :dt_decr_factor, :dt_incr_factor, :dz,
                                    :e_profile_type, :timestep_type, :H2Oi, :HDOi,
-                                   :hot_H_network, :hot_H_rc_funcs, :hot_D_network, :hot_D_rc_funcs, 
-                                   :hot_H2_network, :hot_H2_rc_funcs, :hot_HD_network, :hot_HD_rc_funcs, :Hs_dict, 
-                                   :inactive_species, :ion_species, :Jratelist, :logfile, :M_P, :molmass, :n_all_layers, :n_alt_index, :n_inactive, :n_steps, 
-                                   :neutral_species, :non_bdy_layers, :num_layers, :plot_grid, :polarizability, :q, :R_P, :reaction_network, 
-                                   :season_length_in_sec, :sol_in_sec, :solarflux, :speciesbclist_vert, :speciesbclist_horiz, :speciescolor, :speciesstyle, 
-                                   :Te, :Ti, :Tn, :Tp, :Tprof_for_diffusion, :transport_species, 
-                                   :upper_lower_bdy_i, :zmax, :horiz_wind_v, :enable_horiz_transport])
+                                   :hot_H_network, :hot_H_rc_funcs, :hot_D_network, :hot_D_rc_funcs,
+                                   :hot_H2_network, :hot_H2_rc_funcs, :hot_HD_network, :hot_HD_rc_funcs, :Hs_dict,
+                                   :inactive_species, :ion_species, :Jratelist, :logfile, :M_P, :molmass, :n_all_layers, :n_alt_index, :n_inactive, :n_steps,
+                                   :neutral_species, :non_bdy_layers, :num_layers, :plot_grid, :polarizability, :q, :R_P, :reaction_network,
+                                   :season_length_in_sec, :sol_in_sec, :solarflux, :speciesbclist_vert, :speciescolor, :speciesstyle,
+                                   :Te, :Ti, :Tn, :Tp, :Tprof_for_diffusion, :transport_species,
+                                   :upper_lower_bdy_i, :zmax, :horiz_transport_rate_neutral, :horiz_transport_rate_ion, :enable_horiz_transport])
         
 
     println("$(Dates.format(now(), "(HH:MM:SS)")) Setting up initial state")
@@ -203,12 +203,12 @@ function evolve_atmosphere(atm_init::Dict{Symbol, Vector{Array{ftype_ncur}}}, lo
     return sol, sim_time
 end
 
-function chemJmat(n_active_longlived, n_active_shortlived, n_inactive, Jrates, tup, tdown, tlower, tupper, tforwards, tbackwards, tfrontedge, tbackedge, M, E;
+function chemJmat(n_active_longlived, n_active_shortlived, n_inactive, Jrates, tup, tdown, tlower, tupper, tforwards, tbackwards, M, E;
                   globvars...)
 
     #=
     Collects coordinate tuples of (I, J, V) [row index, column index, value] for a sparse matrix
-    representing the chemical jacobian of the atmospheric system. 
+    representing the chemical jacobian of the atmospheric system.
 
     Input:
         n_active_longlived: Flattened atmospheric densities for active long-lived species.
@@ -217,19 +217,20 @@ function chemJmat(n_active_longlived, n_active_shortlived, n_inactive, Jrates, t
         n_inactive: Flattened atmospheric densities for inactive species.
         Jrates: Column-specific Jrates array (species × horizontal column × altitude).
         tup, tdown, tlower, tupper: Vertical transport coefficients.
-        tforwards, tbackwards, tfrontedge, tbackedge: Horizontal transport coefficients.
+        tforwards, tbackwards: Horizontal transport coefficients.
         M: Total density by altitude for each horizontal column.
         E: Electron density profile for each horizontal column.
     Output:
         Sparse matrix representing the chemical jacobian.
-    =#              
+    =#
 
     GV = values(globvars)
     @assert all(x->x in keys(GV), [:active_longlived, :active_shortlived, :H2Oi, :HDOi, :inactive_species, :num_layers, :n_horiz, :Tn, :Ti, :Te, :upper_lower_bdy_i])
 
     n_horiz = GV.n_horiz
-    cyclic_horiz = get(GV, :horiz_transport_cyclic, true)
+    cyclic_horiz = get(GV, :horiz_transport_cyclic, false)
     one_ll = fill(1.0, length(GV.active_longlived))
+    zero_t = fill(0.0, size(tforwards, 3))  # closed-edge coefficients: no flux in or out
     col_block = GV.num_layers * length(GV.active_longlived)
 
     nmat_llsp = reshape(n_active_longlived, (length(GV.active_longlived), GV.num_layers, n_horiz))
@@ -248,10 +249,10 @@ function chemJmat(n_active_longlived, n_active_shortlived, n_inactive, Jrates, t
             infront_idx = cyclic_horiz ? (ihoriz == n_horiz ? 1 : ihoriz + 1) : ihoriz + 1
             n_behind = (behind_idx >= 1 && behind_idx <= n_horiz) ? nmat_llsp[:, ialt, behind_idx] : one_ll
             n_infront = (infront_idx >= 1 && infront_idx <= n_horiz) ? nmat_llsp[:, ialt, infront_idx] : one_ll
-            t_forwards = (cyclic_horiz || ihoriz != n_horiz) ? tforwards[ihoriz, ialt, :] : tfrontedge[ialt][:,1]
-            t_backwards = (cyclic_horiz || ihoriz != 1) ? tbackwards[ihoriz, ialt, :] : tbackedge[ialt][:,1]
-            t_infront_backwards = (cyclic_horiz || ihoriz != n_horiz) ? tbackwards[infront_idx, ialt, :] : tfrontedge[ialt][:,2]
-            t_behind_forwards = (cyclic_horiz || ihoriz != 1) ? tforwards[behind_idx, ialt, :] : tbackedge[ialt][:,2]
+            t_forwards = (cyclic_horiz || ihoriz != n_horiz) ? tforwards[ihoriz, ialt, :] : zero_t
+            t_backwards = (cyclic_horiz || ihoriz != 1) ? tbackwards[ihoriz, ialt, :] : zero_t
+            t_infront_backwards = (cyclic_horiz || ihoriz != n_horiz) ? tbackwards[infront_idx, ialt, :] : zero_t
+            t_behind_forwards = (cyclic_horiz || ihoriz != 1) ? tforwards[behind_idx, ialt, :] : zero_t
 
             if ialt == 1
                 argvec = [nmat_llsp[:, ialt, ihoriz];
@@ -348,7 +349,7 @@ function chemJmat(n_active_longlived, n_active_shortlived, n_inactive, Jrates, t
     return sparse(chemJi, chemJj, chemJval, length(n_active_longlived), length(n_active_longlived), +)
 end
 
-function ratefn(n_active_longlived, n_active_shortlived, n_inactive, Jrates, tup, tdown, tlower, tupper, tforwards, tbackwards, tfrontedge, tbackedge, M, E; 
+function ratefn(n_active_longlived, n_active_shortlived, n_inactive, Jrates, tup, tdown, tlower, tupper, tforwards, tbackwards, M, E;
                 globvars...)
     #=
     at each altitude, get the appropriate group of concentrations, coefficients, and rates to pass to ratefn_local.
@@ -360,8 +361,9 @@ function ratefn(n_active_longlived, n_active_shortlived, n_inactive, Jrates, tup
     @assert all(x->x in keys(GV), [:active_longlived, :active_shortlived, :H2Oi, :HDOi, :inactive_species, :num_layers, :n_horiz, :Tn, :Ti, :Te, :upper_lower_bdy_i])
 
     n_horiz = GV.n_horiz
-    cyclic_horiz = get(GV, :horiz_transport_cyclic, true)
+    cyclic_horiz = get(GV, :horiz_transport_cyclic, false)
     one_ll = fill(1.0, length(GV.active_longlived))
+    zero_t = fill(0.0, size(tforwards, 3))  # closed-edge coefficients: no flux in or out
 
     # Reshape vectors into matrices with species, altitudes, and columns (horizontals)
     nmat_llsp = reshape(n_active_longlived, (length(GV.active_longlived), GV.num_layers, n_horiz))
@@ -379,10 +381,10 @@ function ratefn(n_active_longlived, n_active_shortlived, n_inactive, Jrates, tup
         infront_idx = cyclic_horiz ? (ihoriz == n_horiz ? 1 : ihoriz + 1) : ihoriz + 1
         n_behind = (behind_idx >= 1 && behind_idx <= n_horiz) ? nmat_llsp[:, ialt, behind_idx] : one_ll
         n_infront = (infront_idx >= 1 && infront_idx <= n_horiz) ? nmat_llsp[:, ialt, infront_idx] : one_ll
-        t_forwards = (cyclic_horiz || ihoriz != n_horiz) ? tforwards[ihoriz, ialt, :] : tfrontedge[ialt][:,1]
-        t_backwards = (cyclic_horiz || ihoriz != 1) ? tbackwards[ihoriz, ialt, :] : tbackedge[ialt][:,1]
-        t_infront_backwards = (cyclic_horiz || ihoriz != n_horiz) ? tbackwards[infront_idx, ialt, :] : tfrontedge[ialt][:,2]
-        t_behind_forwards = (cyclic_horiz || ihoriz != 1) ? tforwards[behind_idx, ialt, :] : tbackedge[ialt][:,2]
+        t_forwards = (cyclic_horiz || ihoriz != n_horiz) ? tforwards[ihoriz, ialt, :] : zero_t
+        t_backwards = (cyclic_horiz || ihoriz != 1) ? tbackwards[ihoriz, ialt, :] : zero_t
+        t_infront_backwards = (cyclic_horiz || ihoriz != n_horiz) ? tbackwards[infront_idx, ialt, :] : zero_t
+        t_behind_forwards = (cyclic_horiz || ihoriz != 1) ? tforwards[behind_idx, ialt, :] : zero_t
 
         argvec = [nmat_llsp[:, ialt, ihoriz];                      # densities for active_longlived;
                   nmat_llsp[:, ialt+1, ihoriz];                    # active_longlived_above;
@@ -409,10 +411,10 @@ function ratefn(n_active_longlived, n_active_shortlived, n_inactive, Jrates, tup
             infront_idx = cyclic_horiz ? (ihoriz == n_horiz ? 1 : ihoriz + 1) : ihoriz + 1
             n_behind = (behind_idx >= 1 && behind_idx <= n_horiz) ? nmat_llsp[:, ialt, behind_idx] : one_ll
             n_infront = (infront_idx >= 1 && infront_idx <= n_horiz) ? nmat_llsp[:, ialt, infront_idx] : one_ll
-            t_forwards = (cyclic_horiz || ihoriz != n_horiz) ? tforwards[ihoriz, ialt, :] : tfrontedge[ialt][:,1]
-            t_backwards = (cyclic_horiz || ihoriz != 1) ? tbackwards[ihoriz, ialt, :] : tbackedge[ialt][:,1]
-            t_infront_backwards = (cyclic_horiz || ihoriz != n_horiz) ? tbackwards[infront_idx, ialt, :] : tfrontedge[ialt][:,2]
-            t_behind_forwards = (cyclic_horiz || ihoriz != 1) ? tforwards[behind_idx, ialt, :] : tbackedge[ialt][:,2]
+            t_forwards = (cyclic_horiz || ihoriz != n_horiz) ? tforwards[ihoriz, ialt, :] : zero_t
+            t_backwards = (cyclic_horiz || ihoriz != 1) ? tbackwards[ihoriz, ialt, :] : zero_t
+            t_infront_backwards = (cyclic_horiz || ihoriz != n_horiz) ? tbackwards[infront_idx, ialt, :] : zero_t
+            t_behind_forwards = (cyclic_horiz || ihoriz != 1) ? tforwards[behind_idx, ialt, :] : zero_t
 
             argvec = [nmat_llsp[:, ialt, ihoriz];
                       nmat_llsp[:, ialt+1, ihoriz];
@@ -443,10 +445,10 @@ function ratefn(n_active_longlived, n_active_shortlived, n_inactive, Jrates, tup
         infront_idx = cyclic_horiz ? (ihoriz == n_horiz ? 1 : ihoriz + 1) : ihoriz + 1
         n_behind = (behind_idx >= 1 && behind_idx <= n_horiz) ? nmat_llsp[:, ialt, behind_idx] : one_ll
         n_infront = (infront_idx >= 1 && infront_idx <= n_horiz) ? nmat_llsp[:, ialt, infront_idx] : one_ll
-        t_forwards = (cyclic_horiz || ihoriz != n_horiz) ? tforwards[ihoriz, ialt, :] : tfrontedge[ialt][:,1]
-        t_backwards = (cyclic_horiz || ihoriz != 1) ? tbackwards[ihoriz, ialt, :] : tbackedge[ialt][:,1]
-        t_infront_backwards = (cyclic_horiz || ihoriz != n_horiz) ? tbackwards[infront_idx, ialt, :] : tfrontedge[ialt][:,2]
-        t_behind_forwards = (cyclic_horiz || ihoriz != 1) ? tforwards[behind_idx, ialt, :] : tbackedge[ialt][:,2]
+        t_forwards = (cyclic_horiz || ihoriz != n_horiz) ? tforwards[ihoriz, ialt, :] : zero_t
+        t_backwards = (cyclic_horiz || ihoriz != 1) ? tbackwards[ihoriz, ialt, :] : zero_t
+        t_infront_backwards = (cyclic_horiz || ihoriz != n_horiz) ? tbackwards[infront_idx, ialt, :] : zero_t
+        t_behind_forwards = (cyclic_horiz || ihoriz != 1) ? tforwards[behind_idx, ialt, :] : zero_t
 
         argvec = [nmat_llsp[:, ialt, ihoriz];
                   one_ll;
@@ -538,12 +540,12 @@ function converge(n_current::Dict{Symbol, Vector{Array{ftype_ncur}}}, log_t_star
 
     GV = values(globvars)
     @assert all(x->x in keys(GV), [:absorber, :active_species, :active_longlived, :active_shortlived, :all_species, :alt, :crosssection, 
-                                   :Dcoef_arr_template, :dt_decr_factor, :dt_incr_factor, :dz, :dx, :e_profile_type,
-                                   :H2Oi, :HDOi, :Hs_dict, :inactive_species, :ion_species, :Jratelist, :logfile, :molmass, 
-                                   :n_all_layers, :n_alt_index, :n_inactive, :n_steps, :neutral_species, :non_bdy_layers, :num_layers, 
-                                   :plot_grid, :polarizability, :q, :reaction_network, :season_length_in_sec, :sol_in_sec, :solarflux, :speciesbclist_vert, :speciesbclist_horiz,
-                                   :speciescolor, :speciesstyle, 
-                                   :Te, :Ti, :Tn, :Tp, :timestep_type, :Tprof_for_diffusion, :upper_lower_bdy_i, :zmax, :horiz_wind_v, :enable_horiz_transport])
+                                   :Dcoef_arr_template, :dt_decr_factor, :dt_incr_factor, :dz, :e_profile_type,
+                                   :H2Oi, :HDOi, :Hs_dict, :inactive_species, :ion_species, :Jratelist, :logfile, :molmass,
+                                   :n_all_layers, :n_alt_index, :n_inactive, :n_steps, :neutral_species, :non_bdy_layers, :num_layers,
+                                   :plot_grid, :polarizability, :q, :reaction_network, :season_length_in_sec, :sol_in_sec, :solarflux, :speciesbclist_vert,
+                                   :speciescolor, :speciesstyle,
+                                   :Te, :Ti, :Tn, :Tp, :timestep_type, :Tprof_for_diffusion, :upper_lower_bdy_i, :zmax, :horiz_transport_rate_neutral, :horiz_transport_rate_ion, :enable_horiz_transport])
     
     # A combination of log timesteps when simulation time is low, and linear after - used to simulate a single season, mainly.
     if GV.timestep_type=="log-linear"
@@ -688,13 +690,13 @@ function get_rates_and_jacobian(n, p, t; globvars...)
 
     GV = values(globvars)
     @assert all(x->x in keys(GV), [:absorber, :active_species, :active_longlived, :active_shortlived, :all_species, :alt, 
-                                   :collision_xsect, :crosssection, :dz, :dx, :H2Oi, :HDOi, :Hs_dict,  
-                                   :hot_H_network, :hot_H_rc_funcs, :hot_D_network, :hot_D_rc_funcs, 
+                                   :collision_xsect, :crosssection, :dz, :H2Oi, :HDOi, :Hs_dict,
+                                   :hot_H_network, :hot_H_rc_funcs, :hot_D_network, :hot_D_rc_funcs,
                                    :hot_H2_network, :hot_H2_rc_funcs, :hot_HD_network, :hot_HD_rc_funcs,
                                    :inactive_species, :ion_species,  :Jratelist,
-                                   :molmass, :neutral_species, :n_horiz, :non_bdy_layers, :num_layers, :n_all_layers, :n_alt_index, :n_inactive, 
-                                   :plot_grid, :polarizability, :q, :reaction_network, :solarflux, :speciesbclist_vert, :speciesbclist_horiz, :speciescolor, :speciesstyle,
-                                   :Tn, :Ti, :Te, :Tp, :Tprof_for_diffusion, :transport_species, :upper_lower_bdy_i, :zmax, :horiz_wind_v, :enable_horiz_transport])
+                                   :molmass, :neutral_species, :n_horiz, :non_bdy_layers, :num_layers, :n_all_layers, :n_alt_index, :n_inactive,
+                                   :plot_grid, :polarizability, :q, :reaction_network, :solarflux, :speciesbclist_vert, :speciescolor, :speciesstyle,
+                                   :Tn, :Ti, :Te, :Tp, :Tprof_for_diffusion, :transport_species, :upper_lower_bdy_i, :zmax, :horiz_transport_rate_neutral, :horiz_transport_rate_ion, :enable_horiz_transport])
 
     # Unpack the parameters ---------------------------------------------------------------
     D_arr, M, E = p 
@@ -750,14 +752,12 @@ function get_rates_and_jacobian(n, p, t; globvars...)
                                                                Jratedict=Dict([j=>n_cur_all[j] for j in GV.Jratelist]), # Needed for nonthermal BCs
                                                                globvars...)
 
-    tbackedge, tforwards, tbackwards, tfrontedge = update_horiz_transport_coefficients(GV.transport_species, updated_ncur_all, D_arr, M; 
-                                                               calc_nonthermal=nontherm, results_dir, sim_folder_name, 
-                                                               Jratedict=Dict([j=>n_cur_all[j] for j in GV.Jratelist]), # Needed for nonthermal BCs
-                                                               cyclic=get(GV, :horiz_transport_cyclic, true),
+    tforwards, tbackwards = update_horiz_transport_coefficients(GV.transport_species;
+                                                               cyclic=get(GV, :horiz_transport_cyclic, false),
                                                                globvars...)
 
-    return (ratefn(n, n_short_updated, GV.n_inactive, Jrates, tup, tdown, tlower, tupper, tforwards, tbackwards, tfrontedge, tbackedge, M, E; globvars...),
-            chemJmat(n, n_short, GV.n_inactive, Jrates, tup, tdown, tlower, tupper, tforwards, tbackwards, tfrontedge, tbackedge, M, E; globvars...) )
+    return (ratefn(n, n_short_updated, GV.n_inactive, Jrates, tup, tdown, tlower, tupper, tforwards, tbackwards, M, E; globvars...),
+            chemJmat(n, n_short, GV.n_inactive, Jrates, tup, tdown, tlower, tupper, tforwards, tbackwards, M, E; globvars...) )
 end
 
 function next_timestep(nstart, params, t, dt; reltol=1e-2, abstol=1e-12, verbose=false, globvars...)
@@ -777,13 +777,13 @@ function next_timestep(nstart, params, t, dt; reltol=1e-2, abstol=1e-12, verbose
 
     GV = values(globvars)
     @assert all(x->x in keys(GV), [:absorber, :active_species, :active_longlived, :active_shortlived, :all_species, :alt, 
-                                   :collision_xsect, :crosssection, :dz, :dx, :e_profile_type,
-                                   :H2Oi, :HDOi, :hot_H_network, :hot_H_rc_funcs, :hot_D_network, :hot_D_rc_funcs, 
-                                   :hot_H2_network, :hot_H2_rc_funcs, :hot_HD_network, :hot_HD_rc_funcs, :Hs_dict, 
-                                   :inactive_species, :ion_species,  :Jratelist, :logfile, :molmass, 
-                                   :n_all_layers, :n_alt_index, :n_inactive, :neutral_species, :non_bdy_layers, :num_layers, 
-                                   :plot_grid, :polarizability, :q, :reaction_network,  :speciesbclist_vert, :speciesbclist_horiz, :speciescolor, :speciesstyle,
-                                   :Te, :Ti, :Tn, :Tp, :Tprof_for_diffusion, :upper_lower_bdy_i, :zmax, :horiz_wind_v, :enable_horiz_transport])
+                                   :collision_xsect, :crosssection, :dz, :e_profile_type,
+                                   :H2Oi, :HDOi, :hot_H_network, :hot_H_rc_funcs, :hot_D_network, :hot_D_rc_funcs,
+                                   :hot_H2_network, :hot_H2_rc_funcs, :hot_HD_network, :hot_HD_rc_funcs, :Hs_dict,
+                                   :inactive_species, :ion_species,  :Jratelist, :logfile, :molmass,
+                                   :n_all_layers, :n_alt_index, :n_inactive, :neutral_species, :non_bdy_layers, :num_layers,
+                                   :plot_grid, :polarizability, :q, :reaction_network,  :speciesbclist_vert, :speciescolor, :speciesstyle,
+                                   :Te, :Ti, :Tn, :Tp, :Tprof_for_diffusion, :upper_lower_bdy_i, :zmax, :horiz_transport_rate_neutral, :horiz_transport_rate_ion, :enable_horiz_transport])
 
     # absolute and relative tolerance on rate update
     f_abstol = 1e-2
@@ -958,11 +958,11 @@ function update!(n_current::Dict{Symbol, Vector{Array{ftype_ncur}}}, t, dt; abst
 
     GV = values(globvars)
     @assert all(x->x in keys(GV), [:absorber, :active_species, :active_longlived, :active_shortlived, :all_species, :alt, :crosssection, 
-                                   :Dcoef_arr_template, :dz, :dx, :e_profile_type, :H2Oi, :HDOi, :Hs_dict,
-                                   :inactive_species, :ion_species, :Jratelist, :logfile, :molmass, 
-                                   :n_all_layers, :n_alt_index, :n_inactive, :neutral_species, :non_bdy_layers, :num_layers, 
-                                   :plot_grid, :polarizability, :q, :reaction_network, :solarflux, :speciesbclist_vert, :speciesbclist_horiz, :speciescolor, :speciesstyle,
-                                   :Te, :Ti, :Tn, :Tp, :Tprof_for_diffusion, :upper_lower_bdy_i, :zmax, :horiz_wind_v, :enable_horiz_transport])
+                                   :Dcoef_arr_template, :dz, :e_profile_type, :H2Oi, :HDOi, :Hs_dict,
+                                   :inactive_species, :ion_species, :Jratelist, :logfile, :molmass,
+                                   :n_all_layers, :n_alt_index, :n_inactive, :neutral_species, :non_bdy_layers, :num_layers,
+                                   :plot_grid, :polarizability, :q, :reaction_network, :solarflux, :speciesbclist_vert, :speciescolor, :speciesstyle,
+                                   :Te, :Ti, :Tn, :Tp, :Tprof_for_diffusion, :upper_lower_bdy_i, :zmax, :horiz_transport_rate_neutral, :horiz_transport_rate_ion, :enable_horiz_transport])
 
     # calculate total atmospheric density for each horizontal column separately
     M = zeros(n_horiz, GV.num_layers)
@@ -1727,17 +1727,6 @@ for (sp, entries) in speciesbclist_vert
     end
 end
 
-bc_type_horiz = Dict("n"=>"density", "f"=>"flux", "v"=>"velocity")
-for (sp, entries) in speciesbclist_horiz
-    for (bctype, edges) in entries
-        back_series, front_series = edges
-        for (ialt, back_edge) in enumerate(back_series)
-            front_edge = front_series[ialt]
-            push!(PARAMETERS_BCS_HORIZ, (string(sp), bc_type_horiz[string(bctype)], ialt, back_edge, front_edge))
-        end
-    end
-end
-
 # Crosssection log messages
 for k in keys(photochem_data_files)  # cross sections
     for k2 in keys(photochem_data_files[k])
@@ -1874,7 +1863,6 @@ param_df_dict = OrderedDict("General"=>PARAMETERS_GEN,
                             "TemperatureElectrons"=>PARAMETERS_TEMPERATURE_ARRAYS[3],
                             "Crosssections"=>PARAMETERS_XSECTS, 
                             "BoundaryConditions"=>PARAMETERS_BCS,
-                            "BoundaryConditionsHoriz"=>PARAMETERS_BCS_HORIZ,
                             "Solver" => PARAMETERS_SOLVER
                             )
 xlsx_parameter_log = "$(results_dir)$(sim_folder_name)/PARAMETERS.xlsx"
@@ -1890,17 +1878,16 @@ try
     global atm_soln, sim_time = evolve_atmosphere(n_current, mindt, maxdt; t_to_save=times_to_save, abstol=atol, reltol=rel_tol, 
                                  # glob vars from here.  
                                  absorber, active_species, active_longlived, active_shortlived, all_species, alt, 
-                                 collision_xsect, crosssection, Dcoef_arr_template, dt_incr_factor, dt_decr_factor, dz, dx,
-                                 horiz_column_width_profile, horiz_column_width_profile_bulk,
+                                 collision_xsect, crosssection, Dcoef_arr_template, dt_incr_factor, dt_decr_factor, dz,
                                  e_profile_type, timestep_type, H2Oi, HDOi,
                                  hot_H_network, hot_H_rc_funcs, hot_D_network, hot_D_rc_funcs, hot_H2_network, hot_H2_rc_funcs, hot_HD_network, hot_HD_rc_funcs,
                                  short_summary, Hs_dict,
                                  ion_species, inactive_species, Jratelist, logfile, M_P, molmass, monospace_choice, sansserif_choice,
                                  neutral_species, n_horiz, non_bdy_layers, num_layers, n_all_layers, n_alt_index, n_inactive, n_steps,
                                  polarizability, planet, plot_grid, q, R_P, reaction_network, run_id,
-                                 season_length_in_sec, sol_in_sec, solarflux=solarflux_per_column, speciesbclist_vert, speciesbclist_horiz, speciescolor, speciesstyle,
-                                 horiz_wind_v, horiz_wind_v_neutral, horiz_wind_v_ion,
-                                 enable_horiz_transport, enable_horiz_diffusion, horiz_transport_cyclic, transportnet, transportnet_horiz,
+                                 season_length_in_sec, sol_in_sec, solarflux=solarflux_per_column, speciesbclist_vert, speciescolor, speciesstyle,
+                                 horiz_transport_rate_neutral, horiz_transport_rate_ion,
+                                 enable_horiz_transport, horiz_transport_cyclic, transportnet, transportnet_horiz,
                                  Tn=Tn_arr, Ti=Ti_arr, Te=Te_arr, Tp=Tplasma_arr, Tprof_for_diffusion, transport_species, opt="",
                                  upper_lower_bdy_i, use_ambipolar, use_molec_diff, zmax)
 catch y
@@ -1951,13 +1938,13 @@ if problem_type == "SS"
     if make_P_and_L_plots
         plot_production_and_loss(nc_all, results_dir, sim_folder_name;
                                  separate_cols=true, nonthermal=nontherm, all_species, alt, chem_species,
-                                 collision_xsect, dz, dx, hot_D_rc_funcs, hot_H_rc_funcs,
+                                 collision_xsect, dz, hot_D_rc_funcs, hot_H_rc_funcs,
                                  hot_H2_rc_funcs, hot_HD_rc_funcs, Hs_dict, hot_H_network,
                                  hot_D_network, hot_H2_network, hot_HD_network, short_summary,
                                  ion_species, Jratedict, molmass, neutral_species,
                                  n_horiz, non_bdy_layers, num_layers, n_all_layers, n_alt_index,
                                  polarizability, plot_grid, q, run_id, reaction_network,
-                                 speciesbclist_vert, speciesbclist_horiz, Tn=Tn_arr, Ti=Ti_arr,
+                                 speciesbclist_vert, Tn=Tn_arr, Ti=Ti_arr,
                                  Te=Te_arr, Tp=Tplasma_arr, Tprof_for_Hs, Tprof_for_diffusion,
                                  transport_species, upper_lower_bdy_i, upper_lower_bdy, zmax)
     end
@@ -2002,13 +1989,13 @@ elseif problem_type == "ODE"
             if make_P_and_L_plots
                 plot_production_and_loss(nc_all, results_dir, sim_folder_name;
                                          separate_cols=true, nonthermal=nontherm, all_species, alt, chem_species,
-                                         collision_xsect, dz, dx, hot_D_rc_funcs, hot_H_rc_funcs,
+                                         collision_xsect, dz, hot_D_rc_funcs, hot_H_rc_funcs,
                                          hot_H2_rc_funcs, hot_HD_rc_funcs, Hs_dict, hot_H_network,
                                          hot_D_network, hot_H2_network, hot_HD_network, short_summary,
                                          ion_species, Jratedict, molmass, neutral_species,
                                          n_horiz, non_bdy_layers, num_layers, n_all_layers, n_alt_index,
                                          polarizability, plot_grid, q, run_id, reaction_network,
-                                         speciesbclist_vert, speciesbclist_horiz, Tn=Tn_arr, Ti=Ti_arr,
+                                         speciesbclist_vert, Tn=Tn_arr, Ti=Ti_arr,
                                          Te=Te_arr, Tp=Tplasma_arr, Tprof_for_Hs, Tprof_for_diffusion,
                                          transport_species, upper_lower_bdy_i, upper_lower_bdy, zmax)
             end
@@ -2044,13 +2031,13 @@ elseif problem_type == "Gear"
     if make_P_and_L_plots
         plot_production_and_loss(atm_soln, results_dir, sim_folder_name;
                                  separate_cols=true, nonthermal=nontherm, all_species, alt, chem_species,
-                                 collision_xsect, dz, dx, hot_D_rc_funcs, hot_H_rc_funcs,
+                                 collision_xsect, dz, hot_D_rc_funcs, hot_H_rc_funcs,
                                  hot_H2_rc_funcs, hot_HD_rc_funcs, Hs_dict, hot_H_network,
                                  hot_D_network, hot_H2_network, hot_HD_network, short_summary,
                                  ion_species, Jratedict, M_P, molmass, monospace_choice,
                                  n_horiz, neutral_species, non_bdy_layers, num_layers, n_all_layers, n_alt_index,
                                  polarizability, planet, plot_grid, q, R_P, run_id, reaction_network,
-                                 sansserif_choice, speciesbclist_vert, speciesbclist_horiz,
+                                 sansserif_choice, speciesbclist_vert,
                                  Tn=Tn_arr, Ti=Ti_arr, Te=Te_arr, Tp=Tplasma_arr,
                                  Tprof_for_Hs, Tprof_for_diffusion, transport_species,
                                  upper_lower_bdy_i, upper_lower_bdy, use_ambipolar, use_molec_diff, zmax)

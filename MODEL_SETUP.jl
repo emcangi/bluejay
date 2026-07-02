@@ -203,15 +203,9 @@ const e_profile_type = ions_included==true ? "quasineutral" : "none"
 # =======================================================================================================
 const zmin = Dict("Venus"=>90e5, "Mars"=>0.)[planet]
 const dz = 2e5  # Discretized layer thickness
-const horiz_column_width = π * R_P  # Surface half-circumference πR (cm)
-const dx = horiz_column_width
 const zmax = 250e5  # Top altitude (cm)
 const alt = convert(Array, (zmin:dz:zmax)) # These are the layer centers.
 const n_all_layers = length(alt)
-const horiz_column_width_profile = use_altitude_dependent_horiz_dx ?
-                                   (π .* (R_P .+ alt)) :
-                                   fill(horiz_column_width, n_all_layers)
-const horiz_column_width_profile_bulk = horiz_column_width_profile[2:end-1]
 const intaltgrid = round.(Int64, alt/1e5)[2:end-1]; # the altitude grid CELLS but in integers.
 const non_bdy_layers = alt[2:end-1]  # all layers, centered on 2 km, 4...248. Excludes the boundary layers which are [-1, 1] and [249, 251].
 const num_layers = length(non_bdy_layers) # there are 124 non-boundary layers.
@@ -335,34 +329,32 @@ const Tplasma_arr = Ti_arr .+ Te_arr;
 const Tprof_for_diffusion = Dict("neutral"=>Tn_arr, "ion"=>Tplasma_arr)
 const Tprof_for_Hs = Dict("neutral"=>Tn_arr, "ion"=>Ti_arr)
 
-#                              Horizontal winds construction                      
+#                         Horizontal transport rates construction
 # =======================================================================================================
-# Construct horizontal wind profiles for each column.  Each profile is an
-# array over altitude with values in cm/s.  The wind speed is taken from the
-# user-configurable parameters in `INPUT_PARAMETERS.jl`.
-# Setting that value to zero disables horizontal advection.
+# Convert the signed transport timescales (hours) from `INPUT_PARAMETERS.jl` into
+# signed column-to-column transport rates in 1/s. The magnitude is the rate at
+# which material moves from one column to its neighbor; the sign gives the
+# direction (positive = forward, toward increasing ihoriz; negative = backward).
+# A timescale of zero disables horizontal advection.
+# Each column gets an altitude profile so altitude-dependent flow reversal can
+# be specified if desired (see the commented example below).
 
-# Horizontal wind speed in cm/s: wind_speed = horiz_column_width / (timescale * 3600)
-const horiz_wind_speed = horiz_transport_timescale > 0 ? horiz_column_width / (horiz_transport_timescale * 3600) : 0.0
-const horiz_wind_speed_neutral = horiz_transport_timescale_neutral > 0 ? horiz_column_width / (horiz_transport_timescale_neutral * 3600) : 0.0
-const horiz_wind_speed_ion = horiz_transport_timescale_ion > 0 ? horiz_column_width / (horiz_transport_timescale_ion * 3600) : 0.0
+horiz_rate_from_timescale(ts_hours) = ts_hours == 0 ? 0.0 : 1.0 / (ts_hours * 3600.0)
 
-const horiz_wind_v_neutral = [fill(horiz_wind_speed_neutral, length(alt)) for ihoriz in 1:n_horiz]
-const horiz_wind_v_ion     = [fill(horiz_wind_speed_ion, length(alt)) for ihoriz in 1:n_horiz]
-# Legacy alias for code paths that have not yet been split; defaults to neutral profile.
-const horiz_wind_v = horiz_wind_v_neutral
+const horiz_transport_rate_neutral = [fill(horiz_rate_from_timescale(horiz_transport_timescale_hours_neutral), length(alt)) for ihoriz in 1:n_horiz]
+const horiz_transport_rate_ion     = [fill(horiz_rate_from_timescale(horiz_transport_timescale_hours_ion), length(alt)) for ihoriz in 1:n_horiz]
 
-# Construct horizontal wind profiles by setting negative below the switch altitude and positive above
-# switch_alt = 140e5               # altitude in cm where winds reverse (~140 km)
-# v_profile = fill(-horiz_wind_speed, length(alt))    # low-alt winds: night→day
-# v_profile[alt .>= switch_alt] .= horiz_wind_speed   # high-alt winds: day→night
-# const horiz_wind_v = [copy(v_profile) for _ in 1:n_horiz]
+# Construct rate profiles with a flow reversal: negative (night→day) below the switch
+# altitude and positive (day→night) above, e.g. for subsolar-to-antisolar circulation:
+# switch_alt = 140e5               # altitude in cm where the flow reverses (~140 km)
+# rate_profile = fill(-horiz_rate_from_timescale(horiz_transport_timescale_hours_neutral), length(alt))
+# rate_profile[alt .>= switch_alt] .= horiz_rate_from_timescale(horiz_transport_timescale_hours_neutral)
+# const horiz_transport_rate_neutral = [copy(rate_profile) for _ in 1:n_horiz]
 
 # Horizontal transport controls from INPUT_PARAMETERS.jl:
-# - `enable_horiz_transport` toggles all horizontal coupling (advection + diffusion).
-# - `enable_horiz_diffusion` toggles only the diffusive horizontal term.
-#   Advection remains active when transport is enabled.
+# - `enable_horiz_transport` toggles all horizontal coupling.
 # - `horiz_transport_cyclic` controls periodic wrapping in the horizontal direction.
+#   When false (default), the domain edges are closed (zero flux in or out).
 
 #                                      Water profile settings
 # =======================================================================================================
@@ -537,37 +529,12 @@ elseif planet=="Venus"
     const speciesbclist_vert = deepcopy(auto_speciesbclist_vert)
 end
 
-#                                     Boundary conditions (back edge and front edge)
+#                                     Horizontal edge boundary conditions
 # =======================================================================================================
-# "n": density boundary condition; "f": flux bc; "v": velocity bc; 
-# The default boundary conditions are zero flux boundary conditions at the back edge and the front edge. If different boundary conditions are required, they will need to be implemented here and in the boundaryconditions_horiz function.
-# The zero flux boundary conditions will be input as vectors with altitude.
-# For each species, there are two vectors of length num_layers. The first directs the BC values at the first vertical column and the second directs the BC values at the last vertical column
-
-# The dictionary `speciesbclist_horiz` sets horizontal fluxes at the back and
-# front edges.  By default both profiles are zero, representing closed
-# boundaries, but you can modify the values below (or in a separate script)
-# to impose an influx or outflux for any species.  Each entry contains two
-# vectors of length `num_layers` giving the flux [#/cm²/s] at the back and front
-# edges respectively. Edit `speciesbclist_horiz[sp]["f"][edge]` to override the
-# profile on either edge. These edge fluxes are only used when
-# `horiz_transport_cyclic == false`.
-
-# add in zero flux edge boundary conditions on both edges for all species
-auto_speciesbclist_horiz = Dict()
-for sp in all_species
-    auto_speciesbclist_horiz[sp] = Dict("f"=>[[0.0 for ialt in 1:num_layers] for c in 1:2])
-end
-
-const speciesbclist_horiz = deepcopy(auto_speciesbclist_horiz)
-
-# Example modification: Set non-zero flux boundary conditions for O
-# speciesbclist_horiz[:O] = Dict(
-#     "f" => [
-#         fill(1e7, num_layers),   # Influx at the back edge (cm⁻² s⁻¹)
-#         fill(-1e7, num_layers)   # Outflux at the front edge (cm⁻² s⁻¹)
-#     ]
-# )
+# The horizontal domain edges are closed: zero flux in or out when
+# `horiz_transport_cyclic == false`, or periodic wrapping (material leaving one
+# edge re-enters from the opposite side) when it is true. There are no
+# user-configurable horizontal edge fluxes.
 
 # ***************************************************************************************************** #
 #                                                                                                       #
@@ -713,8 +680,8 @@ push!(PARAMETERS_GEN, ("DH", DH));
 push!(PARAMETERS_GEN, ("AMBIPOLAR_DIFFUSION_ON", use_ambipolar));
 push!(PARAMETERS_GEN, ("MOLEC_DIFFUSION_ON", use_molec_diff));
 push!(PARAMETERS_GEN, ("HORIZ_TRANSPORT_ON", enable_horiz_transport));
-push!(PARAMETERS_GEN, ("HORIZ_DIFFUSION_ON", enable_horiz_diffusion));
-push!(PARAMETERS_GEN, ("HORIZ_DX_ALT_DEPENDENT", use_altitude_dependent_horiz_dx));
+push!(PARAMETERS_GEN, ("HORIZ_TIMESCALE_HOURS_NEUTRAL", horiz_transport_timescale_hours_neutral));
+push!(PARAMETERS_GEN, ("HORIZ_TIMESCALE_HOURS_ION", horiz_transport_timescale_hours_ion));
 push!(PARAMETERS_GEN, ("HORIZ_CYCLIC", horiz_transport_cyclic));
 
 # Log altitude grid so we can avoid loading this very file when doing later analysis.
@@ -766,8 +733,6 @@ PARAMETERS_SOLVER = DataFrame(Field=[], Value=[]);
 PARAMETERS_XSECTS = DataFrame(Species=[], Description=[], Filename=[]);
 # Track vertical boundary conditions for each column
 PARAMETERS_BCS = DataFrame(Species=[], Type=[], Column=[], Lower=[], Upper=[]);
-# Track horizontal boundary conditions at the back and front edges
-PARAMETERS_BCS_HORIZ = DataFrame(Species=[], Type=[], AltIndex=[], Back=[], Front=[]);
 
 # LOG THE TEMPERATURES
 # Create separate dataframes for each temperature array to preserve 2D structure

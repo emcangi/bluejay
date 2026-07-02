@@ -1741,104 +1741,6 @@ function boundaryconditions(fluxcoef_dict, atmdict, M; nonthermal=true, globvars
     return bc_dict
 end
 
-function boundaryconditions_horiz(
-    atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}};
-    cyclic::Bool=true,
-    globvars...
-)
-    #= 
-    Inputs:
-        atmdict: Atmospheric state dictionary
-        cyclic: Boolean flag for cyclic boundary conditions (default: true)
-        globvars: keyword arguments including n_horiz, horiz_wind_v
-    Outputs:
-        boundary conditions for species in a 2 x 2 matrix, format:  
-        [n_1 -> n_0, n_0 -> n_1;      
-         n_(nhoriz) -> n_(nhoriz+1), n_(nhoriz+1) -> n_(nhoriz)] for each bulk layer altitude bin
-
-        where n_0 is outside the model behind the back edge, n_1 is the first vertical column (ihoriz=1),
-        n_(nhoriz) is the front-most verical column (ihoriz=n_horiz), and n_(nhoriz+1) is outside the model in front of the front edge.
-
-        Form of the output, for each species for each vertical column is:
-
-         Back edge   [←, →;     [density-dependent, density-independent;    [#/s, #/cm³/s.;
-         Front edge   →, ←]      density-dependent, density-independent]     #/s, #/cm³/s]
-         where ← is backwards from higher to lower values of ihoriz; → is forwards from lower to higher
-
-        Each row has two elements:
-            1st element: inside model  -> outside model (depends on species concentration in cell)
-            2nd element: outside model -> inside moel (independent of species concentration in cell)
-
-            note, technically, these are chemical equations.
-
-        More specifically, when the return value of this function is used in other functions, the first
-        element in each row will eventually be multiplied by a density taken from the atmospheric 
-        state dictionary, and the second element will be used as-is. That way, eventually the total
-        change recorded in other functions is always #/cm³/s. 
-
-        FROM VENUS VERSION, MIKE:
-        Sign convention: The density-dependent terms (bc_dict[sp][ialt][:, 1]) are multiplied by -1 when the 
-                         transport rates are computed in get_transport_PandL_rate. Density independent
-                         terms (bc_dict[sp][ialt][:, 2]) are not.
-
-        However, please note that the model is currently set up to use zero flux edge boundary conditions only. The above comments have been left for future development and flexibility.
-        By default the dictionary ``speciesbclist_horiz`` in ``MODEL_SETUP.jl`` supplies
-        zero-flux edge conditions for all species.  You may override these values
-        to impose custom influxes or outfluxes at either edge.  The sign
-        convention is the same as for vertical boundary conditions: positive
-        numbers inject material and negative numbers remove it.
-    =#
-    
-    GV = values(globvars)
-    required = [:all_species, :speciesbclist_horiz, :dx, :planet, :n_horiz, :horiz_wind_v]
-    check_requirements(keys(GV), required)
-    
-    dx_profile_bulk = get(GV, :horiz_column_width_profile_bulk, fill(GV.dx, GV.num_layers))
-    @assert length(dx_profile_bulk) == GV.num_layers "horiz_column_width_profile_bulk must have length num_layers=$(GV.num_layers)"
-    horiz_wind_v = GV.horiz_wind_v
-    bc_dict_horiz = Dict{Symbol, Vector{Array{ftype_ncur}}}(
-        [s => [fill(0.0, 2, 2) for ialt in 1:GV.num_layers] for s in GV.all_species]
-    )
-
-    for sp in keys(GV.speciesbclist_horiz)
-        try
-            these_bcs_horiz = GV.speciesbclist_horiz[sp]
-
-            for ialt in 1:GV.num_layers
-                if cyclic
-                    # Periodic domain: no exchange with the environment
-                    bc_dict_horiz[sp][ialt] .= 0.0
-                else
-                    try
-                        back_flux  = these_bcs_horiz["f"][1][ialt]
-                        front_flux = these_bcs_horiz["f"][2][ialt]
-                        dx_local = dx_profile_bulk[ialt]
-                        f_backedge  = [0,  back_flux / dx_local]
-                        f_frontedge = [0,  front_flux / dx_local]
-                        
-                        @assert all(x->!isnan(x), f_backedge) "NaN in back edge flux for $(sp)"
-                        @assert all(x->!isnan(x), f_frontedge) "NaN in front edge flux for $(sp)"
-                        
-                        bc_dict_horiz[sp][ialt][1, :] .+= f_backedge
-                        bc_dict_horiz[sp][ialt][2, :] .+= f_frontedge
-                    catch y
-                        if !isa(y, AssertionError) && !isa(y, KeyError)
-                            throw("Unhandled exception in horizontal flux bc for $(sp) at altitude index $(ialt): $(y)")
-                        end
-                    end
-                end
-            end
-        catch y
-            if !isa(y, KeyError)
-                throw("Unhandled exception in horizontal boundary conditions for $(sp): $(y)")
-            end
-        end
-    end
-    
-
-    return bc_dict_horiz
-end
-
 function Dcoef_neutrals(z, sp::Symbol, b, atmdict::Dict{Symbol, Vector{ftype_ncur}}; ihoriz=1, globvars...)
     #=
     Calculate the basic diffusion coefficient, AT^s/n.
@@ -2168,53 +2070,48 @@ function fluxcoefs(species_list::Vector, K, D, H0; globvars...)
 end
 
 function fluxcoefs_horiz(
-    species_list::Vector,
-    K::Vector{Vector{ftype_ncur}},
-    D::Dict{Symbol, Vector{Vector{ftype_ncur}}};
-    cyclic::Bool = true,
+    species_list::Vector;
+    cyclic::Bool = false,
     globvars...
 )
     #=
     Compute horizontal transport coefficients for each species and column.
 
+    Horizontal transport is purely advective and is specified by signed
+    column-to-column transport rates (1/s) derived from the signed transport
+    timescales in INPUT_PARAMETERS.jl. The magnitude of the rate is the
+    coefficient itself; the sign gives the direction (positive = forward,
+    toward increasing ihoriz). No physical column width is involved.
+
     Inputs:
         species_list: Vector of species symbols
-        K: Vector of eddy diffusion coefficient arrays (one per horizontal column)
-        D: Dictionary of molecular diffusion coefficient arrays (one per species per column)
-        cyclic: Boolean flag for cyclic boundary conditions (default: true)
-        globvars: Keyword arguments including dx, n_all_layers, enable_horiz_transport,
-                  enable_horiz_diffusion, n_horiz, horiz_wind_v
+        cyclic: If true, column 1 connects to column n_horiz and vice versa.
+                If false (default), the domain edges are closed (zero flux).
+        globvars: Keyword arguments including n_all_layers, enable_horiz_transport,
+                  n_horiz, horiz_transport_rate_neutral, horiz_transport_rate_ion
 
     Output:
         fluxcoef_dict: Dictionary mapping species to vectors of coefficient arrays.
                        Each entry fluxcoef_dict[s][ihoriz] is a (n_all_layers × 2) matrix
-                       where column 1 = flux to column behind, column 2 = flux to column in front.
-                       Diffusion coefficients are averaged between neighbouring columns and scaled by dx².
-                       Advection uses an upwind scheme based on the horizontal wind profile.
-                       If cyclic=true, column 1 connects to column n_horiz and vice versa.
+                       where column 1 = rate of transport to the column behind and
+                       column 2 = rate of transport to the column in front, in 1/s.
+                       Advection uses an upwind scheme based on the signed rate profiles.
     =#
 
     GV = values(globvars)
-    required = [:dx, :n_all_layers, :enable_horiz_transport, :n_horiz, :horiz_wind_v]
+    required = [:n_all_layers, :enable_horiz_transport, :n_horiz,
+                :horiz_transport_rate_neutral, :horiz_transport_rate_ion]
     check_requirements(keys(GV), required)
 
-    dx_profile = get(GV, :horiz_column_width_profile, fill(GV.dx, GV.n_all_layers))
-    @assert length(dx_profile) == GV.n_all_layers "horiz_column_width_profile must have length n_all_layers=$(GV.n_all_layers)"
-    enable_horiz_diffusion = get(GV, :enable_horiz_diffusion, false)
-    # Allow separate wind profiles for neutrals and ions; fall back to the shared profile if not provided.
-    horiz_wind_v_neutral = get(GV, :horiz_wind_v_neutral, GV.horiz_wind_v)
-    horiz_wind_v_ion     = get(GV, :horiz_wind_v_ion, GV.horiz_wind_v)
-    
     # the return dictionary: Each species has 2 entries for every layer of the atmosphere.
-    # fluxcoef_horiz_dict = Dict{Symbol, Vector{Array{ftype_ncur}}}([s=>[fill(0., GV.n_all_layers, 2) for ihoriz in 1:n_horiz] for s in species_list])
     fluxcoef_dict = Dict{Symbol, Vector{Array{ftype_ncur}}}(
         [s => [zeros(ftype_ncur, GV.n_all_layers, 2) for _ in 1:GV.n_horiz]
          for s in species_list],
     )
 
     for s in species_list
-        # Select wind profile by charge type
-        wind_profile = charge_type(s) == "ion" ? horiz_wind_v_ion : horiz_wind_v_neutral
+        # Select transport rate profile by charge type
+        rate_profile = charge_type(s) == "ion" ? GV.horiz_transport_rate_ion : GV.horiz_transport_rate_neutral
 
         for ihoriz in 1:GV.n_horiz
             if cyclic
@@ -2225,49 +2122,29 @@ function fluxcoefs_horiz(
                 infront_idx = ihoriz + 1
             end
             for ialt in 1:GV.n_all_layers
-                dx_local = dx_profile[ialt]
-                diff_back = 0.0
-                diff_front = 0.0
-
-                if GV.enable_horiz_transport && enable_horiz_diffusion
-                    if behind_idx >= 1
-                        # Arithmetic Mean
-                        K_back = (K[ihoriz][ialt] + K[behind_idx][ialt]) / 2
-                        D_back = (D[s][ihoriz][ialt] + D[s][behind_idx][ialt]) / 2
-                        # Harmonic Mean
-                        # K_back = 2 / (1/K[ihoriz][ialt] + 1/K[behind_idx][ialt])
-                        # D_back = 2 / (1/D[s][ihoriz][ialt] + 1/D[s][behind_idx][ialt])
-                        diff_back = (K_back + D_back) / dx_local^2
-                    end
-
-                    if infront_idx <= GV.n_horiz
-                        K_front = (K[ihoriz][ialt] + K[infront_idx][ialt]) / 2
-                        D_front = (D[s][ihoriz][ialt] + D[s][infront_idx][ialt]) / 2
-                        diff_front = (K_front + D_front) / dx_local^2
-                    end
-                end
-
-                # Calculate velocities at the interfaces for proper upwind scheme
-                v_local = wind_profile[ihoriz][ialt]
-                v_front = infront_idx <= GV.n_horiz ? wind_profile[infront_idx][ialt] : 0.0
-                v_back  = behind_idx >= 1     ? wind_profile[behind_idx][ialt]  : 0.0
-
-                # Interface velocities (average of adjacent cell velocities)
-                v_interface_front = (v_local + v_front) / 2  # Velocity at interface i+½
-                v_interface_back  = (v_back + v_local) / 2   # Velocity at interface i-½
-
                 adv_front = 0.0
                 adv_back  = 0.0
+
                 if GV.enable_horiz_transport
-                    # Upwind scheme: flux depends on velocity direction at the interface
-                    # adv_front: flux from current column to next column (interface i+½)
-                    # adv_back: flux from current column to previous column (interface i-½)
-                    adv_front = (v_interface_front > 0 ? v_interface_front : 0.0) / dx_local
-                    adv_back  = (v_interface_back < 0 ? -v_interface_back : 0.0) / dx_local
+                    r_local = rate_profile[ihoriz][ialt]
+
+                    # Upwind scheme: transport at each interface depends on the sign of
+                    # the interface rate (average of the adjacent columns' rates).
+                    # For closed (non-cyclic) edges there is no neighbor, so the
+                    # edge-facing coefficient stays zero: nothing enters or leaves.
+                    if infront_idx >= 1 && infront_idx <= GV.n_horiz
+                        r_interface_front = (r_local + rate_profile[infront_idx][ialt]) / 2
+                        adv_front = r_interface_front > 0 ? r_interface_front : 0.0
+                    end
+
+                    if behind_idx >= 1 && behind_idx <= GV.n_horiz
+                        r_interface_back = (rate_profile[behind_idx][ialt] + r_local) / 2
+                        adv_back = r_interface_back < 0 ? -r_interface_back : 0.0
+                    end
                 end
 
-                fluxcoef_dict[s][ihoriz][ialt, 1] = diff_back + adv_back
-                fluxcoef_dict[s][ihoriz][ialt, 2] = diff_front + adv_front
+                fluxcoef_dict[s][ihoriz][ialt, 1] = adv_back
+                fluxcoef_dict[s][ihoriz][ialt, 2] = adv_front
             end
         end
     end
@@ -2518,58 +2395,28 @@ function update_vertical_transport_coefficients(
     return tlower, tup, tdown, tupper
 end
 
-function update_horiz_transport_coefficients(species_list, atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}}, D_coefs, M;
-                                       calc_nonthermal=true, cyclic=true, globvars...)
+function update_horiz_transport_coefficients(species_list; cyclic=false, globvars...)
     #=
     Input:
-        species_list: Species which will have transport coefficients updated
-        atmdict: Atmospheric state dictionary for bulk layers
-        tspecies: species which need transport coefficients calculated. May vary depending on sim parameters.
-        Tn, Tp: Neutrals and plasma temperatures
-        D_coefs: placeholder for molecular diffusion coefficients
-        bcdict: Dictionary of boundary conditions, needed for pretty much everything.
-        species_list: Species for which to generate molecular diffusion coefficients. This allows the code to only do it for
-                 transport species during the main simulation run, and for all species when trying to plot 
-                 rate balances after the run.
+        species_list: Species which will have horizontal transport coefficients updated
         cyclic: wrap the horizontal domain so that material leaving one edge
-                enters from the opposite side
+                enters from the opposite side. If false (default), the domain
+                edges are closed (zero flux in or out).
 
-    Output: 
+    Output:
         Horizontal transport coefficients for all atmospheric layers, units 1/s
 
-        tbackedge: horizontal transport coefficients at the back edge. shape: a vector of GV.num_layers arrays of size (2 x length(GV.transport_species))
-        tforwards: forward-moving (lower to higher vertical column number) coefficients for all columns. shape: length(GV.transport_species) * GV.num_layers
-        tbackwards: backward-moving (higher to lower vertical column number) coefficients for all columns. shape: length(GV.transport_species) * GV.num_layers
-        tfrontedge: horizontal transport coefficients at the front edge. shape: a vector of GV.num_layers arrays of size (2 x GV.transport_species)
+        tforwards: forward-moving (lower to higher vertical column number) coefficients for all columns. shape: (GV.n_horiz, GV.num_layers, length(species_list))
+        tbackwards: backward-moving (higher to lower vertical column number) coefficients for all columns. shape: (GV.n_horiz, GV.num_layers, length(species_list))
     =#
 
     GV = values(globvars)
-    required = [:all_species, :alt, :speciesbclist_vert, :dx, :hot_H_network, :hot_H_rc_funcs, :hot_D_network, :hot_D_rc_funcs,
-               :hot_H2_network, :hot_H2_rc_funcs, :hot_HD_network, :hot_HD_rc_funcs, :Hs_dict,
-               :ion_species, :M_P, :molmass, :neutral_species, :non_bdy_layers, :num_layers, :n_all_layers, :n_alt_index,
-               :polarizability, :q, :R_P, :Tn, :Ti, :Te, :Tp, :Tprof_for_diffusion, :transport_species,
-               :use_ambipolar, :use_molec_diff, :zmax, :horiz_wind_v, :enable_horiz_transport, :n_horiz]
+    required = [:num_layers, :n_all_layers, :enable_horiz_transport, :n_horiz,
+                :horiz_transport_rate_neutral, :horiz_transport_rate_ion]
     check_requirements(keys(GV), required)
 
-    # Get flux coefficients
-    # Calculate diffusion coefficients and scale heights
-    # Initialize D_arr for performance optimization - Vector of Arrays structure
-    D_arr = [zeros(ftype_ncur, GV.n_all_layers) for _ in 1:GV.n_horiz]
-    K_eddy_arr, H0_dict, Dcoef_dict = update_diffusion_and_scaleH(
-        species_list,
-        atmdict,
-        D_arr;
-        globvars...
-    )
-
     # Get horizontal flux coefficients
-    fluxcoefs_horiz_all = fluxcoefs_horiz(
-        species_list,
-        K_eddy_arr,
-        Dcoef_dict;
-        cyclic=cyclic,
-        globvars...
-    )
+    fluxcoefs_horiz_all = fluxcoefs_horiz(species_list; cyclic=cyclic, globvars...)
 
     tforwards  = fill(0.0, GV.n_horiz, GV.num_layers, length(species_list))
     tbackwards = fill(0.0, GV.n_horiz, GV.num_layers, length(species_list))
@@ -2589,23 +2436,7 @@ function update_horiz_transport_coefficients(species_list, atmdict::Dict{Symbol,
     @assert size(tforwards) == expected_tb_shape
     @assert size(tbackwards) == expected_tb_shape
 
-    bc_dict_horiz = boundaryconditions_horiz(atmdict; cyclic=cyclic, globvars...)
-
-    # transport coefficients for boundaries
-    tbackedge = Vector{Array{Float64}}(undef, GV.num_layers)
-    tfrontedge = Vector{Array{Float64}}(undef, GV.num_layers)
-    for ialt in 1:GV.num_layers
-        back_cols  = [bc_dict_horiz[sp][ialt][1, :] for sp in GV.transport_species]
-        front_cols = [bc_dict_horiz[sp][ialt][2, :] for sp in GV.transport_species]
-        tbackedge[ialt]  = permutedims(reduce(hcat, back_cols))
-        tfrontedge[ialt] = permutedims(reduce(hcat, front_cols))
-    end
-
-    expected_edge_shape = (length(GV.transport_species), 2)
-    @assert all(size(mat) == expected_edge_shape for mat in tbackedge) "horizontal back edge shape mismatch"
-    @assert all(size(mat) == expected_edge_shape for mat in tfrontedge) "horizontal front edge shape mismatch"
-
-    return tbackedge, tforwards, tbackwards, tfrontedge
+    return tforwards, tbackwards
 end
 
 #===============================================================================#
