@@ -637,12 +637,12 @@ end
 
 function chemical_jacobian(specieslist, dspecieslist; diff_wrt_e=true, diff_wrt_m=true, globvars...)
     #= 
-    Compute the symbolic chemical jacobian of a supplied chemnet and transportnet
+    Compute the symbolic chemical jacobian of a supplied chemnet and transportnet_vert
     for the specified specieslist. 
 
     Input:
         chemnet: chemical reactions
-        transportnet: transport equations
+        transportnet_vert: transport equations
         transportnet_horiz: horizontal transport equations
         specieslist: list of species to calculate for; i.e. the species whose equation is differentiated
         dspecieslist: species with respect to which the equations are differentiated
@@ -658,7 +658,7 @@ function chemical_jacobian(specieslist, dspecieslist; diff_wrt_e=true, diff_wrt_
     =#
 
     GV = values(globvars)
-    required = [:chem_species, :transport_species, :chemnet, :transportnet, :transportnet_horiz]
+    required = [:chem_species, :transport_species, :chemnet, :transportnet_vert, :transportnet_horiz]
     check_requirements(keys(GV), required)
 
     # set up output vectors: indices and values
@@ -687,8 +687,8 @@ function chemical_jacobian(specieslist, dspecieslist; diff_wrt_e=true, diff_wrt_
             leqn = [leqn; loss_equations(ispecies, GV.chemnet)]
         end
         if issubset([ispecies],GV.transport_species)
-            peqn = [peqn; production_equations(ispecies, GV.transportnet)]
-            leqn = [leqn; loss_equations(ispecies, GV.transportnet)]
+            peqn = [peqn; production_equations(ispecies, GV.transportnet_vert)]
+            leqn = [leqn; loss_equations(ispecies, GV.transportnet_vert)]
 	    peqn = [peqn; production_equations(ispecies, GV.transportnet_horiz)]
 	    leqn = [leqn; loss_equations(ispecies, GV.transportnet_horiz)]
 	end
@@ -807,7 +807,7 @@ function getrate(sp::Symbol; chemistry_on=true, transport_on=true, sepvecs=false
     Input:
         sp: species for which to get the rate 
         chemnet: chemistry reaction array
-        transportnet: vertical transport network array
+        transportnet_vert: vertical transport network array
         transportnet_horiz: horizontal transport network array
         chem_species: species with active chemistry
         transport_species: species which transport
@@ -821,7 +821,7 @@ function getrate(sp::Symbol; chemistry_on=true, transport_on=true, sepvecs=false
     =#
 
     GV = values(globvars)
-    required =  [:chemnet, :transportnet, :transportnet_horiz, :chem_species, :transport_species]
+    required =  [:chemnet, :transportnet_vert, :transportnet_horiz, :chem_species, :transport_species]
     check_requirements(keys(GV), required)
 
 
@@ -836,8 +836,8 @@ function getrate(sp::Symbol; chemistry_on=true, transport_on=true, sepvecs=false
         end
         if issubset([sp], GV.transport_species) && transport_on
             rate = :($rate
-                     + $(production_rate(sp, GV.transportnet, sepvecs=sepvecs))
-                     - $(loss_rate(sp, GV.transportnet, sepvecs=sepvecs))
+                     + $(production_rate(sp, GV.transportnet_vert, sepvecs=sepvecs))
+                     - $(loss_rate(sp, GV.transportnet_vert, sepvecs=sepvecs))
                      + $(production_rate(sp, GV.transportnet_horiz, sepvecs=sepvecs))
                      - $(loss_rate(sp, GV.transportnet_horiz, sepvecs=sepvecs))
                     )
@@ -853,9 +853,9 @@ function getrate(sp::Symbol; chemistry_on=true, transport_on=true, sepvecs=false
         end
         
         if issubset([sp], GV.transport_species) && transport_on
-            transprod_rate = vcat(production_rate(sp, GV.transportnet, sepvecs=sepvecs),
+            transprod_rate = vcat(production_rate(sp, GV.transportnet_vert, sepvecs=sepvecs),
                                   production_rate(sp, GV.transportnet_horiz, sepvecs=sepvecs))
-            transloss_rate = vcat(loss_rate(sp, GV.transportnet, sepvecs=sepvecs),
+            transloss_rate = vcat(loss_rate(sp, GV.transportnet_vert, sepvecs=sepvecs),
                                   loss_rate(sp, GV.transportnet_horiz, sepvecs=sepvecs))
         else
             transprod_rate = [:(0.0 + 0.0)]
@@ -1554,7 +1554,7 @@ function boundaryconditions(fluxcoef_dict, atmdict, M; nonthermal=true, globvars
 
         FROM VENUS VERSION, MIKE:
         Sign convention: The density-dependent terms (bc_dict[sp][ihoriz][:, 1]) are multiplied by -1 when the  
-                         transport rates are computed in get_transport_PandL_rate. Density independent 
+                         transport rates are computed in get_vert_transport_PandL_rate. Density independent 
                          terms (bc_dict[sp][ihoriz][:, 2]) are not.
     =#
     
@@ -1879,7 +1879,7 @@ diffparams(s) = get(Dict(:H=>[8.4, 0.597], :H2=>[2.23, 0.75],
                          :Dpl=>[5.98, 0.597], :HDpl=>[1.84, 0.75]),
                         s,[1.0, 0.75])
 
-function fluxcoefs(sp::Symbol, Kv, Dv, H0v, ihoriz::Int64; globvars...)
+function fluxcoefs_vert(sp::Symbol, Kv, Dv, H0v, ihoriz::Int64; globvars...)
     #= 
     base function to generate flux coefficients of the transport network. 
     
@@ -2029,12 +2029,12 @@ function fluxcoefs(sp::Symbol, Kv, Dv, H0v, ihoriz::Int64; globvars...)
             sumeddyu .- gravthermalu # up; negative because gravity points down. I think that's why.
 end
 
-function fluxcoefs(species_list::Vector, K, D, H0; globvars...) 
+function fluxcoefs_vert(species_list::Vector, K, D, H0; globvars...) 
     #=
-    Optimized version of fluxcoefs that produces a dictionary containing both up and down 
+    Optimized version of fluxcoefs_vert that produces a dictionary containing both up and down 
     flux coefficients for each layer of the atmosphere including boundary layers.
 
-    This function calls the lower level version of fluxcoefs for each species and horizontal column.
+    This function calls the lower level version of fluxcoefs_vert for each species and horizontal column.
     D and Hs depend on the current atmospheric densities and need to be pre-calculated
     within the upper level function which calls this one.
     
@@ -2060,7 +2060,7 @@ function fluxcoefs(species_list::Vector, K, D, H0; globvars...)
 
     for s in species_list
         for ihoriz in 1:GV.n_horiz
-            layer_below_coefs, layer_above_coefs = fluxcoefs(s, K, D, H0, ihoriz; globvars...)
+            layer_below_coefs, layer_above_coefs = fluxcoefs_vert(s, K, D, H0, ihoriz; globvars...)
             fluxcoef_dict[s][ihoriz][:, 1] .= layer_below_coefs
             fluxcoef_dict[s][ihoriz][:, 2] .= layer_above_coefs
         end
@@ -2342,7 +2342,7 @@ function update_vertical_transport_coefficients(
     )
 
     # 2) Build the flux coefficients dictionary
-    fluxcoefs_all = fluxcoefs(
+    fluxcoefs_all = fluxcoefs_vert(
         species_list,
         K_eddy_arr,
         Dcoef_dict,
@@ -2356,10 +2356,10 @@ function update_vertical_transport_coefficients(
     tup   = fill(-999., GV.n_horiz, GV.num_layers, length(GV.transport_species))
     tdown = fill(-999., GV.n_horiz, GV.num_layers, length(GV.transport_species))
 
-    # Fill those from fluxcoefs
+    # Fill those from fluxcoefs_vert
     for (isp, s) in enumerate(GV.transport_species)
         for ihoriz in 1:GV.n_horiz
-            # The inner bulk layers are alt indices 2:end-1 in fluxcoefs
+            # The inner bulk layers are alt indices 2:end-1 in fluxcoefs_vert
             # with columns: col=1 => downward, col=2 => upward
             # We skip boundary layers => fluxcoefs_all[s][ihoriz][2:end-1, 1 or 2]
             tup[ihoriz, :, isp]   .= fluxcoefs_all[s][ihoriz][2:end-1, 2]
@@ -2880,7 +2880,7 @@ function setup_photochemical_equilibrium(; globvars...)
     =#
 
     GV = values(globvars)
-    required = [:active_longlived, :active_shortlived, :short_lived_species, :reaction_network, :transportnet, :transportnet_horiz, :chem_species, :transport_species]
+    required = [:active_longlived, :active_shortlived, :short_lived_species, :reaction_network, :transportnet_vert, :transportnet_horiz, :chem_species, :transport_species]
     check_requirements(keys(GV), required)
 
 
@@ -2894,7 +2894,7 @@ function setup_photochemical_equilibrium(; globvars...)
     for (i, sp) in enumerate(GV.active_longlived)
         active_longlived_species_rates[i, :] .= getrate(sp, sepvecs=true;
                                                        chemnet=GV.reaction_network,
-                                                       GV.transportnet,
+                                                       GV.transportnet_vert,
                                                        GV.transportnet_horiz,
                                                        GV.chem_species,
                                                        GV.transport_species, )

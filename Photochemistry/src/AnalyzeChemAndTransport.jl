@@ -421,7 +421,7 @@ function final_escape(thefolder, thefile; globvars...)
 
     # Now collect non-thermal and thermal fluxes for each species. 
     for s in ["H", "D", "H2", "HD"]
-        nonthermal_esc, thermal_esc = get_transport_PandL_rate(Symbol(s), atmdict; returnfluxes=true, Jratedict, zmax=GV.alt[end],
+        nonthermal_esc, thermal_esc = get_vert_transport_PandL_rate(Symbol(s), atmdict; returnfluxes=true, Jratedict, zmax=GV.alt[end],
                                                                hot_H_network=GV.hHnet, hot_D_network=GV.hDnet, hot_H2_network=GV.hH2net, hot_HD_network=GV.hHDnet,
                                                                hot_H_rc_funcs=GV.hHrc, hot_D_rc_funcs=GV.hDrc, hot_H2_rc_funcs=GV.hH2rc, hot_HD_rc_funcs=GV.hHDrc, 
                                                                Hs_dict=vardict["Hs_dict"], ion_species=vardict["ion_species"], neutral_species=vardict["neutral_species"],
@@ -466,7 +466,7 @@ function fractionation_factor(esc_df, h2o_0, hdo_0; ftype="total")
     return f = ((flux_t_D + flux_nt_D) / (flux_t_H + flux_nt_H)) / (hdo_0 / (2 * h2o_0))
 end
 
-function get_transport_PandL_rate(sp::Symbol, atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}}; returnfluxes=false, nonthermal=true, globvars...)
+function get_vert_transport_PandL_rate(sp::Symbol, atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}}; returnfluxes=false, nonthermal=true, globvars...)
     #=
     Input:
         sp: species for which to return the transport production and loss
@@ -490,11 +490,11 @@ function get_transport_PandL_rate(sp::Symbol, atmdict::Dict{Symbol, Vector{Array
         check_requirements(keys(GV), required)
     end
 
-    # Generate the fluxcoefs dictionary and boundary conditions dictionary
+    # Generate the fluxcoefs_vert dictionary and boundary conditions dictionary
     # Initialize D_arr for performance optimization - Vector of Arrays structure
     D_arr = [zeros(ftype_ncur, GV.n_all_layers) for _ in 1:GV.n_horiz]
     Keddy_arr, H0_dict, Dcoef_dict = update_diffusion_and_scaleH(GV.all_species, atmdict, D_arr; globvars...)
-    fluxcoefs_all = fluxcoefs(GV.all_species, Keddy_arr, Dcoef_dict, H0_dict; globvars...)
+    fluxcoefs_all = fluxcoefs_vert(GV.all_species, Keddy_arr, Dcoef_dict, H0_dict; globvars...)
 
     # For the bulk layers only to make the loops below more comprehendable: 
     fluxcoefs_bulk_layers = Dict([s=>[fluxcoefs_all[s][ihoriz][2:end-1, :] for ihoriz in 1:GV.n_horiz] for s in keys(fluxcoefs_all)])
@@ -555,6 +555,47 @@ function get_transport_PandL_rate(sp::Symbol, atmdict::Dict{Symbol, Vector{Array
     end
 end
 
+function get_horiz_transport_PandL_rate(sp::Symbol, atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}}; globvars...)
+    #=
+    Horizontal analogue of get_vert_transport_PandL_rate. Reconstructs the same terms the
+    solver applies in ratefn/chemJmat: for each column, gain from the columns behind
+    and in front minus loss to those columns, using the signed transport rate
+    coefficients from update_horiz_transport_coefficients.
+
+    Input:
+        sp: species for which to return the horizontal transport production and loss
+        atmdict: species number density by altitude for each vertical column
+    Output:
+        Vector of n_horiz arrays of net horizontal transport rate (#/cm³/s) at each
+        bulk layer. Positive = net gain in that layer of that column, negative = net loss.
+    =#
+    GV = values(globvars)
+    required = [:enable_horiz_transport, :n_horiz, :num_layers, :n_all_layers,
+                :horiz_transport_rate_neutral, :horiz_transport_rate_ion]
+    check_requirements(keys(GV), required)
+
+    cyclic = get(GV, :horiz_transport_cyclic, false)
+
+    # Coefficients in 1/s, shape (n_horiz, num_layers, 1) since we pass a single species
+    tforwards, tbackwards = update_horiz_transport_coefficients([sp]; cyclic=cyclic, globvars...)
+
+    horiz_PL = [zeros(ftype_ncur, GV.num_layers) for ihoriz in 1:GV.n_horiz]
+
+    for ihoriz in 1:GV.n_horiz
+        behind_idx  = cyclic ? (ihoriz == 1 ? GV.n_horiz : ihoriz - 1) : ihoriz - 1
+        infront_idx = cyclic ? (ihoriz == GV.n_horiz ? 1 : ihoriz + 1) : ihoriz + 1
+        for ialt in 1:GV.num_layers
+            in_from_behind  = (1 <= behind_idx <= GV.n_horiz)  ? atmdict[sp][behind_idx][ialt]  * tforwards[behind_idx, ialt, 1]   : 0.0
+            in_from_infront = (1 <= infront_idx <= GV.n_horiz) ? atmdict[sp][infront_idx][ialt] * tbackwards[infront_idx, ialt, 1] : 0.0
+            out_to_infront  = atmdict[sp][ihoriz][ialt] * tforwards[ihoriz, ialt, 1]
+            out_to_behind   = atmdict[sp][ihoriz][ialt] * tbackwards[ihoriz, ialt, 1]
+            horiz_PL[ihoriz][ialt] = (in_from_behind + in_from_infront) - (out_to_infront + out_to_behind)
+        end
+    end
+
+    return horiz_PL
+end
+
 function get_directional_fluxes(
     sp::Symbol,
     atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}};
@@ -592,7 +633,7 @@ function get_directional_fluxes(
     D_arr = [zeros(ftype_ncur, GV.n_all_layers) for _ in 1:GV.n_horiz]
     Keddy_arr, H0_dict, Dcoef_dict =
         update_diffusion_and_scaleH(GV.all_species, atmdict, D_arr; globvars...)
-    fluxcoefs_all = fluxcoefs(GV.all_species, Keddy_arr, Dcoef_dict, H0_dict; globvars...)
+    fluxcoefs_all = fluxcoefs_vert(GV.all_species, Keddy_arr, Dcoef_dict, H0_dict; globvars...)
 
     # For the bulk layers only to make the loops below more comprehensible
     fluxcoefs_bulk_layers =

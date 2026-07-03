@@ -1399,12 +1399,12 @@ const downeqns = [Any[Any[[s], [Symbol(string(s)*"_below")],Symbol("t"*string(s)
                       Any[[Symbol(string(s)*"_below")],[s],Symbol("t"*string(s)*"_below_up")]]
                       for s in transport_species];
 
-const local_transport_rates = [[[Symbol("t"*string(s)*"_up") for s in transport_species]
+const local_transport_rates_vert = [[[Symbol("t"*string(s)*"_up") for s in transport_species]
                                 [Symbol("t"*string(s)*"_down") for s in transport_species]
                                 [Symbol("t"*string(s)*"_above_down") for s in transport_species]
                                 [Symbol("t"*string(s)*"_below_up") for s in transport_species]]...;];
 
-const transportnet = [[upeqns...;]; [downeqns...;]];
+const transportnet_vert = [[upeqns...;]; [downeqns...;]];
 
 # Horizontal transport
 const fweqns = [Any[Any[[s], [Symbol(string(s)*"_infront")],Symbol("t"*string(s)*"_forwards")],
@@ -1432,18 +1432,18 @@ const active_longlived_infront = [Symbol(string(s)*"_infront") for s in active_l
 #===============================================================================#
 # Create symbolic expressions for the chemical jacobian at a local layer with influence from that same layer,
 # the one above, and the one below, including horizontal transport terms
-const chemJ_local = chemical_jacobian(active_longlived, active_longlived; diff_wrt_e=ediff, diff_wrt_m=mdiff, ion_species, chem_species, transport_species, chemnet=reaction_network, transportnet, transportnet_horiz);
-const chemJ_above = chemical_jacobian(active_longlived, active_longlived_above; diff_wrt_e=ediff, diff_wrt_m=mdiff, ion_species, chem_species, transport_species, chemnet=reaction_network, transportnet, transportnet_horiz);
-const chemJ_below = chemical_jacobian(active_longlived, active_longlived_below; diff_wrt_e=ediff, diff_wrt_m=mdiff, ion_species, chem_species, transport_species, chemnet=reaction_network, transportnet, transportnet_horiz);
-const chemJ_infront = chemical_jacobian(active_longlived, active_longlived_infront; diff_wrt_e=ediff, diff_wrt_m=mdiff, ion_species, chem_species, transport_species, chemnet=reaction_network, transportnet, transportnet_horiz);
-const chemJ_behind = chemical_jacobian(active_longlived, active_longlived_behind; diff_wrt_e=ediff, diff_wrt_m=mdiff, ion_species, chem_species, transport_species, chemnet=reaction_network, transportnet, transportnet_horiz);
+const chemJ_local = chemical_jacobian(active_longlived, active_longlived; diff_wrt_e=ediff, diff_wrt_m=mdiff, ion_species, chem_species, transport_species, chemnet=reaction_network, transportnet_vert, transportnet_horiz);
+const chemJ_above = chemical_jacobian(active_longlived, active_longlived_above; diff_wrt_e=ediff, diff_wrt_m=mdiff, ion_species, chem_species, transport_species, chemnet=reaction_network, transportnet_vert, transportnet_horiz);
+const chemJ_below = chemical_jacobian(active_longlived, active_longlived_below; diff_wrt_e=ediff, diff_wrt_m=mdiff, ion_species, chem_species, transport_species, chemnet=reaction_network, transportnet_vert, transportnet_horiz);
+const chemJ_infront = chemical_jacobian(active_longlived, active_longlived_infront; diff_wrt_e=ediff, diff_wrt_m=mdiff, ion_species, chem_species, transport_species, chemnet=reaction_network, transportnet_vert, transportnet_horiz);
+const chemJ_behind = chemical_jacobian(active_longlived, active_longlived_behind; diff_wrt_e=ediff, diff_wrt_m=mdiff, ion_species, chem_species, transport_species, chemnet=reaction_network, transportnet_vert, transportnet_horiz);
 
 #                     Photochemical equilibrium setup                           #
 #===============================================================================#
 
 const active_longlived_species_rates, short_lived_density_eqn,
       shortlived_density_inputs, equilibrium_eqn_terms = setup_photochemical_equilibrium(; active_longlived, active_shortlived, short_lived_species, reaction_network,
-          transportnet, transportnet_horiz, chem_species, transport_species)
+          transportnet_vert, transportnet_horiz, chem_species, transport_species)
 
 # **************************************************************************** #
 #                                                                              #
@@ -1461,7 +1461,7 @@ const ratefn_arglist = [active_longlived;
                         active_shortlived;
                         inactive_species; Jratelist;
                         :Tn; :Ti; :Te; :M; :E;
-                        local_transport_rates; local_transport_rates_horiz];
+                        local_transport_rates_vert; local_transport_rates_horiz];
 const ratefn_arglist_typed = [:($s::ftype_chem) for s in ratefn_arglist];
 const set_concentration_arglist = [active_shortlived; active_longlived; inactive_species; Jratelist; :Tn; :Ti; :Te; :M; :E];
 const set_concentration_arglist_typed = [:($s::ftype_chem) for s in set_concentration_arglist];
@@ -1887,7 +1887,7 @@ try
                                  polarizability, planet, plot_grid, q, R_P, reaction_network, run_id,
                                  season_length_in_sec, sol_in_sec, solarflux=solarflux_per_column, speciesbclist_vert, speciescolor, speciesstyle,
                                  horiz_transport_rate_neutral, horiz_transport_rate_ion,
-                                 enable_horiz_transport, horiz_transport_cyclic, transportnet, transportnet_horiz,
+                                 enable_horiz_transport, horiz_transport_cyclic, transportnet_vert, transportnet_horiz,
                                  Tn=Tn_arr, Ti=Ti_arr, Te=Te_arr, Tp=Tplasma_arr, Tprof_for_diffusion, transport_species, opt="",
                                  upper_lower_bdy_i, use_ambipolar, use_molec_diff, zmax)
 catch y
@@ -1941,12 +1941,13 @@ if problem_type == "SS"
                                  collision_xsect, dz, hot_D_rc_funcs, hot_H_rc_funcs,
                                  hot_H2_rc_funcs, hot_HD_rc_funcs, Hs_dict, hot_H_network,
                                  hot_D_network, hot_H2_network, hot_HD_network, short_summary,
-                                 ion_species, Jratedict, molmass, neutral_species,
+                                 ion_species, Jratedict, M_P, molmass, monospace_choice, neutral_species,
                                  n_horiz, non_bdy_layers, num_layers, n_all_layers, n_alt_index,
-                                 polarizability, plot_grid, q, run_id, reaction_network,
-                                 speciesbclist_vert, Tn=Tn_arr, Ti=Ti_arr,
+                                 polarizability, planet, plot_grid, q, R_P, run_id, reaction_network, sansserif_choice,
+                                 speciesbclist_vert, enable_horiz_transport, horiz_transport_cyclic,
+                                 horiz_transport_rate_neutral, horiz_transport_rate_ion, Tn=Tn_arr, Ti=Ti_arr,
                                  Te=Te_arr, Tp=Tplasma_arr, Tprof_for_Hs, Tprof_for_diffusion,
-                                 transport_species, upper_lower_bdy_i, upper_lower_bdy, zmax)
+                                 transport_species, upper_lower_bdy_i, upper_lower_bdy, use_ambipolar, use_molec_diff, zmax)
     end
 elseif problem_type == "ODE"
 
@@ -1992,12 +1993,13 @@ elseif problem_type == "ODE"
                                          collision_xsect, dz, hot_D_rc_funcs, hot_H_rc_funcs,
                                          hot_H2_rc_funcs, hot_HD_rc_funcs, Hs_dict, hot_H_network,
                                          hot_D_network, hot_H2_network, hot_HD_network, short_summary,
-                                         ion_species, Jratedict, molmass, neutral_species,
+                                         ion_species, Jratedict, M_P, molmass, monospace_choice, neutral_species,
                                          n_horiz, non_bdy_layers, num_layers, n_all_layers, n_alt_index,
-                                         polarizability, plot_grid, q, run_id, reaction_network,
-                                         speciesbclist_vert, Tn=Tn_arr, Ti=Ti_arr,
+                                         polarizability, planet, plot_grid, q, R_P, run_id, reaction_network, sansserif_choice,
+                                         speciesbclist_vert, enable_horiz_transport, horiz_transport_cyclic,
+                                         horiz_transport_rate_neutral, horiz_transport_rate_ion, Tn=Tn_arr, Ti=Ti_arr,
                                          Te=Te_arr, Tp=Tplasma_arr, Tprof_for_Hs, Tprof_for_diffusion,
-                                         transport_species, upper_lower_bdy_i, upper_lower_bdy, zmax)
+                                         transport_species, upper_lower_bdy_i, upper_lower_bdy, use_ambipolar, use_molec_diff, zmax)
             end
 
         end
@@ -2037,7 +2039,8 @@ elseif problem_type == "Gear"
                                  ion_species, Jratedict, M_P, molmass, monospace_choice,
                                  n_horiz, neutral_species, non_bdy_layers, num_layers, n_all_layers, n_alt_index,
                                  polarizability, planet, plot_grid, q, R_P, run_id, reaction_network,
-                                 sansserif_choice, speciesbclist_vert,
+                                 sansserif_choice, speciesbclist_vert, enable_horiz_transport, horiz_transport_cyclic,
+                                 horiz_transport_rate_neutral, horiz_transport_rate_ion,
                                  Tn=Tn_arr, Ti=Ti_arr, Te=Te_arr, Tp=Tplasma_arr,
                                  Tprof_for_Hs, Tprof_for_diffusion, transport_species,
                                  upper_lower_bdy_i, upper_lower_bdy, use_ambipolar, use_molec_diff, zmax)

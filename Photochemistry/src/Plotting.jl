@@ -527,7 +527,7 @@ function plot_net_volume_change(sp, atmdict; globvars...)
     
     check_requirements(keys(GV), required)
 
-    PnL = get_transport_PandL_rate(sp, atmdict; globvars...);
+    PnL = get_vert_transport_PandL_rate(sp, atmdict; globvars...);
 
 
     fpos, fneg = flux_pos_and_neg(PnL)
@@ -559,6 +559,16 @@ function plot_production_and_loss(final_atm, results_dir, thefolder; separate_co
 
     println("Creating production and loss plots to show convergence of species...")
     create_folder("chemeq_plots", results_dir*thefolder*"/")
+
+    # Horizontal transport rates can only be computed here, where all columns are visible
+    # (in separate-column mode plot_rxns sees just one column). Requires the horizontal
+    # rate profiles in globvars; skipped for single-column runs or when they weren't passed.
+    can_do_horiz = GV.n_horiz > 1 &&
+                   all(k in keys(GV) for k in [:enable_horiz_transport, :horiz_transport_rate_neutral, :horiz_transport_rate_ion]) &&
+                   GV.enable_horiz_transport
+    horiz_PL_for_sp(sp) = (can_do_horiz && sp in GV.transport_species) ?
+                          get_horiz_transport_PandL_rate(sp, final_atm; globvars...) : nothing
+
     # for sp in GV.all_species
     #     plot_rxns(sp, final_atm, results_dir; subfolder=thefolder,num="final_atmosphere", globvars...)
     if separate_cols
@@ -584,10 +594,12 @@ function plot_production_and_loss(final_atm, results_dir, thefolder; separate_co
                                   "ion"=>GV.Tprof_for_diffusion["ion"][ihoriz:ihoriz, :])
 
             for sp in GV.all_species
+                horiz_PL_all = horiz_PL_for_sp(sp)
                 plot_rxns(sp, atm_col, results_dir;
                           subfolder=subfolder,
                           plotsfolder=colfolder,
                           num="final_atmosphere",
+                          horiz_PL=(horiz_PL_all === nothing ? nothing : [horiz_PL_all[ihoriz]]),
                           globvars...,
                           n_horiz=1,
                           Tn=Tn_col, Ti=Ti_col, Te=Te_col, Tp=Tp_col,
@@ -597,15 +609,15 @@ function plot_production_and_loss(final_atm, results_dir, thefolder; separate_co
     else
         for sp in GV.all_species
             plot_rxns(sp, final_atm, results_dir;
-                      subfolder=thefolder, num="final_atmosphere", globvars...)
+                      subfolder=thefolder, num="final_atmosphere", horiz_PL=horiz_PL_for_sp(sp), globvars...)
         end
     end
     println("Finished convergence plots")
 end
 
 function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}}, results_dir::String;
-                   nonthermal=true, shown_rxns=nothing, subfolder="", plotsfolder="chemeq_plots", dt=nothing, num="", extra_title="", 
-                   plot_timescales=false, plot_total_rate_coefs=false, showonly=false, globvars...)
+                   nonthermal=true, shown_rxns=nothing, subfolder="", plotsfolder="chemeq_plots", dt=nothing, num="", extra_title="",
+                   plot_timescales=false, plot_total_rate_coefs=false, showonly=false, horiz_PL=nothing, globvars...)
     #=
     Plots the production and loss rates from chemistry, transport, and both together by altitude for a given species, sp, 
     at a given snapshot in time of the atmosphere atmdict. 
@@ -626,6 +638,10 @@ function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}},
         plot_timescales: plots the timescale over which a species population changes. 
         plot_total_rate_coefs: plots chemical produciton and loss rates only (not multiplied by density)
         showonly: if true, will show the plots instead of saving them
+        horiz_PL: optional precomputed net horizontal transport rate (#/cm³/s), a vector of
+                  n_horiz arrays over the bulk layers (output of get_horiz_transport_PandL_rate).
+                  Computed externally because in separate-column plotting mode this function
+                  only sees a single column, but horizontal transport needs all columns.
     =#
 
     GV = values(globvars)
@@ -811,9 +827,11 @@ function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}},
     # Plot the transport production and loss rates: panel #2
 
     # Calculate the transport fluxes for the species
-    plottitle_ext = "" # no extra info in the plot title if flux==false 
+    plottitle_ext = "" # no extra info in the plot title if flux==false
+    total_htrans_prod = zeros(GV.n_horiz, GV.num_layers)
+    total_htrans_loss = zeros(GV.n_horiz, GV.num_layers)
     if sp in GV.transport_species
-        transportPL = get_transport_PandL_rate(sp, atmdict; nonthermal=nonthermal, globvars...)
+        transportPL = get_vert_transport_PandL_rate(sp, atmdict; nonthermal=nonthermal, globvars...)
         # now separate into two different arrays for ease of addition.
         production_i = [transportPL[ihoriz] .>= 0 for ihoriz in 1:GV.n_horiz]  # boolean array for where transport entries > 0 (production),
         loss_i = [transportPL[ihoriz] .< 0 for ihoriz in 1:GV.n_horiz] # and for where transport entries < 0 (loss).
@@ -824,16 +842,32 @@ function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}},
             total_transport_loss[ihoriz, :] = loss_i[ihoriz] .* abs.(transportPL[ihoriz])
         end
 
+        # Horizontal transport gain/loss in each layer, if precomputed rates were passed in
+        if horiz_PL !== nothing
+            for ihoriz in 1:GV.n_horiz
+                hgain_i = horiz_PL[ihoriz] .>= 0
+                total_htrans_prod[ihoriz, :] = hgain_i .* horiz_PL[ihoriz]
+                total_htrans_loss[ihoriz, :] = .!hgain_i .* abs.(horiz_PL[ihoriz])
+            end
+        end
+
         if sp in [:H2O, :HDO] # Water is turned off in the lower atmosphere, so we should represent that.
         for ihoriz in 1:GV.n_horiz
             total_transport_prod[ihoriz, 1:GV.upper_lower_bdy_i] .= NaN
             total_transport_loss[ihoriz, 1:GV.upper_lower_bdy_i] .= NaN
+            total_htrans_prod[ihoriz, 1:GV.upper_lower_bdy_i] .= NaN
+            total_htrans_loss[ihoriz, 1:GV.upper_lower_bdy_i] .= NaN
         end
         end
 
         # set the x lims for transport axis. Special because total_transport_prod, and etc are incomplete arrays.
 	transport_min = minimum([minimum(abs.(filter(x->!isnan(x),transportPL[ihoriz]))) for ihoriz in 1:GV.n_horiz])
 	transport_max = maximum([maximum(abs.(filter(x->!isnan(x),transportPL[ihoriz]))) for ihoriz in 1:GV.n_horiz])
+        if horiz_PL !== nothing
+            htrans_nonnan = [filter(x->!isnan(x), abs.(horiz_PL[ihoriz])) for ihoriz in 1:GV.n_horiz]
+            htrans_max = maximum([isempty(htrans_nonnan[ihoriz]) ? 0.0 : maximum(htrans_nonnan[ihoriz]) for ihoriz in 1:GV.n_horiz])
+            transport_max = max(transport_max, htrans_max)
+        end
 	
 	# Fix for UserWarning: prevent non-positive xlim on log-scaled axis
 	if transport_min <= 0
@@ -845,8 +879,12 @@ function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}},
 
         # Plot the transport production and loss without the boundary layers
         for ihoriz in 1:GV.n_horiz
-            ax[2].scatter(total_transport_prod[ihoriz, :], GV.plot_grid, color="red", marker=9, label="Total gain this layer", zorder=4)
-            ax[2].scatter(total_transport_loss[ihoriz, :], GV.plot_grid, color="blue", marker=8, label="Total loss this layer", zorder=4)
+            ax[2].scatter(total_transport_prod[ihoriz, :], GV.plot_grid, color="red", marker=9, label="Vertical gain this layer", zorder=4)
+            ax[2].scatter(total_transport_loss[ihoriz, :], GV.plot_grid, color="blue", marker=8, label="Vertical loss this layer", zorder=4)
+            if horiz_PL !== nothing
+                ax[2].scatter(total_htrans_prod[ihoriz, :], GV.plot_grid, color="darkorange", marker=9, label="Horiz. gain this layer", zorder=4)
+                ax[2].scatter(total_htrans_loss[ihoriz, :], GV.plot_grid, color="teal", marker=8, label="Horiz. loss this layer", zorder=4)
+            end
         end
         ax[2].set_xscale("log")
 
@@ -863,8 +901,8 @@ function plot_rxns(sp::Symbol, atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}},
 
     # =================================================================================
     # Total production and loss from chemistry and transport: panel #3
-    total_prod_rate = total_transport_prod .+ total_chem_prod
-    total_loss_rate = total_transport_loss .+ total_chem_loss
+    total_prod_rate = total_transport_prod .+ total_htrans_prod .+ total_chem_prod
+    total_loss_rate = total_transport_loss .+ total_htrans_loss .+ total_chem_loss
 
     prod_without_nans = [filter(x->!isnan(x), total_prod_rate[ihoriz, :]) for ihoriz in 1:GV.n_horiz]
     loss_without_nans = [filter(x->!isnan(x), total_loss_rate[ihoriz, :]) for ihoriz in 1:GV.n_horiz]
