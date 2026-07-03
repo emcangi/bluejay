@@ -1741,7 +1741,7 @@ function boundaryconditions(fluxcoef_dict, atmdict, M; nonthermal=true, globvars
     return bc_dict
 end
 
-function Dcoef_neutrals(z, sp::Symbol, b, atmdict::Dict{Symbol, Vector{ftype_ncur}}; ihoriz=1, globvars...)
+function Dcoef_neutrals(z, sp::Symbol, b, atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}}; ihoriz=1, globvars...)
     #=
     Calculate the basic diffusion coefficient, AT^s/n.
     Inputs:
@@ -2634,15 +2634,14 @@ function setup_water_profile!(atmdict; constfrac=1, dust_storm_on=false, make_sa
         end
     end
 
-    # Plot the water profile 
+    # Plot the water profile (one plot per column)
     # ===========================================================================================================
-    if make_sat_curve
-        satarray = H2Osatfrac_all[1]
-    else
-        satarray = nothing 
+    for ihoriz in 1:GV.n_horiz
+        satarray = make_sat_curve ? H2Osatfrac_all[ihoriz] : nothing
+        plot_water_profile(atmdict, GV.results_dir*GV.sim_folder_name; ihoriz=ihoriz,
+                           fn_extra=(GV.n_horiz > 1 ? "_column$(ihoriz)" : ""),
+                           watersat=satarray, H2Oinitf=H2Oinitfrac_all[ihoriz], plot_grid=GV.plot_grid, showonly=showonly, globvars...)
     end
-
-    plot_water_profile(atmdict, GV.results_dir*GV.sim_folder_name; watersat=satarray, H2Oinitf=H2Oinitfrac_all[1], plot_grid=GV.plot_grid, showonly=showonly, globvars...)
 end
 
 function water_tanh_prof(z; f=10, z0=62, dz=11)

@@ -25,23 +25,22 @@ function chemical_lifetime(s::Symbol, atmdict; globvars...)
     # We'll accumulate chemical lifetimes in a matrix, one column per horizontal slice
     chem_lt = zeros(Float64, GV.n_horiz, GV.num_layers)  # (n_horiz, num_layers)
 
+    # get_volume_rates computes rates for all columns in one call
+    loss_all_rxns, ratecoefs = get_volume_rates(
+        s, atmdict;
+        species_role="reactant",
+        which="all",
+        remove_sp_density=true,
+        globvars...
+    )
+
     for ihoriz in 1:GV.n_horiz
-        loss_all_rxns, ratecoefs = get_volume_rates(
-            s, atmdict;
-            species_role="reactant", 
-            which="all",
-            remove_sp_density=true,
-            # pass the sliced arrays so code sees only the interior layers:
-            Tn=GV.Tn[ihoriz, 2:end-1], Ti=GV.Ti[ihoriz, 2:end-1], Te=GV.Te[ihoriz, 2:end-1],
-            globvars...
-        )
-    
         total_loss_by_alt = zeros(GV.num_layers)  # length = num_layers
-    
+
         for k in keys(loss_all_rxns)
             total_loss_by_alt .+= loss_all_rxns[k][ihoriz]
         end
-    
+
         chem_lt[ihoriz, :] = 1.0 ./ total_loss_by_alt
     end
 
@@ -49,8 +48,8 @@ function chemical_lifetime(s::Symbol, atmdict; globvars...)
 end
 
 
-function get_column_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}, 
-                          ihoriz::Int64; which="all", sp2=nothing, role="product", 
+function get_column_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{Array{ftype_ncur}}},
+                          ihoriz::Int64; which="all", sp2=nothing, role="product",
                           startalt_i=1, returntype="df", globvars...)
     #=
     Input:
@@ -74,20 +73,18 @@ function get_column_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}},
     required = [:Tn, :Ti, :Te, :all_species, :ion_species, :n_horiz, :reaction_network, :num_layers, :dz]
     check_requirements(keys(GV), required)
 
-    # Now we compute reaction rates for just this column
+    # get_volume_rates computes all columns; we extract the requested one below
     rxd, coefs = get_volume_rates(sp, atmdict;
                                   species_role=role,
                                   which=which,
-                                  globvars...,
-                                  # pass the column slices for Tn, Ti, Te
-                                  Tn=GV.Tn[ihoriz, 2:end-1], Ti=GV.Ti[ihoriz, 2:end-1], Te=GV.Te[ihoriz, 2:end-1])
+                                  globvars...)
 
     # # Make the column rates dictionary for production: sum up the column rates for each reaction
     columnrate = Dict{String, Float64}()
 
     for k in keys(rxd)
         # skip altitudes below startalt_i if requested
-        columnrate[k] = sum(rxd[k][startalt_i:end] .* GV.dz)
+        columnrate[k] = sum(rxd[k][ihoriz][startalt_i:end] .* GV.dz)
     end
 
     # Optionally one can specify a second species to include in the sorted result, i.e. a species' ion. If second species is requested
@@ -95,12 +92,11 @@ function get_column_rates(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}},
         rxd2, _ = get_volume_rates(sp2, atmdict;
                                    species_role=role,
                                    which=which,
-                                   globvars...,
-                                   Tn=GV.Tn[ihoriz, 2:end-1], Ti=GV.Ti[ihoriz, 2:end-1], Te=GV.Te[ihoriz, 2:end-1])
+                                   globvars...)
         columnrate2 = Dict{String, Float64}()
 
         for k in keys(rxd2)
-            columnrate2[k] = sum(rxd2[k][startalt_i:end] .* GV.dz)
+            columnrate2[k] = sum(rxd2[k][ihoriz][startalt_i:end] .* GV.dz)
         end
         colrate_dict = merge(columnrate, columnrate2)
     else
@@ -762,7 +758,7 @@ function limiting_flux(sp, atmdict, T_arr; ihoriz::Int=1, treat_H_as_rare=false,
 
         return @. ((bi*fi)/(1+fi)) * ( mH*(ma - GV.molmass[sp]) * (g/(kB*T_arr)) - (thermaldiff(sp)/T_arr) * dTdz[1:end-1])
     else
-        D = Dcoef_neutrals(GV.non_bdy_layers, sp, bi, atmdict; globvars...)    
+        D = Dcoef_neutrals(GV.non_bdy_layers, sp, bi, atmdict; ihoriz=ihoriz, globvars...)
         return (D .* atmdict[sp][ihoriz] ./ Ha) .* (1 .- GV.molmass[sp] ./ meanmass(atmdict, ihoriz; ignore=[sp], globvars...))
     end
 end

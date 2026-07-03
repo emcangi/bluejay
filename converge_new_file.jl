@@ -1314,9 +1314,14 @@ if update_water_profile
             n_current[:HDO] = n_current[:HDO] .* multiplier
         end
 
-        # Make the plot
-        plot_water_profile(n_current, results_dir*sim_folder_name; ihoriz=1, prev_profs=[prevh2o, prevhdo], plot_grid, all_species, non_bdy_layers, speciescolor, speciesstyle,
-                                                                   monospace_choice, sansserif_choice)
+        # Make the plot (one per column)
+        for ihoriz in 1:n_horiz
+            plot_water_profile(n_current, results_dir*sim_folder_name; ihoriz=ihoriz,
+                               fn_extra=(n_horiz > 1 ? "_column$(ihoriz)" : ""),
+                               prev_profs=[prevh2o[ihoriz], prevhdo[ihoriz]],
+                               plot_grid, all_species, non_bdy_layers, speciescolor, speciesstyle,
+                               monospace_choice, sansserif_choice)
+        end
     else
         # Recalculate the initialization fraction for H2O for each column
         H2Oinitfrac = Vector{Vector{ftype_ncur}}(undef, n_horiz)
@@ -1348,9 +1353,14 @@ if update_water_profile
             end
         end
 
-        # Now plot it
-        plot_water_profile(n_current, results_dir*sim_folder_name; ihoriz=1, prev_profs=[prevh2o, prevhdo], plot_grid, all_species, non_bdy_layers, speciescolor, speciesstyle,
-                                                                   monospace_choice, sansserif_choice)
+        # Now plot it (one per column)
+        for ihoriz in 1:n_horiz
+            plot_water_profile(n_current, results_dir*sim_folder_name; ihoriz=ihoriz,
+                               fn_extra=(n_horiz > 1 ? "_column$(ihoriz)" : ""),
+                               prev_profs=[prevh2o[ihoriz], prevhdo[ihoriz]],
+                               plot_grid, all_species, non_bdy_layers, speciescolor, speciesstyle,
+                               monospace_choice, sansserif_choice)
+        end
         println("I have reset the water profile to the standard initial mixing fraction $(modified_water_alts)")
     end
 end

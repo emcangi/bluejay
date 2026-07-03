@@ -593,6 +593,13 @@ function plot_production_and_loss(final_atm, results_dir, thefolder; separate_co
             Tprof_diff_col = Dict("neutral"=>GV.Tprof_for_diffusion["neutral"][ihoriz:ihoriz, :],
                                   "ion"=>GV.Tprof_for_diffusion["ion"][ihoriz:ihoriz, :])
 
+            # Slice the other per-column structures too, so this column's plots use its own
+            # scale heights, boundary conditions, and Jrates rather than column 1's
+            Hs_dict_col = Dict(sp => [GV.Hs_dict[sp][ihoriz]] for sp in keys(GV.Hs_dict))
+            speciesbclist_vert_col = Dict(sp => Dict(bctype => [bcvals[ihoriz]] for (bctype, bcvals) in bcs)
+                                          for (sp, bcs) in GV.speciesbclist_vert)
+            Jratedict_col = Dict(jr => [jrvals[ihoriz]] for (jr, jrvals) in GV.Jratedict)
+
             for sp in GV.all_species
                 horiz_PL_all = horiz_PL_for_sp(sp)
                 plot_rxns(sp, atm_col, results_dir;
@@ -603,7 +610,9 @@ function plot_production_and_loss(final_atm, results_dir, thefolder; separate_co
                           globvars...,
                           n_horiz=1,
                           Tn=Tn_col, Ti=Ti_col, Te=Te_col, Tp=Tp_col,
-                          Tprof_for_Hs=Tprof_Hs_col, Tprof_for_diffusion=Tprof_diff_col)
+                          Tprof_for_Hs=Tprof_Hs_col, Tprof_for_diffusion=Tprof_diff_col,
+                          Hs_dict=Hs_dict_col, speciesbclist_vert=speciesbclist_vert_col,
+                          Jratedict=Jratedict_col)
             end
         end
     else
@@ -1522,19 +1531,25 @@ function plot_tophot_lineandbar(atmdict, spreadsheet; N=5, savepath=nothing, dra
     show()
 end
 
-function plot_water_profile(atmdict, savepath::String; ihoriz::Int=1, showonly=false, watersat=nothing, H2Oinitf=nothing, prev_profs=nothing, globvars...)
+function plot_water_profile(atmdict, savepath::String; ihoriz::Int=1, fn_extra::String="", showonly=false, watersat=nothing, H2Oinitf=nothing, prev_profs=nothing, globvars...)
     #=
     Plots the water profile in mixing ratio and number densities, in two panels.
+    Plots a single column of the atmosphere, selected by ihoriz.
 
     Inputs:
-        H2Oinitf: initial fraction of H2O in the atmosphere
+        H2Oinitf: initial fraction of H2O in the atmosphere (single column profile)
         HDOinitf: same for HDO
         nH2O: number density of H2O
         nHDO: same for HDO
         savepath: where to place the image
+        ihoriz: horizontal column index to plot
+        fn_extra: extra text appended to the image filenames, e.g. "_column2"
+                  so per-column plots don't overwrite each other
         showonly: show rather than save image
-        watersat: optional. must be a list of the saturation fractions with HDO second, 
+        watersat: optional. must be a list of the saturation fractions with HDO second,
                   i.e. [H2Osatfrac, HDOsatfrac]
+        prev_profs: optional. Previous [H2O, HDO] number density profiles for this same
+                    column (1D altitude profiles), plotted in grey for comparison.
     =#
 
     GV = values(globvars)
@@ -1605,7 +1620,7 @@ function plot_water_profile(atmdict, savepath::String; ihoriz::Int=1, showonly=f
     if showonly==true
         show()
     else
-        savefig(savepath*"/water_profiles.png", dpi=300, bbox_inches="tight")
+        savefig(savepath*"/water_profiles$(fn_extra).png", dpi=300, bbox_inches="tight")
         close(fig)
     end
 
@@ -1626,7 +1641,7 @@ function plot_water_profile(atmdict, savepath::String; ihoriz::Int=1, showonly=f
         if showonly==true 
             show()
         else
-            savefig(savepath*"/water_MR_and_saturation.png", dpi=300, bbox_inches="tight")
+            savefig(savepath*"/water_MR_and_saturation$(fn_extra).png", dpi=300, bbox_inches="tight")
         end
     end
 end

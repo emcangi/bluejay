@@ -392,21 +392,25 @@ function load_from_paramlog(folder; quiet=true, globvars...)
         elseif planet=="Mars"
             T_dict = T_Mars(get_param("TSURF", df_atmcond), get_param("TMESO", df_atmcond), get_param("TEXO", df_atmcond); GV.alt)
         end
-        Tn_arr = T_dict["neutrals"]
-        Ti_arr = T_dict["ions"]
-        Te_arr = T_dict["electrons"]
+        # Reconstructed profiles are single 1D profiles; replicate them across columns so the
+        # temperatures have the (n_horiz, n_all_layers) shape the rest of the code expects
+        to2D(T) = T isa AbstractVector ? repeat(reshape(T, 1, :), GV.n_horiz, 1) : T
+        Tn_arr = to2D(T_dict["neutrals"])
+        Ti_arr = to2D(T_dict["ions"])
+        Te_arr = to2D(T_dict["electrons"])
     end
 
     # Note: Here, all_species is loaded above so it is NOT a global variable. Molmass needs to be passed in though.
     Tplasma_arr = Ti_arr .+ Te_arr;
     Tprof_for_Hs = Dict("neutral"=>Tn_arr, "ion"=>Ti_arr);
     Tprof_for_diffusion = Dict("neutral"=>Tn_arr, "ion"=>Tplasma_arr)
-    Hs_dict = Dict{Symbol, Vector{Float64}}([sp=>scaleH(alt, sp, Tprof_for_Hs[charge_type(sp)]; M_P, R_P, globvars...) for sp in all_species]); 
+    # Per-column scale heights, matching the structure built in MODEL_SETUP.jl
+    Hs_dict = Dict{Symbol, Vector{Vector{Float64}}}([sp=>[scaleH(alt, sp, Tprof_for_Hs[charge_type(sp)][ihoriz, :]; M_P, R_P, globvars...) for ihoriz in 1:GV.n_horiz] for sp in all_species]);
     try
-        global Hs_dict = Dict{Symbol, Vector{Float64}}([sp=>scaleH(alt, sp, Tprof_for_Hs[charge_type(sp)]; M_P, R_P, globvars...) for sp in all_species]); 
+        global Hs_dict = Dict{Symbol, Vector{Vector{Float64}}}([sp=>[scaleH(alt, sp, Tprof_for_Hs[charge_type(sp)][ihoriz, :]; M_P, R_P, globvars...) for ihoriz in 1:GV.n_horiz] for sp in all_species]);
     catch UndefVarError
         # hope the user has passed it in
-        global Hs_dict = Dict{Symbol, Vector{Float64}}([sp=>scaleH(GV.alt, sp, Tprof_for_Hs[charge_type(sp)]; GV.M_P, GV.R_P, globvars...) for sp in all_species]); 
+        global Hs_dict = Dict{Symbol, Vector{Vector{Float64}}}([sp=>[scaleH(GV.alt, sp, Tprof_for_Hs[charge_type(sp)][ihoriz, :]; GV.M_P, GV.R_P, globvars...) for ihoriz in 1:GV.n_horiz] for sp in all_species]);
     end
    
     # Boundary conditions
