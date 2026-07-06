@@ -8,19 +8,19 @@
 # 
 # Eryn Cangi
 # Created April 2024
-# Last edited: August 2024
-# Currently tested for Julia: 1.8.5
+# Last edited: December 2025
+# Currently tested for Julia: 1.12.6
 ################################################################################
 
 # Set the planet 
 # =======================================================================================================
-const planet = "Mars"
+const planet = "Venus"
     # OPTIONS: "Mars", "Venus"
 
 # Input and output files, directory
 # =======================================================================================================
 const results_dir = code_dir*"../Results_$(planet)/"
-const initial_atm_file = "$(planet)-Inputs/INITIAL_GUESS_MARS_bxz4YnHk.h5"  # File to use to initialize the atmosphere.
+const initial_atm_file = "$(planet)-Inputs/INITIAL_GUESS_VENUS_oUT0ZbGN.h5"  # File to use to initialize the atmosphere.
     # OPTIONS: 
     # INITIAL_GUESS_MARS.h5 --> Basic Mars starting file.
     # INITIAL_GUESS_MARS_bxz4YnHk.h5 --> A Mars atmosphere that includes N2O, NO2, and their ions;
@@ -33,7 +33,7 @@ const reaction_network_spreadsheet = code_dir*"$(planet)-Inputs/REACTION_NETWORK
 
 # Descriptive attributes of this model run
 # =======================================================================================================
-const short_summary = "co+od_ratecoeff_eq_co+oh" 
+const short_summary = "transport_sensitivity_30h15h" 
       # a short string that will be added to the results folder, to jog your memory of what you did.
       # Recommended not to include spaces. May be blank.
 const logged_long_description = "Test a rate coefficient of +0% (*1) of H equivalent for CO + OD -> CO2 + D" 
@@ -193,8 +193,8 @@ const make_P_and_L_plots = true  # Makes a 3-panel plot showing production and l
 
 # Algorithm tolerances
 # =======================================================================================================
-const rel_tol = 1e-6
-const abs_tol = 1e-12 
+const rel_tol = planet == "Venus" ? 1e-6 : 1e-3  # Venus: original values, Mars: relaxed for multicolumn stability
+const abs_tol = planet == "Venus" ? 1e-12 : 1e-9  # Venus: original values, Mars: relaxed for multicolumn stability
 
 # Helpful options for adding new things to the model 
 # =======================================================================================================
@@ -208,3 +208,117 @@ const use_nonzero_initial_profiles = true
     # false -- sets species to zero density and lets the chemistry and transport build them up.
 const use_ambipolar = true # Toggle ambipolar diffusion for ions.
 const use_molec_diff = true # Toggle molecular diffusion. If turned off, eddy diffusion remains active.
+
+# Number of vertical columns in the simulation. Set this to 1 for a single-column run or >1 for a multicolumn model.
+const n_horiz = 2
+
+# Signed horizontal transport timescale in HOURS (the unit is carried in the variable
+# name until it is converted to a rate in MODEL_SETUP.jl).
+# The magnitude sets the column-to-column transport rate: rate = 1 / (|timescale| * 3600) [1/s].
+# The sign sets the direction: positive transports forward (increasing ihoriz, day-to-night
+# for the default column ordering); negative transports backward (night-to-day).
+# Set to 0 for no horizontal transport.
+# Cross-terminator (day-to-night) thermospheric transport timescales at Venus are around
+# 23 to 44 hours, with 30 hours being typical.
+const horiz_transport_timescale_hours = planet == "Venus" ? 30.0 : 0.0  # Baseline shared value (hours)
+# Split neutral/ion timescales to reflect faster ion coupling on Venus (literature: ~10–20 h ions, ~20–40 h neutrals)
+const horiz_transport_timescale_hours_neutral = planet == "Venus" ? 30.0 : horiz_transport_timescale_hours
+const horiz_transport_timescale_hours_ion = planet == "Venus" ? 15.0 : horiz_transport_timescale_hours
+
+# Signed transport rates (1/s) are derived from these timescales in MODEL_SETUP.jl
+
+# Whether to allow horizontal transport between columns. When set to `false`
+# the model does not compute horizontal advection, matching the behaviour of
+# the single-column set-up even when multiple columns are present.
+const enable_horiz_transport = true
+
+# If true, horizontal neighbors wrap periodically (column 1 is behind column n_horiz)
+# so material leaving one edge re-enters from the opposite side.
+# If false (default), the domain edges are closed: zero flux in or out.
+const horiz_transport_cyclic = false
+
+# =======================================================================================================
+# Horizontal Column Scenario Configuration
+# =======================================================================================================
+# Define the characteristics of each horizontal column.
+# Use a named mapping first (e.g., "day", "night"), then derive the ordered
+# per-column list used by the solver loops.
+# Each entry specifies: temperature scenario, solar zenith angle, and optional
+# boundary condition modifiers.
+# Optional keys:
+#   Texo_override (numeric K) overrides Texo_key for that column
+#   CO2_lowerbdy_vmr sets a per-column lower boundary CO2 mixing ratio
+# Available Texo_key options (from Texo_opts in MODEL_SETUP.jl):
+#   Mars: "min-P2", "mean-P2", "max-P2", "min-P3", "mean-P3", "max-P3"
+#   Venus: "min", "mean", "max"
+#
+# SZA notes: When SZA > 90°, the sun is below the horizon and solar flux will be set to zero
+# Column order matters: horiz_column_scenario[1] maps to n_current[sp][1],
+# horiz_column_scenario[2] maps to n_current[sp][2], etc. For the default
+# two-column day/night cases below, the first column is the dayward/smaller-SZA
+# column and increasing ihoriz moves toward the nightward/larger-SZA column.
+
+const horiz_column_scenario_by_name = if n_horiz == 1
+    # Single column: standard uniform setup
+    OrderedDict(
+        "uniform" => Dict(
+            "Texo_key" => planet == "Venus" ? "mean" : "mean-P2",  # Options: "min", "mean", "max", "min-P2", "mean-P2", "max-P2", etc.
+            "SZA" => SZA                                           # Solar zenith angle (degrees)
+        )
+    )
+elseif planet == "Venus" && n_horiz == 2
+    # Venus day-night test: 2 columns
+    OrderedDict(
+        "day" => Dict(
+            "Texo_key" => "max",       # Keeps the key for reference; Texo_override below is applied when present
+            "Texo_override" => 340.0,  # Dayside Texo (K); typical VTGCM/VTS3 dayside 320-360 K
+            "CO2_lowerbdy_vmr" => 0.965,
+            "SZA" => 0.0               # Subsolar: SZA = 0° (maximum solar flux)
+        ),
+        "night" => Dict(
+            "Texo_key" => "min",
+            "Texo_override" => 210.0,  # Nightside Texo (K); typical nightside 180-230 K
+            "CO2_lowerbdy_vmr" => 0.960,
+            "SZA" => 180.0             # Anti-solar: SZA = 180° (no solar flux)
+        )
+    )
+    # Milder config for no-transport baseline (converges without horizontal coupling):
+    # OrderedDict(
+    #     "day" => Dict(
+    #         "Texo_key" => "mean",      # 290 K
+    #         "SZA" => 60.0              # Dayside solar zenith angle
+    #     ),
+    #     "night" => Dict(
+    #         "Texo_key" => "min",       # 260 K
+    #         "SZA" => 120.0             # Nightside: SZA > 90° means zero solar flux
+    #     )
+    # )
+elseif planet == "Mars" && n_horiz == 2
+    # Mars day-night test: 2 columns
+    OrderedDict(
+        "day" => Dict(
+            "Texo_key" => "mean-P2",
+            "SZA" => 45.0
+        ),
+        "night" => Dict(
+            "Texo_key" => "min-P2",
+            "SZA" => 110.0              # Nightside: SZA > 90° means zero solar flux
+        )
+    )
+else
+    # Default: replicate uniform conditions across all columns
+    OrderedDict(
+        ["col_$i" => Dict(
+             "Texo_key" => planet == "Venus" ? "mean" : "mean-P2",
+             "SZA" => SZA
+         ) for i in 1:n_horiz]
+    )
+end
+
+# Preserve an ordered list for existing solver loops, while keeping named access available.
+const horiz_column_names = collect(keys(horiz_column_scenario_by_name))
+const horiz_column_scenario = [merge(Dict("name" => col_name), horiz_column_scenario_by_name[col_name]) for col_name in horiz_column_names]
+
+# Validate that the scenario matches n_horiz
+@assert length(horiz_column_scenario_by_name) == n_horiz "horiz_column_scenario_by_name must have exactly n_horiz=$n_horiz entries, but got $(length(horiz_column_scenario_by_name))"
+@assert length(horiz_column_scenario) == n_horiz "horiz_column_scenario must have exactly n_horiz=$n_horiz entries, but got $(length(horiz_column_scenario))"

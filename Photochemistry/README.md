@@ -65,7 +65,8 @@ These functions define molecular diffusion, flux, eddy diffusion, and scale heig
 
 Dcoef
 Dcoef!
-fluxcoefs
+fluxcoefs_vert
+fluxcoefs_horiz
 flux_param_arrays
 flux_pos_and_neg
 get_flux
