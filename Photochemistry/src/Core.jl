@@ -1718,31 +1718,31 @@ function Dcoef!(D_arr, T_arr, sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncu
 
             # Coulomb interaction found below this line
 
-            # sum_nu_ii = zeros(size(T_arr)) # initialize a blank array that will hold the collision frequencies
-            # M_i = GV.molmass[sp] # mass of the dominant species in the atmosphere
+            sum_nu_ii = zeros(size(T_arr)) # initialize a blank array that will hold the collision frequencies
+            M_i = GV.molmass[sp] # mass of the dominant species in the atmosphere
 
-            # # this loop will run through all the ions we care about in the current simulation test
-            # for j in GV.ion_species
-            #     if j == sp # make sure we only compute for the species we care about
-            #         continue # only skips the code below when j==sp. otherwise, the code in this loop is ran
-            #     end
+            # this loop will run through all the ions we care about in the current simulation test
+            for j in GV.ion_species
+                if j == sp # make sure we only compute for the species we care about
+                    continue # only skips the code below when j==sp. otherwise, the code in this loop is ran
+                end
 
-            #     # need the mass of the j-th background species
-            #     M_j = GV.molmass[j]
+                # need the mass of the j-th background species
+                M_j = GV.molmass[j]
 
-            #     # compute the reduced mass for this background species and the dominant species.
-            #     M_ij = (M_i * M_j) / (M_i + M_j)
+                # compute the reduced mass for this background species and the dominant species.
+                M_ij = (M_i * M_j) / (M_i + M_j)
 
-            #     # compute the ion collision frequency
-            #     N_j = atmdict[j] # pull the density of the ion in question
-            #     nu_ij = 1.27 .* (sqrt(M_ij) / M_i) .* (N_j ./ (T_arr) .^ (1.5))
-            #     sum_nu_ii .+= nu_ij
+                # compute the ion collision frequency
+                N_j = atmdict[j] # pull the density of the ion in question
+                nu_ij = 1.27 .* (sqrt(M_ij) / M_i) .* (N_j ./ (T_arr) .^ (1.5))
+                sum_nu_ii .+= nu_ij
                 
-            # end
+            end
             
-            # # plug the nu sums into the diffusion coefficient formula
-            # nu_i = sum_nu_ii .+ sum_nu_in
-            # D_arr .= (kB .* T_arr) ./ (GV.molmass[sp] .* mH .* nu_i)
+            # plug the nu sums into the diffusion coefficient formula
+            nu_i = sum_nu_ii .+ sum_nu_in
+            D_arr .= (kB .* T_arr) ./ (GV.molmass[sp] .* mH .* nu_i)
 
         end
     end
