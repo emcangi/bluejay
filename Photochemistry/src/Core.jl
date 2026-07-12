@@ -1650,6 +1650,11 @@ function Dcoef_neutrals(z, sp::Symbol, b, atmdict::Dict{Symbol, Vector{ftype_ncu
     end
 end
 
+function hard_sphere_dcoeff(T_arr, M_species, n_tot)
+    M_1 = 44.01 # background gas for Mars. need to update for Venus
+    return 1.52e18 .* sqrt(1/M_1 + 1/M_species) .* (T_arr .^ 0.5) ./ n_tot # see eqn 15.29 from Banks & Kockarts Aeronomy part B
+end
+
 function Dcoef!(D_arr, T_arr, sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}; globvars...) 
     #=
     Calculates the molecular diffusion coefficient for an atmospheric layer.
@@ -1677,7 +1682,14 @@ function Dcoef!(D_arr, T_arr, sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncu
         # Calculate as if it was a neutral - not using function above because this is faster than going into 
         # the function and using an if/else block since we know we'll always have vectors in this case.
         # This equation is: D = b/n 
-        D_arr[:] .= (binary_dcoeff_inCO2(sp, T_arr)) ./ n_tot(atmdict; GV.all_species, GV.n_alt_index)
+        species_mass = GV.molmass[sp]
+
+        if species_mass <= 4.0 # if the species mass is greater than helium (4.0 amu) then compute using hard sphere approximation
+            D_arr[:] .= (binary_dcoeff_inCO2(sp, T_arr)) ./ n_tot(atmdict; GV.all_species, GV.n_alt_index)
+        else
+            n_profile = n_tot(atmdict; GV.all_species, GV.n_alt_index)
+            D_arr[:] .= hard_sphere_dcoeff(T_arr, species_mass, n_profile)
+        end
     else
         D_arr[:] .= 0 
     end
