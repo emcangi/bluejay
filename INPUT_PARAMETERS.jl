@@ -33,7 +33,7 @@ const reaction_network_spreadsheet = code_dir*"$(planet)-Inputs/REACTION_NETWORK
 
 # Descriptive attributes of this model run
 # =======================================================================================================
-const short_summary = "transport_sensitivity_30h15h" 
+const short_summary = "two_column_horizontal_transport_30h15h"
       # a short string that will be added to the results folder, to jog your memory of what you did.
       # Recommended not to include spaces. May be blank.
 const logged_long_description = "Test a rate coefficient of +0% (*1) of H equivalent for CO + OD -> CO2 + D" 
@@ -220,10 +220,9 @@ const n_horiz = 2
 # Set to 0 for no horizontal transport.
 # Cross-terminator (day-to-night) thermospheric transport timescales at Venus are around
 # 23 to 44 hours, with 30 hours being typical.
-const horiz_transport_timescale_hours = planet == "Venus" ? 30.0 : 0.0  # Baseline shared value (hours)
-# Split neutral/ion timescales to reflect faster ion coupling on Venus (literature: ~10–20 h ions, ~20–40 h neutrals)
-const horiz_transport_timescale_hours_neutral = planet == "Venus" ? 30.0 : horiz_transport_timescale_hours
-const horiz_transport_timescale_hours_ion = planet == "Venus" ? 15.0 : horiz_transport_timescale_hours
+# Neutrals and ions get separate timescales, reflecting faster ion coupling on Venus (literature: ~10–20 h ions, ~20–40 h neutrals).
+const horiz_transport_timescale_hours_neutral = planet == "Venus" ? 30.0 : 0.0
+const horiz_transport_timescale_hours_ion = planet == "Venus" ? 15.0 : 0.0
 
 # Signed transport rates (1/s) are derived from these timescales in MODEL_SETUP.jl
 
