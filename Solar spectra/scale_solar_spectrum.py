@@ -251,11 +251,23 @@ solarspec_df_interp = scale_to_new_distance(solarspec_df_interp, star_to_target_
 
 # Show the final spectrum
 if show_plots:
-    plt.figure(figsize=(10,5))
+    fig, ax = plt.subplots(figsize=(10,5))
+    maincol = "xkcd:cerulean"
     plt.title("Finalized spectrum, in photon flux, with interpolation and extrapolation")
-    plt.plot(solarspec_df_interp["wavelength (nm)"], solarspec_df_interp["photon flux (phot/s/cm^2/nm)"])
-    plt.xlabel("Wavelength (nm)")
-    plt.ylabel("Photons (ph cm^-2 s^-1)")
+    ax.plot(solarspec_df_interp["wavelength (nm)"], solarspec_df_interp["photon flux (phot/s/cm^2/nm)"], color=maincol)
+    ax.tick_params(axis="y", which="both", color=maincol, labelcolor=maincol)
+    ax.set_xlabel("Wavelength (nm)")
+    ax.set_ylabel(r"Photons (ph cm$^{-2}$ s$^{-1}$)", color=maincol)
+
+    # Log axis also 
+    logcol = "xkcd:pumpkin"
+    ax_log = ax.twinx()
+    ax_log.plot(solarspec_df_interp["wavelength (nm)"], solarspec_df_interp["photon flux (phot/s/cm^2/nm)"], color=logcol)
+    ax_log.set_yscale("log")
+    ax_log.tick_params(axis="y", which="both", color=logcol, labelcolor=logcol)
+    ax_log.set_ylabel(r"Photons (ph cm$^{-2}$ s$^{-1}$)", color=logcol)
+
+
     plt.savefig(f"final_spectrum_{planet_name}_{descriptive_tag}.png", bbox_inches="tight")
     plt.show()
     print()
