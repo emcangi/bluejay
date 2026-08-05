@@ -1,3 +1,0 @@
-this is my awesome test commit file!
-
-you are in the hard sphere approximation branch
