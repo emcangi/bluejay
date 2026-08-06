@@ -97,7 +97,7 @@ def interpolate_solar_spectrum(spec, planet, show_plots=True, extrap_tail=True,
 
     # put the interpolated data together with the data that started out fine for one new data frame 
     i_interp = find_nearest(spec[col[0]], interp_start)
-    newsolardata = pd.concat([spec[:i_interp+1], interp_data[1:]], ignore_index="true")
+    newsolardata = pd.concat([spec[:i_interp+1], interp_data[1:]], ignore_index=True)
     
     if extrap_tail:
         # Model wants wavelengths up to 2399.5 nm, but using the base interpolation limit of 2389.51,
@@ -274,7 +274,6 @@ if show_plots:
 
 
 # Write out the result to a file --------------------------------------------------------------------------------------------
-
 # Build a custom header and writeout the file, with custom header comments before the column names
 header = [f"# AU: {theAU}"+'\\n',
           f"# Source data: {solarfile}"+'\\n',
