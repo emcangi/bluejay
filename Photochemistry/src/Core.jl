@@ -1747,7 +1747,7 @@ function Dcoef!(D_arr, T_arr, sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncu
 
                 # compute the ion collision frequency
                 N_j = atmdict[j] # pull the density of the ion in question
-                nu_ij = 1.27 .* (sqrt(M_ij) / M_i) .* (N_j ./ (T_arr) .^ (1.5))
+                nu_ij = 1.27 .* (sqrt(M_ij) / M_i) .* (N_j ./ (T_arr) .^ (1.5)) # this formula comes from Liu et al. 2026 equation A6
                 sum_nu_ii .+= nu_ij
                 
             end
