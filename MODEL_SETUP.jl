@@ -255,8 +255,21 @@ if planet=="Mars"
     const T_array_dict = T_Mars(controltemps[1], controltemps[2], controltemps[3]; alt)
     const Tn_meanSVP = T_Mars(meantemps...; alt)["neutrals"]; # Needed for boundary conditions.
 elseif planet=="Venus"
-    const T_array_dict = T_Venus(controltemps[1], controltemps[2], controltemps[3], "Venus-Inputs/FoxandSung2001_temps_mike.txt"; alt);
-    const Tn_meanSVP = T_Venus(meantemps..., "Venus-Inputs/FoxandSung2001_temps_mike.txt"; alt)["neutrals"]; # Needed for boundary conditions.
+
+    interp_with_file2_alts = Dict(1=>Dict("ions"=>146e5, "electrons"=>132e5), 2=>Dict("ions"=>140e5, "electrons"=>130e5), 3=>Dict("ions"=>144e5, "electrons"=>124e5))
+    file2 = Dict(1=>"/home/emc/GITREPOS/bluejay/Venus-Inputs/FoxandSung2001_temps_mike.txt", 2=>nothing, 3=>"/home/emc/GITREPOS/bluejay/Venus-Inputs/FoxandSung2001_temps_mike.txt")
+    fudge = Dict(1=>false, 2=>true, 3=>false)
+
+    const T_array_dict = T_Venus(controltemps[1], controltemps[2], controltemps[3], "/home/emc/GITREPOS/bluejay/Temps/PlanetITTR_case$(rhapscase)_neutrals.txt"; alt, 
+                                    file2_for_interp=file2[rhapscase], i_start_file2=interp_with_file2_alts[rhapscase],
+                                     fudge_electrons_and_ions=fudge[rhapscase],
+                                    file_col_or_row=["col", "row"], from_planetittr=[true, false], hdr=[true, false], sep=[' ', ','])
+    
+    # For boundary conditions:
+    const Tn_meanSVP = T_Venus(meantemps..., "/home/emc/GITREPOS/bluejay/Temps/PlanetITTR_case$(rhapscase)_neutrals.txt"; alt, 
+                                file2_for_interp=file2[rhapscase], i_start_file2=interp_with_file2_alts[rhapscase], 
+                                fudge_electrons_and_ions=fudge[rhapscase],
+                                file_col_or_row=["col", "row"], from_planetittr=[true, false], hdr=[true, false], sep=[' ', ','])["neutrals"]
 end
 
 const Tn_arr = T_array_dict["neutrals"]
@@ -502,7 +515,7 @@ const used_rxns_spreadsheet_name = "active_rxns.xlsx"
 
 # Simulation run time and timestep size  
 const season_length_in_sec = seasonal_cycle==true ? season_in_sec : 1e16
-const maxlogdt = seasonal_cycle==true ? 5 : 16 # simulation will run until dt = 10^maxlogdt seconds
+const maxlogdt = seasonal_cycle==true ? 5 : 14 # simulation will run until dt = 10^maxlogdt seconds
 const dt_min_and_max = Dict("neutrals"=>[-3, 14], "ions"=>[-4, 6], "ions+nitrogen"=>[-4, 6], "both"=>[-3, maxlogdt])
 const timestep_type = seasonal_cycle==true ? "log-linear" : "dynamic-log" 
     # OPTIONS: "static-log": Logarithmically spaced timesteps that are imposed and don't adjust.

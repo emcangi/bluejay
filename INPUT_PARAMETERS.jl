@@ -20,7 +20,7 @@ const planet = "Venus"
 # Input and output files, directory
 # =======================================================================================================
 const rhapscase = 2 # Change each time
-const results_dir = "/home/emc/Insync/OneDrive-CU/Research/Photochemistry/Results_$(planet)/RHAPS/Jan2026/Case$(rhapscase)/" # NewAtmDensity/"#  For making a new atmosphere: NewAtmDensity/
+const results_dir = "/home/emc/Insync/OneDrive-CU/Research/Photochemistry/Results_$(planet)/RHAPS/Case$(rhapscase)/" # NewAtmDensity/"#  For making a new atmosphere: NewAtmDensity/
 const initial_atm_file = "/home/emc/GITREPOS/bluejay/$(planet)-Inputs/INITIAL_GUESS_VENUS_RHAPS_v2.h5"
     # Folder for making a new atmosphere: code_dir*"../Results_$(planet)/RHAPS/NewAtmDensity/StartingFiles/atmv0.5_allin.h5"# 
     # normal: "$(planet)-Inputs/INITIAL_GUESS_VENUS_RHAPS_v2.h5" 
@@ -48,10 +48,10 @@ const reaction_network_spreadsheet = code_dir*"$(planet)-Inputs/REACTION_NETWORK
 
 # Descriptive attributes of this model run
 # =======================================================================================================
-const short_summary = "case$(rhapscase)_newspec" 
+const short_summary = "case$(rhapscase)_PlanetITTRtemps" 
       # a short string that will be added to the results folder, to jog your memory of what you did.
       # Recommended not to include spaces. May be blank.
-const logged_long_description = "RHAPS Case $(rhapscase): updated spectra, updated BCs (Jan2026), corrected N2" 
+const logged_long_description = "RHAPS Case $(rhapscase): updated spectra, updated BCs (Jan2026), corrected N2, TEMPS FROM THERMOSPHERE MODEL" 
       # Brief summary of simulation goal, will be in the log file but not the results folder name.
 const results_version = "v0.1"  
       # Helps keep track of attempts if you need to keep changing things. Will be appended to results

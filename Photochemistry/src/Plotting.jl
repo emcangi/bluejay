@@ -345,26 +345,26 @@ function plot_atm_essential(n_current, vardict; species_posdict = Dict(:CO2=>[1e
         :OHpl, :ODpl
     ]
     
-    if vardict["hrshortcode"] == "vGFd5b0a"
-        species_posdict[:D] = [2e4, 248.5]
-        species_posdict[:HD] = [3.25e3, 248.5]
-        species_posdict[:HDO] = [1.3e3, 121.5]
-        species_posdict[:DCOpl] = [2.5e-1, 142]
-        species_posdict[:Dpl] = [4.1e-1, 248.5]
-        species_posdict[:ODpl] = [1.4e-1, 194]
-        species_posdict[:H2pl] = [8.5e-2, 248.5]
-    end
-    if vardict["hrshortcode"] == "C7uHvSMt"
-        species_posdict[:D] = [1.8e4, 247.5]
-        species_posdict[:HD] = [1.05*3.25e3, 247.5]
-        species_posdict[:HCOpl] = [4.3e2, 140]
-        species_posdict[:HDO] = [1.05*1.3e3, 121.5]
-        species_posdict[:DCOpl] = [2.3e-1, 142]
-        species_posdict[:Dpl] = [4.0e-1, 247.5]
-        species_posdict[:ODpl] = [1.4e-1, 194]
-        species_posdict[:H2pl] = [0.83e-1, 247.5]
-        species_posdict[:O2pl] = [7.5e4,141]
-    end
+    # if vardict["hrshortcode"] == "vGFd5b0a"
+    #     species_posdict[:D] = [2e4, 248.5]
+    #     species_posdict[:HD] = [3.25e3, 248.5]
+    #     species_posdict[:HDO] = [1.3e3, 121.5]
+    #     species_posdict[:DCOpl] = [2.5e-1, 142]
+    #     species_posdict[:Dpl] = [4.1e-1, 248.5]
+    #     species_posdict[:ODpl] = [1.4e-1, 194]
+    #     species_posdict[:H2pl] = [8.5e-2, 248.5]
+    # end
+    # if vardict["hrshortcode"] == "C7uHvSMt"
+    #     species_posdict[:D] = [1.8e4, 247.5]
+    #     species_posdict[:HD] = [1.05*3.25e3, 247.5]
+    #     species_posdict[:HCOpl] = [4.3e2, 140]
+    #     species_posdict[:HDO] = [1.05*1.3e3, 121.5]
+    #     species_posdict[:DCOpl] = [2.3e-1, 142]
+    #     species_posdict[:Dpl] = [4.0e-1, 247.5]
+    #     species_posdict[:ODpl] = [1.4e-1, 194]
+    #     species_posdict[:H2pl] = [0.83e-1, 247.5]
+    #     species_posdict[:O2pl] = [7.5e4,141]
+    # end
     
     for species in species_to_plot
         col = occursin("pl", string(species)) ? 2 : 1 # set column based on neutral or ion
@@ -1202,7 +1202,7 @@ function plot_species_on_demand(atmdict, spclist, filename; second_atm=nothing, 
     end
 end
 
-function plot_temp_prof(Tprof_1; opt="", cols=[medgray, "xkcd:bright orange", "cornflowerblue"], styles=["-", "-", "-"], lbls=["Neutrals", "Ions", "Electrons"], Tprof_2=nothing, Tprof_3=nothing, savepath=nothing, showonly=false, globvars...)
+function plot_temp_prof(Tprof_1; opt="", lower_ylim=0, show_leg=true, cols=[medgray, "xkcd:bright orange", "cornflowerblue"], styles=["-", "-", "-"], lbls=["Neutrals", "Ions", "Electrons"], Tprof_2=nothing, Tprof_3=nothing, savepath=nothing, showonly=false, globvars...)
     #=
     Creates a .png image of the tepmeratures plotted by altitude in the atmosphere
 
@@ -1224,29 +1224,33 @@ function plot_temp_prof(Tprof_1; opt="", cols=[medgray, "xkcd:bright orange", "c
     fig, ax = subplots(figsize=(4,6))
     plot_bg(ax)
 
-    plot(Tprof_1, GV.alt./1e5, label="Neutrals", color=cols[1], linestyle=styles[1])
+    plot(Tprof_1, GV.alt./1e5, label="Neutrals", color=cols[1], linestyle=styles[1], linewidth=1)
 
     if Tprof_2 != nothing
-        ax.plot(Tprof_2, GV.alt./1e5, label="Ions", color=cols[2], linestyle=styles[2])
-        ax.legend(fontsize=16)
+        ax.plot(Tprof_2, GV.alt./1e5, label="Ions", color=cols[2], linestyle=styles[2], linewidth=1)
+        if show_leg
+            ax.legend(fontsize=16)
+        end
         ax.set_xscale("log")
     end
     if Tprof_3 != nothing
-        ax.plot(Tprof_3, GV.alt./1e5, label="Electrons", color=cols[3], linestyle=styles[3])
-        ax.legend(fontsize=16, loc=(.45,.3))#"center right")
+        ax.plot(Tprof_3, GV.alt./1e5, label="Electrons", color=cols[3], linestyle=styles[3], linewidth=1)
+        if show_leg
+            ax.legend(fontsize=16)#"center right")
+        end
         ax.set_xscale("log")
     end
 
     # plot the control temps
 
     # surface
-    ax.scatter(Tprof_1[1], 0, marker="o", color=medgray, zorder=10)
-    ax.text(Tprof_1[1]+10, 0, #=L"\mathrm{T}_{\mathrm{surface}}"*=#"$(Int64(round(Tprof_1[1], digits=0))) K ")
+    # ax.scatter(Tprof_1[1], 0, marker="o", color=medgray, zorder=10)
+    # ax.text(Tprof_1[1]+10, 0, #=L"\mathrm{T}_{\mathrm{surface}}"*=#"$(Int64(round(Tprof_1[1], digits=0))) K ")
 
     # mesosphere
     meso_ind = findfirst(x->x==minimum(Tprof_1), Tprof_1)
-    ax.scatter(Tprof_1[meso_ind], GV.alt[meso_ind+5]/1e5, marker="o", color=medgray, zorder=10)
-    ax.text(Tprof_1[meso_ind]+5, GV.alt[meso_ind+5]/1e5, #=L"\mathrm{T}_{\mathrm{meso}}"*=#"$(Int64(round(Tprof_1[meso_ind], digits=0))) K ")
+    # ax.scatter(Tprof_1[meso_ind], GV.alt[meso_ind+5]/1e5, marker="o", color=medgray, zorder=10)
+    # ax.text(Tprof_1[meso_ind]+5, GV.alt[meso_ind+5]/1e5, #=L"\mathrm{T}_{\mathrm{meso}}"*=#"$(Int64(round(Tprof_1[meso_ind], digits=0))) K ")
 
     # exosphere
     ax.scatter(Tprof_1[end], 250, marker="o", color=medgray, zorder=10)
@@ -1258,6 +1262,8 @@ function plot_temp_prof(Tprof_1; opt="", cols=[medgray, "xkcd:bright orange", "c
     ax.set_xlabel("Temperature [K]")
     # ax.set_xlim(95, 2e3)
     ax.tick_params(which="both", axis="x", top=true, labeltop=true)
+
+    ax.set_ylim(bottom=lower_ylim)
 
     if showonly==true
         show()
