@@ -5,7 +5,10 @@
 # This file forms the logical core of the photochemical model. Some things     #
 # not included in this file are:                                               #
 # 1. Anything related to file input/output/writing is in FileIO.jl.            #
-# 2. Everything related to photochemical cross sections is in Crosssections.jl.#
+# 2. Everythig related to photochemical cross sections is in Crosssections.jl.#
+# 3. Everything related to building the chemical network object from the       #
+#    provided spreadsheet is in ReactionNetwork.jl.                            #
+# 4. Really small funcng related to photochemical cross sections is in Crosssections.jl.#
 # 3. Everything related to building the chemical network object from the       #
 #    provided spreadsheet is in ReactionNetwork.jl.                            #
 # 4. Really small functions necessary to the model but that are not as         #
@@ -1650,6 +1653,11 @@ function Dcoef_neutrals(z, sp::Symbol, b, atmdict::Dict{Symbol, Vector{ftype_ncu
     end
 end
 
+function hard_sphere_dcoeff(T_arr, M_species, n_tot)
+    M_1 = 44.01 # background gas for Mars. need to update for Venus
+    return 1.52e18 .* sqrt(1/M_1 + 1/M_species) .* (T_arr .^ 0.5) ./ n_tot # see eqn 15.29 from Banks & Kockarts Aeronomy part B
+end
+
 function Dcoef!(D_arr, T_arr, sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}; globvars...) 
     #=
     Calculates the molecular diffusion coefficient for an atmospheric layer.
@@ -1677,7 +1685,14 @@ function Dcoef!(D_arr, T_arr, sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncu
         # Calculate as if it was a neutral - not using function above because this is faster than going into 
         # the function and using an if/else block since we know we'll always have vectors in this case.
         # This equation is: D = b/n 
-        D_arr[:] .= (binary_dcoeff_inCO2(sp, T_arr)) ./ n_tot(atmdict; GV.all_species, GV.n_alt_index)
+        species_mass = GV.molmass[sp]
+
+        if species_mass <= 4.0 # if the species mass is greater than helium (4.0 amu) then compute using hard sphere approximation
+            D_arr[:] .= (binary_dcoeff_inCO2(sp, T_arr)) ./ n_tot(atmdict; GV.all_species, GV.n_alt_index)
+        else
+            n_profile = n_tot(atmdict; GV.all_species, GV.n_alt_index)
+            D_arr[:] .= hard_sphere_dcoeff(T_arr, species_mass, n_profile)
+        end
     else
         D_arr[:] .= 0 
     end
@@ -1711,7 +1726,35 @@ function Dcoef!(D_arr, T_arr, sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncu
 
             end
             
-            D_arr .= (kB .* T_arr) ./ (GV.molmass[sp] .* mH .* sum_nu_in)
+            D_arr .= (kB .* T_arr) ./ (GV.molmass[sp] .* mH .* sum_nu_in) # original coefficients without Coulomb interaction
+
+            # Coulomb interaction found below this line
+
+            sum_nu_ii = zeros(size(T_arr)) # initialize a blank array that will hold the collision frequencies
+            M_i = GV.molmass[sp] # mass of the dominant species in the atmosphere
+
+            # this loop will run through all the ions we care about in the current simulation test
+            for j in GV.ion_species
+                if j == sp # make sure we only compute for the species we care about
+                    continue # only skips the code below when j==sp. otherwise, the code in this loop is ran
+                end
+
+                # need the mass of the j-th background species
+                M_j = GV.molmass[j]
+
+                # compute the reduced mass for this background species and the dominant species.
+                M_ij = (M_i * M_j) / (M_i + M_j)
+
+                # compute the ion collision frequency
+                N_j = atmdict[j] # pull the density of the ion in question
+                nu_ij = 1.27 .* (sqrt(M_ij) / M_i) .* (N_j ./ (T_arr) .^ (1.5)) # this formula comes from Liu et al. 2026 equation A6
+                sum_nu_ii .+= nu_ij
+                
+            end
+            
+            # plug the nu sums into the diffusion coefficient formula
+            nu_i = sum_nu_ii .+ sum_nu_in
+            D_arr .= (kB .* T_arr) ./ (GV.molmass[sp] .* mH .* nu_i)
 
         end
     end
