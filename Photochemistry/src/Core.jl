@@ -1713,7 +1713,6 @@ function Dcoef!(D_arr, T_arr, sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncu
             species_density = zeros(size(T_arr))
             sum_nu_in = zeros(size(T_arr))
 
-            # mi = GV.molmass[sp] .* mH
             # create the sum of nu_in. Note that this depends on density, but we only have density for the real layers,
             # so we have to assume the density at the boundary layers is the same as at the real layers.
             for n in GV.neutral_species
@@ -1735,12 +1734,8 @@ function Dcoef!(D_arr, T_arr, sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncu
 
             end
             
-            D_arr .= (kB .* T_arr) ./ (GV.molmass[sp] .* mH .* sum_nu_in) # original coefficients without Coulomb interaction
-
-            # Coulomb interaction found below this line
-
+            # Coulomb interactions (ion-ion collisions):
             sum_nu_ii = zeros(size(T_arr)) # initialize a blank array that will hold the collision frequencies
-            M_i = GV.molmass[sp] # mass of the dominant species in the atmosphere
 
             # this loop will run through all the ions we care about in the current simulation test
             for j in GV.ion_species
@@ -1748,22 +1743,15 @@ function Dcoef!(D_arr, T_arr, sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncu
                     continue # only skips the code below when j==sp. otherwise, the code in this loop is ran
                 end
 
-                # need the mass of the j-th background species
-                M_j = GV.molmass[j]
-
-                # compute the reduced mass for this background species and the dominant species.
-                M_ij = (M_i * M_j) / (M_i + M_j)
-
-                # compute the ion collision frequency
-                N_j = atmdict[j] # pull the density of the ion in question
-                nu_ij = 1.27 .* (sqrt(M_ij) / M_i) .* (N_j ./ (T_arr) .^ (1.5)) # this formula comes from Liu et al. 2026 equation A6
-                sum_nu_ii .+= nu_ij
-                
+                # compute the ion collision frequency with this other ion.
+                # this formula comes from Liu et al. 2026 equation A6
+                nu_ij = 1.27 .* (sqrt(reduced_mass(GV.molmass[sp], GV.molmass[j])) ./ GV.molmass[sp]) .* (atmdict[j] ./ (T_arr) .^ (1.5)) 
+                sum_nu_ii .+= nu_ij 
             end
             
             # plug the nu sums into the diffusion coefficient formula
-            nu_i = sum_nu_ii .+ sum_nu_in
-            D_arr .= (kB .* T_arr) ./ (GV.molmass[sp] .* mH .* nu_i)
+            # To remove coulomb interaction (if needed), just delete sum_nu_ii.
+            D_arr .= (kB .* T_arr) ./ (GV.molmass[sp] .* mH .* (sum_nu_ii .+ sum_nu_in))
 
         end
     end
