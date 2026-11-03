@@ -5,10 +5,7 @@
 # This file forms the logical core of the photochemical model. Some things     #
 # not included in this file are:                                               #
 # 1. Anything related to file input/output/writing is in FileIO.jl.            #
-# 2. Everythig related to photochemical cross sections is in Crosssections.jl.#
-# 3. Everything related to building the chemical network object from the       #
-#    provided spreadsheet is in ReactionNetwork.jl.                            #
-# 4. Really small funcng related to photochemical cross sections is in Crosssections.jl.#
+# 2. Everything related to photochemical cross sections is in Crosssections.jl.#
 # 3. Everything related to building the chemical network object from the       #
 #    provided spreadsheet is in ReactionNetwork.jl.                            #
 # 4. Really small functions necessary to the model but that are not as         #
@@ -1404,9 +1401,7 @@ and bottom of the atmosphere.
 function binary_dcoeff_inCO2(sp, T)
     #=
     Calculate the bindary diffusion coefficient for species sp, b = AT^s.
-
-    Currently, this is set up to only work for diffusion through CO2 since that's the Mars atm.
-    Could be extended to be for any gas, but that will require some work.
+    Assumes diffusion through CO2. Per Banks & Kockarts, aeronomy part B.
     =#
     
     A = diffparams(sp)[1] .* 1e17 # Empirical parameter (determined it by experiment)
@@ -1653,9 +1648,26 @@ function Dcoef_neutrals(z, sp::Symbol, b, atmdict::Dict{Symbol, Vector{ftype_ncu
     end
 end
 
-function hard_sphere_dcoeff(T_arr, M_species, n_tot)
-    M_1 = 44.01 # background gas for Mars. need to update for Venus
-    return 1.52e18 .* sqrt(1/M_1 + 1/M_species) .* (T_arr .^ 0.5) ./ n_tot # see eqn 15.29 from Banks & Kockarts Aeronomy part B
+function hard_sphere_dcoeff(sp, atmdict, T_arr; globvars...)
+    #=
+    Hard sphere approximation for sp. Assumes an effective interaction radius of 
+    3e-8 cm (3 nm). TODO: Adjust to account for different effective interaction radii
+
+    Inputs:
+        sp: symbol; species for which to compute it
+        atmdict: atmospheric state dictionary; conditions for which to compute it.
+        T_arr: correct temperature array for this species
+    Outputs:
+        Diffusion coefficient using hard sphere approximation from Banks & Kockarts 
+        equation 15.29 (units cm^2/s)
+    =#
+    GV = values(globvars)
+    required = [:all_species, :molmass, :n_alt_index]
+    check_requirements(keys(GV), required)
+
+    m_sp = GV.molmass[sp] # get mass of this species in amu
+    M =  meanmass(atmdict; globvars...)
+    return 1.52e18 .* sqrt(1/M + 1/m_sp) .* (T_arr .^ 0.5) ./ n_tot(atmdict; GV.all_species, GV.n_alt_index) 
 end
 
 function Dcoef!(D_arr, T_arr, sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}; globvars...) 
@@ -1685,13 +1697,10 @@ function Dcoef!(D_arr, T_arr, sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncu
         # Calculate as if it was a neutral - not using function above because this is faster than going into 
         # the function and using an if/else block since we know we'll always have vectors in this case.
         # This equation is: D = b/n 
-        species_mass = GV.molmass[sp]
-
-        if species_mass <= 4.0 # if the species mass is greater than helium (4.0 amu) then compute using hard sphere approximation
+        if ~(sp in [:H, :D, :HD, :H2, :Hpl, :Dpl, :H2pl, :HDpl]) # For light molecules, use existing diffusion coefficient equation 
             D_arr[:] .= (binary_dcoeff_inCO2(sp, T_arr)) ./ n_tot(atmdict; GV.all_species, GV.n_alt_index)
-        else
-            n_profile = n_tot(atmdict; GV.all_species, GV.n_alt_index)
-            D_arr[:] .= hard_sphere_dcoeff(T_arr, species_mass, n_profile)
+        else # For species heavier than 3 amu, compute using hard sphere approximation
+            D_arr[:] .= hard_sphere_dcoeff(sp, atmdict, T_arr; globvars...)
         end
     else
         D_arr[:] .= 0 
