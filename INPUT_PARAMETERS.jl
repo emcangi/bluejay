@@ -40,8 +40,10 @@ const initial_atm_file = "/home/emc/GITREPOS/bluejay/$(planet)-Inputs/INITIAL_GU
     # --------- Venus ----------                                     
     # INITIAL_GUESS_VENUS_vGFd5b0a.h5 --> Best Venus initial atmosphere 
     # INITIAL_GUESS_VENUS_oUT0ZbGN.h5 --> Venus initial atmosphere with basic chlorine and sulfur species included.
-    # INITIAL_GUESS_VENUS_RHAPS.h5 --> Old RHAPS initial guess for Case 2 and Case 3. It's the output of Case 1. Now deprecated I think because I used a bad spectrum.
     # INITIAL_GUESS_VENUS_RHAPS_v2.h5 --> Initial atmosphere using Kevin France's spectrum for Case 1 (Venus around the Sun) and the proper lower boundary condition of ntot=1.74e15.
+    # INITIAL_GUESS_VENUS_RHAPS_case1_converged.h5 --> Happy Case 1 with good spectrum, good boundary conditions.
+    # INITIAL_GUESS_VENUS_RHAPS_case2_converged.h5 --> Happy Case 2 with good spectrum, good boundary conditions, temps from PlanetITTR.
+    # INITIAL_GUESS_VENUS_RHAPS_case3_converged.h5 --> Happy Case 3 with good spectrum, good boundary conditions.
 const final_atm_file = "final_atmosphere.h5"
 const reaction_network_spreadsheet = code_dir*"$(planet)-Inputs/REACTION_NETWORK_$(uppercase(planet)).xlsx"
     # OPTIONS: "REACTION_NETWORK_MIN_IONOSPHERE.xlsx", code_dir*"REACTION_NETWORK_$(uppercase(planet)).xlsx"
@@ -51,9 +53,9 @@ const reaction_network_spreadsheet = code_dir*"$(planet)-Inputs/REACTION_NETWORK
 const short_summary = "case$(rhapscase)_PlanetITTRtemps" 
       # a short string that will be added to the results folder, to jog your memory of what you did.
       # Recommended not to include spaces. May be blank.
-const logged_long_description = "RHAPS Case $(rhapscase): updated spectra, updated BCs (Jan2026), corrected N2, TEMPS FROM THERMOSPHERE MODEL" 
+const logged_long_description = "RHAPS Case $(rhapscase): Increase upper boundary to 500 km" 
       # Brief summary of simulation goal, will be in the log file but not the results folder name.
-const results_version = "v0.1"  
+const results_version = "v0.3"  
       # Helps keep track of attempts if you need to keep changing things. Will be appended to results
       # folder name.
 

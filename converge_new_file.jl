@@ -969,6 +969,7 @@ if make_new_alt_grid==true
             append!(v, fill(fillme, extra_entries))  # repeats the last value in the array for the upper atmo as an initial value.
         end
     end
+    println("$(Dates.format(now(), "(HH:MM:SS)")) Loaded atmosphere and modified zmax")
 elseif make_new_alt_grid==false 
     println("$(Dates.format(now(), "(HH:MM:SS)")) Loading atmosphere")
     n_current = get_ncurrent(initial_atm_file)
