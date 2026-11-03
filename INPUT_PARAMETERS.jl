@@ -263,6 +263,7 @@ const use_nonzero_initial_profiles = true
 # New altitude ranges
 const make_new_alt_grid = true # Set to true if extending the altitude grid.
 const which_boundary_has_changed = "zmax" # Currently, lowering the altitude is being developed on another branch so 'zmin' is not supported
+const set_zmax = make_new_alt_grid==true ? 500e5 : 250e5  #new Zmax to set. Set to None 
 const fillval = "nearest"
     # What to fill the new altitude entries with; OPTIONS:
     # "zeros": 0 everywhere
