@@ -1667,7 +1667,7 @@ function hard_sphere_dcoeff(sp, atmdict, T_arr; globvars...)
 
     m_sp = GV.molmass[sp] # get mass of this species in amu
     M =  meanmass(atmdict; globvars...)
-    return 1.52e18 .* sqrt(1/M + 1/m_sp) .* (T_arr .^ 0.5) ./ n_tot(atmdict; GV.all_species, GV.n_alt_index) 
+    return 1.52e18 .* sqrt.(1 ./ M .+ 1 ./ m_sp) .* (T_arr .^ 0.5) ./ n_tot(atmdict; GV.all_species, GV.n_alt_index) 
 end
 
 function Dcoef!(D_arr, T_arr, sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}; globvars...) 
