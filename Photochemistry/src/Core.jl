@@ -1690,29 +1690,29 @@ function Dcoef!(D_arr, T_arr, sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncu
     =#
 
     GV = values(globvars)
-    required = [:all_species, :molmass, :neutral_species, :n_alt_index, :polarizability, :q, :speciesbclist, :use_ambipolar, :use_molec_diff]
+    required = [:all_species, :molmass, :neutral_species, :n_alt_index, :polarizability, :q, :speciesbclist, :use_ambipolar, :use_molec_diff, :use_hardsphere_approx]
     check_requirements(keys(GV), required)
 
     if GV.use_molec_diff==true
         # Calculate as if it was a neutral - not using function above because this is faster than going into 
         # the function and using an if/else block since we know we'll always have vectors in this case.
         # This equation is: D = b/n 
-        if ~(sp in [:H, :D, :HD, :H2, :Hpl, :Dpl, :H2pl, :HDpl]) # For light molecules, use existing diffusion coefficient equation 
-            D_arr[:] .= (binary_dcoeff_inCO2(sp, T_arr)) ./ n_tot(atmdict; GV.all_species, GV.n_alt_index)
-        else # For species heavier than 3 amu, compute using hard sphere approximation
+        D_arr[:] .= (binary_dcoeff_inCO2(sp, T_arr)) ./ n_tot(atmdict; GV.all_species, GV.n_alt_index)
+        if (GV.use_hardsphere_approx==true) and ~(sp in [:H, :D, :HD, :H2, :Hpl, :Dpl, :H2pl, :HDpl])
             D_arr[:] .= hard_sphere_dcoeff(sp, atmdict, T_arr; globvars...)
         end
     else
         D_arr[:] .= 0 
     end
 
-    # If an ion, overwrite with the ambipolar diffusion
+    # Ambipolar diffusion for ions -------------------------
     if GV.use_ambipolar==true
         if charge_type(sp) == "ion"
-            # a place to store the density array and nu_in
+            # a place to store the density array
             species_density = zeros(size(T_arr))
-            sum_nu_in = zeros(size(T_arr))
 
+            # Ion-neutral interactions --------------------------
+            sum_nu_in = zeros(size(T_arr))
             # create the sum of nu_in. Note that this depends on density, but we only have density for the real layers,
             # so we have to assume the density at the boundary layers is the same as at the real layers.
             for n in GV.neutral_species
@@ -1734,22 +1734,20 @@ function Dcoef!(D_arr, T_arr, sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncu
 
             end
             
-            # Coulomb interactions (ion-ion collisions):
+            # Ion-ion interactions (Coulomb collisions) --------------------------
             sum_nu_ii = zeros(size(T_arr)) # initialize a blank array that will hold the collision frequencies
 
             # this loop will run through all the ions we care about in the current simulation test
             for j in GV.ion_species
-                if j == sp # make sure we only compute for the species we care about
-                    continue # only skips the code below when j==sp. otherwise, the code in this loop is ran
+                if j == sp # ignore collisions with other molecules of same type 
+                    continue
                 end
 
-                # compute the ion collision frequency with this other ion.
-                # this formula comes from Liu et al. 2026 equation A6
+                # compute the ion collision frequency; equation from Liu et al. 2026 equation A6
                 nu_ij = 1.27 .* (sqrt(reduced_mass(GV.molmass[sp], GV.molmass[j])) ./ GV.molmass[sp]) .* (atmdict[j] ./ (T_arr) .^ (1.5)) 
                 sum_nu_ii .+= nu_ij 
             end
             
-            # plug the nu sums into the diffusion coefficient formula
             # To remove coulomb interaction (if needed), just delete sum_nu_ii.
             D_arr .= (kB .* T_arr) ./ (GV.molmass[sp] .* mH .* (sum_nu_ii .+ sum_nu_in))
 
