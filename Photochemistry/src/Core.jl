@@ -113,7 +113,7 @@ function find_exobase(sp::Symbol, atmdict::Dict{Symbol, Vector{ftype_ncur}}; ret
         Altitude of exobase in cm
     =#
 
-    if (sp != :H) || (sp != :D)
+    if (sp != :H) && (sp != :D)
         throw("find_exobase is not defined for species other than H and D at this time.")
     end
 
